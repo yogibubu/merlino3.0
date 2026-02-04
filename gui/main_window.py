@@ -51,6 +51,7 @@ from .symmetry_panel import (
     parse_symmetry_overview,
 )
 from .similarity_window import SimilarityWindow
+from .fragment_pipeline_window import FragmentPipelineWindow
 
 
 def get_project_root():
@@ -145,6 +146,10 @@ class MainWindow(QMainWindow):
         act_similarity = QAction("Synthon similarity", self)
         act_similarity.triggered.connect(self._open_similarity_window)
         self.toolbar.addAction(act_similarity)
+        self.toolbar.addSeparator()
+        act_fragment = QAction("Fragment pipeline", self)
+        act_fragment.triggered.connect(self._open_fragment_pipeline_window)
+        self.toolbar.addAction(act_fragment)
 
         central = QWidget(self)
         layout = QVBoxLayout(central)
@@ -187,18 +192,22 @@ class MainWindow(QMainWindow):
         primary_basic = QPushButton("Edit BASIC")
         primary_working = QPushButton("Open working")
         primary_similarity = QPushButton("Similarity")
+        primary_fragment = QPushButton("Fragment pipeline")
 
         primary_basic.clicked.connect(self.open_basic_dialog)
         primary_working.clicked.connect(self._open_working_folder)
         primary_similarity.clicked.connect(self._open_similarity_window)
+        primary_fragment.clicked.connect(self._open_fragment_pipeline_window)
 
         primary_basic.setStyleSheet("font-weight: 600; padding: 6px 12px;")
         primary_working.setStyleSheet("font-weight: 600; padding: 6px 12px;")
         primary_similarity.setStyleSheet("font-weight: 600; padding: 6px 12px;")
+        primary_fragment.setStyleSheet("font-weight: 600; padding: 6px 12px;")
 
         primary_row.addWidget(primary_basic)
         primary_row.addWidget(primary_working)
         primary_row.addWidget(primary_similarity)
+        primary_row.addWidget(primary_fragment)
         primary_row.addStretch()
 
         layout.addWidget(self.input_panel)
@@ -777,6 +786,10 @@ class MainWindow(QMainWindow):
 
     def _open_similarity_window(self):
         dlg = SimilarityWindow(self.working_dir, self)
+        dlg.exec()
+
+    def _open_fragment_pipeline_window(self):
+        dlg = FragmentPipelineWindow(self.working_dir, self)
         dlg.exec()
 
     def _open_symmetry_panel(self):

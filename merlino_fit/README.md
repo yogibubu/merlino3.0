@@ -170,6 +170,22 @@ python -m survibfit.auto_report_pipeline \
   --top-k 10
 ```
 
+## Fragment pipeline (MVP)
+Fragment-level similarity with GAP detection for library enrichment:
+```
+python -m survibfit.fragment_pipeline \
+  --xyz query.xyz \
+  --se-dir /path/to/se_library \
+  --pcs2-dir /path/to/pcs2_library \
+  --out ./fragment_report \
+  --top-k 5 \
+  --gap-threshold 0.75
+```
+Outputs:
+- `fragment_pipeline.json`
+- `to_curate.json` (fragments below threshold)
+- `fragment_pipeline.md`
+
 ## Notes
 - Topology perception is performed in Å; coordinates are converted from au internally.
 - G and derivatives are computed via finite differences (prototype). B uses analytic gradients for all primitives.

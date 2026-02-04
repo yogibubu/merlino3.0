@@ -25,6 +25,8 @@ venv/
 work/
 working/
 *.egg-info/
+projects/se_library/
+projects/pcs2_library/
 
 # macOS Qt crash dumps (if any)
 *.crash

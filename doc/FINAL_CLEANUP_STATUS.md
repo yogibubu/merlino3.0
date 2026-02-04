@@ -39,3 +39,9 @@
 
 ## Current Status
 Project is ready for feature development on a stable baseline.
+
+## Stable Data Paths
+- Semi-experimental structure library (SE): `projects/se_library`
+  - copied from: `/Users/vincenzobarone/Downloads/SE`
+- PCS2 structure library: `projects/pcs2_library`
+  - copied from: `/Users/vincenzobarone/Downloads/PCS2`
