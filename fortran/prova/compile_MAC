@@ -1,0 +1,2 @@
+gfortran -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f pcsgeo.f symang.f rates.f tools1.f tools2.f -o prova 2>error
+

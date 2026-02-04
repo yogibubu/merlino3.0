@@ -1,0 +1,176 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{setspace}
+
+\geometry{margin=2.5cm}
+\setstretch{1.15}
+
+\title{\textbf{Merlino 3.0 -- Advanced Workflow}\\
+\vspace{0.3cm}
+\large First Production-Ready Release}
+\author{}
+\date{January 9, 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Status}
+\textbf{STABLE -- Production-ready}
+
+This document certifies a stable and fully functional implementation of the
+\emph{Advanced} workflow in Merlino~2.1.
+The current version is considered a \textbf{reference milestone} and should be
+used as a baseline for future developments.
+
+\section*{Scope}
+The Advanced workflow provides a complete and robust pipeline for:
+\begin{itemize}[nosep]
+  \item preparation of PROVA inputs,
+  \item inspection of intermediate files,
+  \item asynchronous execution of Gaussian calculations,
+  \item full GUI responsiveness during long jobs.
+\end{itemize}
+
+The implementation is designed for \textbf{daily scientific use}, including
+Gaussian runs lasting several hours.
+
+\section*{Implemented Features}
+
+\subsection*{Preparation (PROVA)}
+\begin{itemize}[nosep]
+  \item Automatic generation of \texttt{provin} from \texttt{xyzin}.
+  \item Charge and multiplicity read directly from \texttt{xyzin}.
+  \item Mandatory keywords:
+    \begin{itemize}[nosep]
+      \item \texttt{GNIC}
+      \item \texttt{RDXYZ}
+    \end{itemize}
+  \item Optional keywords:
+    \begin{itemize}[nosep]
+      \item \texttt{ONEDIH}
+      \item \texttt{BDPCS3}
+    \end{itemize}
+  \item Horizontal keyword layout for compact GUI design.
+  \item No manual file loading required.
+\end{itemize}
+
+\subsection*{PROVA Outputs}
+\begin{itemize}[nosep]
+  \item \texttt{provout}
+  \item \texttt{gauin}
+  \item Automatic generation of \texttt{gauin.gjf} for Gaussian inspection and execution.
+\end{itemize}
+
+\section*{Inspection Viewers}
+
+\subsection*{ProvaViewer}
+Full-window inspection interface with tabbed visualization of:
+\begin{itemize}[nosep]
+  \item \texttt{provout}
+  \item \texttt{gauin.gjf}
+\end{itemize}
+
+An explicit \textbf{Run Gaussian} button is provided.
+Closing the window does not trigger any calculation, ensuring full user control.
+
+\subsection*{GaussianViewer}
+Full-window inspection interface with tabbed visualization of:
+\begin{itemize}[nosep]
+  \item \texttt{gauout.log}
+  \item \texttt{prova.fchk}
+\end{itemize}
+
+The formatted checkpoint file is generated automatically via:
+\begin{center}
+\texttt{formchk prova.chk → prova.fchk}
+\end{center}
+
+\section*{Gaussian Execution}
+
+\begin{itemize}[nosep]
+  \item Gaussian executable: \texttt{gdv} (development version).
+  \item Execution model: \textbf{asynchronous background execution}.
+  \item Implementation based on Qt-native \texttt{QProcess}.
+\end{itemize}
+
+\subsection*{Key Properties}
+\begin{itemize}[nosep]
+  \item Gaussian runs in background.
+  \item Merlino remains fully responsive.
+  \item Long Gaussian jobs (hours) are supported.
+  \item User interaction is never blocked.
+\end{itemize}
+
+\section*{Workflow Summary}
+
+\begin{verbatim}
+xyzin
+  ↓
+provin
+  ↓
+prova
+  ↓
+provout + gauin
+  ↓
+gauin.gjf (automatic)
+  ↓
+[optional inspection]
+  ↓
+Gaussian (gdv, background)
+  ↓
+gauout.log + prova.chk
+  ↓
+prova.fchk
+\end{verbatim}
+
+\section*{Design Decisions}
+
+\begin{itemize}[nosep]
+  \item Explicit user actions; no implicit launches.
+  \item No calculation triggered by window close events.
+  \item Clear separation between preparation, execution, and inspection.
+  \item Background execution mandatory for Gaussian jobs.
+  \item Qt-native solutions preferred over Python threading.
+\end{itemize}
+
+\section*{Known Limitations}
+
+\begin{itemize}[nosep]
+  \item No job queue management.
+  \item No live monitoring of Gaussian output.
+  \item No explicit abort button for Gaussian jobs.
+  \item No automated parsing of Gaussian output.
+\end{itemize}
+
+\section*{Recommended Usage Policy}
+
+This version should be considered \textbf{frozen}.
+Any further development should be carried out in a separate branch or working
+copy. This release serves as a rollback point and a validated production
+baseline.
+
+\section*{Milestone Name}
+
+\begin{center}
+\textbf{Advanced Workflow -- First Production-Ready Release}
+\end{center}
+
+Internal tag suggestion:
+\begin{verbatim}
+ADVANCED_v1_STABLE
+\end{verbatim}
+
+\section*{Final Note}
+
+This version implements all core requirements for reliable and efficient
+advanced quantum-chemical workflows in Merlino~2.1 and is suitable for routine
+scientific work.
+
+\end{document}
+

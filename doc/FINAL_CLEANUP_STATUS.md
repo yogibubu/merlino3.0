@@ -1,0 +1,41 @@
+# Final Cleanup Status (Merlino 3.0)
+
+## Environment and Commands
+- `merlino-set` points to `~/merlino3.0` and activates `~/.venvs/merlino`.
+- `merlino-run` uses active venv and runs `app.py` from `MERLINO_HOME`.
+- `merlino-run-bg` runs GUI in background with log output.
+- `merlino-test-all` runs full test suite:
+  - `merlino_fit/tests`
+  - `gui/tests` (offscreen Qt)
+
+## Structural Cleanup Completed
+- Topology source of truth consolidated to `merlino_fit/topology`.
+- `topology/` converted to compatibility wrappers.
+- Imports in active code/tests migrated to canonical `merlino_fit.topology` paths.
+- Root duplicate helper scripts removed:
+  - `test_provin_writer.py`
+  - `test_prova.py`
+- Root smoke scripts moved under `scripts/`:
+  - `scripts/smoke_geometry_pipeline.py`
+  - `scripts/smoke_advanced_window.py`
+- References updated (`readme_rotvib`, `FREEZE_NOTES.md`).
+
+## Test Stability
+- Sign/format-robust regression checks added for GIC output in:
+  - `merlino_fit/tests/test_regression_gic.py`
+- GUI test dependency installed in venv:
+  - `pytest-qt`
+
+## Validation Snapshot
+- `merlino_fit/tests`: 60 passed
+- `gui/tests`: 8 passed
+- Combined via `merlino-test-all`: all green
+
+## Residual Legacy (Intentional)
+- Historical docs kept with 2.1 naming for archive traceability:
+  - `doc/merlino2.1_freeze.md`
+  - `doc/addendum_merlino2.1.1`
+- Low-priority duplicate binaries/data listed in `doc/CLEANUP_REPORT.md`.
+
+## Current Status
+Project is ready for feature development on a stable baseline.

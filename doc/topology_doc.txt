@@ -1,0 +1,172 @@
+📘 Merlino Topology – Module Overview
+Scope
+
+The topology module implements a geometry-first pipeline to derive a discrete
+molecular topology and chemically meaningful descriptors starting exclusively
+from atomic coordinates (XYZ format), without relying on RDKit for primary
+connectivity perception.
+
+The module is designed for:
+
+validation of QM-optimized geometries
+
+diagnosis of structural inconsistencies
+
+construction of geometry-consistent molecular graphs and SMILES
+
+generation of continuous atomic descriptors (atomic synthons)
+
+RDKit is used strictly as a serialization backend and never for primary
+chemical perception.
+
+Input
+
+Standard XYZ files, optionally extended with additional sections (e.g. #BASIC).
+
+all atoms, including hydrogen, are treated explicitly
+
+optional metadata sections are preserved
+
+no chemical assumptions are made in the reader
+
+Design principles
+
+geometry → continuous descriptors → discrete topology
+
+no hard distance cutoffs
+
+no atom typing
+
+no template-based perception
+
+continuous and differentiable descriptors throughout
+
+Architecture
+
+continuous_graph.py
+Builds continuous connectivity information directly from geometry.
+
+discrete_graph.py
+Derives a discrete molecular graph from the continuous representation.
+
+rings.py
+Identifies rings from the discrete topology.
+Exposes:
+
+rings
+
+atom_to_rings
+(no is_in_ring(i) helper; use membership in atom_to_rings).
+
+atomic_synthons.py
+Computes continuous atomic descriptors, including:
+
+continuous coordination number (CNA)
+
+effective covalent radii
+
+Pauling-like bond orders
+
+delocalization descriptor 
+𝐷
+𝜋
+D
+π
+	​
+
+
+electronic domains
+
+angular strain
+
+aromaticity.py
+Geometry- and descriptor-driven aromaticity detection, fully independent of
+RDKit.
+
+topology_writer.py
+Updates the structural state file (xyzin):
+
+removes any existing #TOPOLOGY section
+
+writes exactly one new #TOPOLOGY section
+
+always operates in cwd/working/
+
+topology_reporting.py
+Writes an extended human-readable report:
+
+always written to cwd/working/topology.report
+
+contains atomic descriptors, bonds, rings, aromaticity, and SMILES
+
+never re-read by the workflow
+
+build_topology.py
+Orchestrates topology construction:
+
+builds all topology objects
+
+always updates xyzin via topology_writer
+
+always generates topology.report via topology_reporting
+
+does not decide file paths or filenames
+
+test_topology.py
+End-to-end test and validation script:
+
+exercises the full topology pipeline
+
+used for debugging and regression testing
+
+not part of the production workflow
+
+Output
+
+working/xyzin
+Geometry file augmented with exactly one #TOPOLOGY section.
+Used as a communication file between Merlino modules.
+
+working/topology.report
+Extended diagnostic report for inspection and debugging.
+
+Module status
+
+topology construction: stable
+
+descriptor definitions: stable
+
+aromaticity: stable
+
+writer/reporting policy: frozen
+
+test infrastructure: active
+
+🧪 Test rapido del modulo Topology
+
+Per verificare che il modulo topology funzioni correttamente in modo indipendente dalla GUI:
+
+Posizionarsi nella directory root di Merlino
+(quella che contiene le cartelle topology/, gui/, working/, ecc.)
+
+cd /percorso/a/merlino3.0
+
+
+Verificare che nella directory working/ sia presente un file xyzin
+Il file deve contenere una geometria valida in formato XYZ (eventualmente con sezioni aggiuntive).
+
+Lanciare il test della topologia come modulo Python
+
+python -m topology.test_topology working/xyzin
+
+
+Risultato atteso
+
+nessun traceback
+
+il file working/topology.report viene scritto o aggiornato
+
+la sezione #TOPOLOGY nel file working/xyzin viene creata o aggiornata
+
+Se queste condizioni sono soddisfatte, il modulo topology è correttamente installato e funzionante.
+

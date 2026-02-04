@@ -1,0 +1,56 @@
+ last backup on 2/1/2026
+ removed value= in GDV GIC definition otherwise gicsym or gicallsym do not work 
+ Full interface with MSR
+ New Bond Orders
+ PCS models
+ NB: Symmetry=loose operates BEFORE the symmetrization of GNICS
+     iop(2/15=4,2/17=2,2/18=2 operate AFTER symmetrization of GNICS
+     for this reason symmetry=loose is ALWAYS used 
+     and the coordinates obtained by SMILES are truncated to 2 decimal places
+     otherwise the coordinates are truncated to 4 decimal places 
+ 1 redundance for terpenes
+ substitution structure
+ semi experimental fitting
+ torsions
+
+ SMILES 
+ aminoacids
+ Gly: N[C@@2]C(=O)O
+ Ala: N[C@@H](C)C(=O)O
+ Ser: N[C@@H](CO)C(=O)O
+ His: N[C@@H](Cc1c[nH]cn1)C(=O)O 
+ Trp: N[C@@H](Cc1c[nH]c2c1cccc2)C(=O)O
+ Leu: N[C@@H](CC(C)C)C(=O)O
+ peptides
+ GlyDA: C(=O)N[C@@H2]C(=O)N
+ AlaDA: C(=O)N[C@@H](C)C(=O)N
+ AlaDA: C(=O)N[C@@H](CO)C(=O)N
+ DNA bases
+ Guanine keto form: N1C(N)=NC=2NC=NC2C1=O
+ Guanine enol form: OC1=C2N=CNC2=NC(=N1)N
+ Cytosine: C1=C(NC(=O)N=C1)N
+ Adenine: NC1=NC=NC2=C1N=CN2
+ Thymine: O=C1NC(=O)NC=C1C 
+ Uracil lactam form: O=C1C=CNC(=O)N1 
+ Uracil lactim form: Oc1nccc(O)n1
+ sugars
+ aldehydo form D-(−)-Ribose: C([C@H]([C@H]([C@H](C=O)O)O)O)O
+
+ @  D enantimer 
+ @@ L enantiomer
+ \ \  trans
+ \ /  cis
+ =    double bond
+ #    triple bond
+
+
+
+  The OutAng routine Computes the value of an out-of-plane angle
+  i:1st, j:2nd, k:3rd, l:4th)
+  the fourth atom out of the plane of the first 3
+  In the old version the second atom was the central atom
+  In the new version (GADV keyword) the GDV standard is used, namely the first atom is the central atom   
+  For G16 (GA16 keyword) improper dihedrals are used for which j:1st, i:2nd; l:3rd; k:4th 
+
+ The transformation from primitives to Cartesians gives the SAME results as GDV
+ 

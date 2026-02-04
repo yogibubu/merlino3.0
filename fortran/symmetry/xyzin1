@@ -1,0 +1,12 @@
+2 
+O2
+O  0.00000  0.00000  -0.70000
+O  0.00000  0.00000   0.70000 
+
+#BASIC
+charge 0
+multiplicity 1
+
+#SMILES
+n1ccccn1
+

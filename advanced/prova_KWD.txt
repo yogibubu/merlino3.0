@@ -1,0 +1,31 @@
+#DEFAULT 
+ RDXYZ     : Read XYZ File
+ GDV       : Make G26 Input
+ ECKART    : Enforce Eckart Orientation
+ GNIC      : Make Generalized  Natural Internal Coords.
+ ONEDIH    : 1 Dihedral per Bond
+ CLEAN     : Clean GNIC values
+ LOOSE     : Loose Symmetry for Gaussian
+
+#WORKFLOW
+DEBUG    : Preserve all intermediate files (no cleanup)
+
+#GAUSSIAN
+ G16       : Make G16 Input (Need Deactivation of G26!!!)
+ SYMMALL   : Symmetrize GNICs
+ SCAN      : Scan for Soft DOF
+ RIGID     : Freeze Hard Modes in Scan
+ PCS0      : PCS0 Model (UFF)
+ PCS1      : PCS1 Model (HF3C)
+ HPCS2     : HPCS2 Model (B3LYP-D4/6-31G*)
+ DPCS3     : DPCS3 Model (rev-dsd-PBEP86D4/3F12-)
+ OPT       : Geometry  Optimization
+ FREQ      : Second Energy Derivatives
+
+#ADVANCED
+ FINDFR    : Find Fragments
+ JOINFR    : Join Fragments
+ HBOND     : Make H-Bonds
+ BMAT      : Build B Matrix
+ BDPCS3    : Make BDPCS3 Bond Lengths
+

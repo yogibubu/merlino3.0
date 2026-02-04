@@ -1,0 +1,571 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Local Symmetry--Adapted Internal Coordinates:\
+A Topological and Group--Free Construction}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a fully automatic strategy for the construction of non--redundant,
+local symmetry--adapted internal coordinates for molecular systems.
+The approach is primarily topological and does not require the explicit
+assignment of a global point group, making it robust to weak distortions,
+conformational variability, and large flexible systems.
+Equivalence relations between internal coordinates are inferred from atomic
+classes, local environments, and ring connectivity, allowing the generation of
+linearly independent collective coordinates suitable for vibrational analysis,
+reduced--dimensional modeling, and large molecular systems.
+
+A hybrid option is introduced: a topology/geometry--driven symmetry basis is
+built first and redundancies are removed optionally by a final pruning step
+based on the metric (G) or SVD. This preserves continuity of the coordinate
+basis while ensuring independence when local degeneracies occur, and provides
+a reproducible, model--agnostic route to symmetry--aware coordinates without
+global group assignments.
+\end{abstract}
+
+\section{Motivation and Scope}
+
+Internal coordinates are the natural language for describing molecular
+vibrations, structural deformations, and reaction pathways.
+However, their direct use often leads to large sets of redundant variables,
+especially in molecules with local symmetries, equivalent substituents,
+or condensed ring systems.
+
+Traditional symmetry--adapted approaches rely on the explicit identification
+of the molecular point group and the subsequent projection onto irreducible
+representations.
+While rigorous, this strategy becomes cumbersome or ambiguous for large,
+flexible, or weakly distorted systems.
+
+Natural internal coordinates in the sense of Pulay provide a powerful
+chemically intuitive framework and are implemented in codes such as Molrp.\cite{pulay_natural,molrp}
+However, the typical construction starts from redundant primitive sets and
+requires careful handling of linear dependencies. At the opposite extreme,
+fully delocalized non--redundant coordinates (e.g.\ Baker's delocalized
+internal coordinates) can lose direct physical interpretability.\cite{baker_deloc}
+The present work aims at a middle ground: locally symmetry--adapted,
+topology--driven coordinates that remain interpretable while avoiding the
+pathologies of redundant primitives and the opacity of highly delocalized bases.
+
+The goal of the present work is to construct \emph{local symmetry--adapted
+internal coordinates} without invoking a global point group, relying instead on
+topological equivalence, local environments, graph--based analysis, and
+geometry--assisted local symmetry recognition. This yields a robust and
+fully automated pipeline that is stable under small perturbations and suitable
+for high--throughput workflows.
+
+\subsection{Key Contributions}
+\begin{itemize}
+  \item Introduction of \emph{continuous, synthon--based effective atomic numbers}
+        ($Z_{\\mathrm{eff}}$) as the primary criterion for local equivalence
+        classes, enabling robust symmetry inference without a global point group.
+  \item A topology--first, geometry--aware construction of local symmetry bases
+        that remains interpretable while avoiding redundancy and discontinuities.
+  \item Systematic cyclic coordinate definitions for rings (breathing, CVB,
+        cyclic torsions) with deterministic handling of fused/condensed
+        ring dependencies, plus inter--ring butterfly/hinge coordinates.
+  \item Integration of TRIC--style inter--fragment coordinates into the same
+        symmetry pipeline for disconnected systems.
+  \item Optional per--block pruning (SVD or G--metric) that removes residual
+        dependencies without reordering the underlying local basis.
+\end{itemize}
+
+\section{General Philosophy}
+
+The methodology is based on the following principles:
+
+\begin{itemize}
+  \item Only internal coordinates of the same type are combined
+        (bond lengths, valence angles, out--of--plane angles, torsions,
+        linear--bend components).
+  \item X--H bond lengths are never mixed with non--hydrogen bonds.
+  \item Geminal X--H coordinates may be combined, while vicinal or remote
+        combinations are excluded.
+  \item Atomic equivalence is inferred from topological and chemical similarity,
+        not necessarily exact symmetry.
+  \item Linear combinations are constructed to remove redundancies while
+        preserving physical interpretability.
+  \item Non--cyclic torsions are reduced to one dihedral per bond using
+        substituent priority derived from effective atomic numbers.
+\end{itemize}
+
+The resulting coordinates are suitable for vibrational Hamiltonians,
+VSCF/VPT2 treatments, and reduced--dimensional models.
+
+\section{Atomic Classes, Zeff, and Local Geometry}
+
+Atoms are first grouped into equivalence classes based on:
+\begin{itemize}
+  \item Effective atomic number $Z_{\mathrm{eff}}$ with a tunable threshold,
+  \item Coordination number and discrete topology descriptors,
+  \item Local bonding pattern, aromatic/ring membership, and chemical environment.
+\end{itemize}
+
+This yields discrete equivalence classes that are stable under small
+geometrical deformations.
+
+In addition, local geometry around each center is recognized when possible
+(e.g.\ tetrahedral vs square--planar for coordination 4; TBP vs square--pyramidal
+for coordination 5; octahedral vs trigonal--prismatic for coordination 6; and
+square--antiprismatic, dodecahedral, or cubic for coordination 8).
+This allows local symmetry bases to be chosen consistently with the actual
+coordination geometry.
+
+\section{Primitive Internal Coordinates}
+
+Primitive internal coordinates are generated:
+\begin{itemize}
+  \item Bond stretches,
+  \item Valence angles,
+  \item Wilson--type out--of--plane angles,
+  \item Proper torsional angles (no impropers),
+  \item Linear--bend components for near--linear centers.
+\end{itemize}
+
+Each primitive coordinate is associated with a signature encoding the
+equivalence classes of the atoms involved, the coordinate type,
+and (optionally) a coarse angular bin.
+
+\section{Grouping of Equivalent Primitives}
+
+Primitive coordinates sharing identical signatures are grouped together.
+These groups represent sets of coordinates that are physically equivalent or
+nearly equivalent (e.g.\ the three Y--X--Y angles in an XY$_3$ moiety).
+
+For each group, a deterministic local basis is constructed:
+\begin{itemize}
+  \item A symmetric sum coordinate,
+  \item Orthogonal difference coordinates (Gram--Schmidt on simple differences).
+\end{itemize}
+
+When local geometry and class patterns allow, symmetry--specific bases are used
+(e.g.\ XY$_3$ with $C_{3v}$; XY$_2$Z with $C_{2v}$; XY$_4$ with $T_d$ or
+square--planar patterns). Otherwise, the generic basis is used.
+
+\section{Ring Detection and Canonicalization}
+
+Rings are identified purely from molecular connectivity using graph traversal.
+Each ring is represented as an ordered list of atoms.
+
+To avoid duplicates and orientation ambiguities, each ring is canonicalized
+by selecting a unique cyclic permutation and direction.
+This allows consistent identification of equivalent rings and condensed
+ring systems.
+
+\section{Ring Clusters and Redundancy Reduction}
+
+Rings sharing one or more atoms are grouped into ring clusters.
+For a cluster containing $M$ rings, only $M-1$ independent collective ring
+coordinates are retained.
+This reflects the intrinsic linear dependency present in fused or condensed
+ring systems.
+
+The discarded coordinate is chosen deterministically to ensure reproducibility.
+
+\section{Collective Ring Coordinates}
+
+For each retained ring, the following collective coordinates are constructed:
+
+\begin{itemize}
+  \item Ring breathing modes (uniform expansion/contraction),
+  \item Cyclic valence bending (CVB) coordinates,
+  \item Cyclic torsional coordinates.
+\end{itemize}
+
+These coordinates are defined as linear combinations of primitive internal
+coordinates associated with the atoms of the ring and are ordered according to
+the canonical ring traversal.
+Butterfly coordinates for fused rings sharing a bond are treated as dedicated
+blocks to capture out--of--plane collective motion. Condensed ring clusters
+also generate hinge--like inter--ring torsional coordinates, with one
+redundant combination removed per cluster (the $M-1$ rule).
+
+\section{Inter--Fragment Coordinates (TRIC/geomeTRIC)}
+
+For disconnected systems, inter--fragment coordinates are added to preserve
+rigid relative placement between fragments and to avoid singular transformations.
+We follow the TRIC philosophy as implemented in geomeTRIC: translations are
+defined using fragment centroids, and rotations are defined through an
+exponential map of the quaternion describing the relative orientation between
+fragment frames. These six coordinates (three translational and three rotational
+per non--reference fragment) are equivalent in spirit to the inter--fragment
+coordinates used in geomeTRIC, and integrate seamlessly with the local
+symmetry pipeline described above.\cite{wang2016tric}
+
+\section{Non--Redundancy and Hybrid Pruning}
+
+The final set of collective coordinates is non--redundant by construction.
+Redundancy is eliminated locally:
+\begin{itemize}
+  \item within groups of equivalent primitives,
+  \item within sets of equivalent rings,
+  \item within condensed ring clusters.
+\end{itemize}
+
+A hybrid option is provided:
+\begin{enumerate}
+  \item Construct a topology/geometry--driven symmetry basis $U_{\mathrm{topo}}$,
+  \item Optionally prune residual dependencies using either
+        (a) SVD of $U_{\mathrm{topo}}$ or
+        (b) a metric--based pruning on $G_q = U_{\mathrm{topo}}^T G U_{\mathrm{topo}}$.
+\end{enumerate}
+
+This preserves continuity and interpretability of the coordinate basis while
+ensuring independence when local degeneracies occur.
+
+In this sense, the proposed construction complements Pulay--type natural
+coordinates (as in Molrp)\cite{pulay_natural,molrp} by removing redundancies through topology and local
+symmetry, while retaining more local character than fully delocalized
+non--redundant schemes (e.g.\ Baker).\cite{baker_deloc} The result is a robust, scalable set of
+coordinates that balances interpretability and numerical stability.
+
+\section{Global Symmetrization (Optional)}
+
+Once a non--redundant $U$ is constructed, an optional global symmetrization can
+be applied using the point--group symmetry of the entire molecule. The workflow
+assumes that the geometry is centered and oriented along its principal axes.
+Symmetry operations are detected by matching the oriented coordinates under a
+set of candidate operations (including $E$, inversion, mirror planes, proper
+rotations $C_n$ up to a user--defined $n_{\max}$, and improper rotations $S_n$).
+The corresponding atomic permutations are propagated to the primitive
+coordinates, and the columns of $U$ are projected onto the symmetric subspace.
+
+When requested, the procedure can retain only the totally symmetric (A$_1$)
+coordinates, which is particularly useful for constrained or symmetry--preserving
+geometry optimizations. Symmetrization is applied \emph{per coordinate type}
+to avoid mixing stretches, bends, torsions, and other primitive families.\cite{cotton_group}
+
+Additional global options include: (i) separate tolerances for hydrogen atoms,
+(ii) heavy--atom orientation for robust principal axes, (iii) optional strict
+filters on symmetry operation deviations, (iv) isotopic sensitivity
+(treating isotopes as equivalent or distinct), (v) a relative tolerance term
+that scales with distance from the origin, and (vi) an optional inertia--based
+reduction of the maximum $n$ to avoid unnecessary testing of high--order axes
+for strongly asymmetric tops. The global symmetry report can include the
+detected operations, a point--group label, generators, and deviation diagnostics
+(mean/max), and may optionally include a confidence score and lightweight
+profiling statistics (number of operations tested/accepted).
+\medskip
+\noindent\textbf{Additional controls.} Matching can be scaled by an explicit
+radius (for uniform tolerance across system sizes), the radial pre--filter may
+be disabled for debugging, and candidate operations can be restricted to
+subgroup families (e.g.\ $C_n$, $D_n$, or polyhedral) when desired.
+\medskip
+\noindent\textbf{Implementation detail.} To reduce cost, candidate operations are filtered with
+lightweight invariants (principal moments), and atomic matching is accelerated by
+symbol grouping, radial pre--filters, and early exits when no compatible matches
+remain. These steps preserve exactness within the chosen tolerances while improving
+scalability.
+\medskip
+\noindent\textbf{Reporting.} The text report can optionally include a compact global
+symmetry summary with confidence estimates and lightweight profiling counters
+(operations tested/accepted), aiding diagnostics in large workflows.
+
+\noindent\textbf{Example.} For symmetry--preserving geometry optimizations, one may
+construct $U$ and then retain only A$_1$ coordinates, optionally recording symmetry
+labels and diagnostics in the report.
+For isotopically substituted systems, one may treat isotopes as distinct or
+equivalent, and optionally enforce a strict deviation cutoff for accepted
+symmetry operations.
+
+\section{Implementation}
+
+The entire framework is implemented in a strict procedural style,
+compatible with legacy Fortran workflows and modern scripting interfaces.
+No global symmetry assignment is required.
+
+The implementation is organized in sequential steps and is designed to be
+robust, deterministic, and extensible:
+\begin{enumerate}
+  \item Atomic classification (including $Z_{\mathrm{eff}}$ thresholding),
+  \item Primitive coordinate generation,
+  \item Signature construction and grouping,
+  \item Local geometry recognition (when applicable),
+  \item Ring detection and canonicalization,
+  \item Ring cluster analysis,
+  \item Construction of collective coordinates,
+  \item Optional SVD/G pruning of residual dependencies.
+\end{enumerate}
+
+Pattern reports can be produced to summarize local symmetries and
+group assignments, enabling transparent diagnostics and reproducibility.
+
+\subsection{Pipeline Overview (Pseudocode)}
+
+\begin{verbatim}
+1. Build topology (bonds, rings) and atomic descriptors
+2. Compute Zeff-based atomic equivalence classes
+3. Generate primitive internal coordinates
+4. Group primitives by signatures (type, classes, ring tag, angle bin)
+5. Recognize local geometry (coord. 4/5/6/8) where applicable
+6. Build local symmetry bases (or generic sum/diff fallback)
+7. Add cyclic ring coordinates (breathing, CVB, torsions, butterfly)
+8. Reduce fused-ring redundancies (M-1 rule)
+9. Optionally prune per block (SVD or G)
+10. Output U and pattern report
+\end{verbatim}
+
+\subsection{Limitations and Scope}
+
+The local geometry recognition step is designed to be robust, but ambiguous
+cases can arise (e.g.\ between closely related coordination geometries). In such
+cases the pipeline falls back to a generic, deterministic basis to preserve
+continuity. The present framework is intended for molecular systems where local
+coordination environments can be classified reliably; highly fluxional systems
+may benefit from tighter thresholds or trajectory--based smoothing.
+
+\subsection{Typical Parameters}
+
+\begin{center}
+\begin{tabular}{ll}
+\hline
+Parameter & Typical value \\\\
+\hline
+$Z_{\\mathrm{eff}}$ threshold & 0.05 \\\\
+Geometry match tolerance & 12$^{\\circ}$ \\\\
+Pruning mode & SVD (per block) \\\\
+\hline
+\end{tabular}
+\end{center}
+
+\section{Outlook}
+
+The present framework provides a robust foundation for:
+\begin{itemize}
+  \item automatic generation of reduced internal coordinate sets,
+  \item vibrational calculations on large and flexible systems,
+  \item data--driven or fragment--based vibrational models.
+\end{itemize}
+
+Future developments will include refined local symmetry libraries,
+improved geometry matching, coupling with force--constant generation,
+and integration into composite quantum--chemical workflows. The present
+implementation already provides an innovative, geometry--aware and
+topology--driven alternative to traditional symmetry projection methods.
+
+An additional advantage is the continuity of the coordinate basis along
+reaction paths or molecular dynamics trajectories: local equivalence classes
+and cyclic coordinate ordering provide stable coordinate identities, while the
+optional pruning step only removes residual dependencies without reordering
+the underlying basis.
+
+\section{Computational Cost}
+
+The pipeline is dominated by primitive generation and local grouping.
+Per--block pruning scales modestly with group size, and cyclic ring operations
+scale linearly with the number of ring primitives. In practice, the approach
+is suitable for large systems and can be accelerated through caching of
+primitive values and B--matrices.
+
+\appendix
+\section{Implementation Overview and Routine Dependencies}
+
+This appendix provides a structured overview of the main routines composing
+the local symmetry--adapted internal coordinate framework, together with their
+primary dependencies.
+The goal is to clarify data flow, logical separation of tasks, and code
+maintainability.
+
+\subsection{Input and Preprocessing}
+
+\begin{itemize}
+  \item \texttt{READ\_XYZIN} \\
+  Reads molecular geometry and optional metadata from an enriched XYZ input
+  file (Merlino format).
+  \begin{itemize}
+    \item Outputs: atomic numbers, Cartesian coordinates
+  \end{itemize}
+
+  \item \texttt{READ\_CONNECTIVITY} \\
+  Reads or constructs molecular connectivity (bond list).
+  \begin{itemize}
+    \item Outputs: bond pairs
+  \end{itemize}
+\end{itemize}
+
+\subsection{Atomic Classification}
+
+\begin{itemize}
+  \item \texttt{BUILD\_ATOM\_CLASSES} \\
+  Assigns atoms to equivalence classes based on $Z_{\mathrm{eff}}$ and local
+  connectivity descriptors.
+  \begin{itemize}
+    \item Depends on: connectivity
+    \item Outputs: atomic class labels
+  \end{itemize}
+\end{itemize}
+
+\subsection{Primitive Internal Coordinates}
+
+\begin{itemize}
+  \item \texttt{BUILD\_PRIMITIVE\_COORDS} \\
+  Generates the full set of primitive internal coordinates:
+  bond stretches, valence angles, Wilson out--of--plane angles, proper
+  torsions (no impropers), and linear--bend components for near--linear
+  centers.
+  \begin{itemize}
+    \item Depends on: geometry, connectivity
+    \item Outputs: primitive coordinate list and atom indices
+  \end{itemize}
+\end{itemize}
+
+\subsection{Signature Construction and Grouping}
+
+\begin{itemize}
+  \item \texttt{BUILD\_SIGNATURES} \\
+  Constructs topological signatures for primitive coordinates using atomic
+  classes, coordinate types, and coarse angular bins.
+
+  \item \texttt{GROUP\_PRIMITIVES} \\
+  Groups primitives sharing identical signatures into equivalence sets.
+  \begin{itemize}
+    \item Depends on: \texttt{BUILD\_SIGNATURES}
+    \item Outputs: primitive groups
+  \end{itemize}
+\end{itemize}
+
+\subsection{Local Geometry Recognition}
+
+\begin{itemize}
+  \item \texttt{MATCH\_LOCAL\_GEOMETRY} \\
+  Matches local coordination environments to geometry templates for
+  coordination 4/5/6/8 where applicable.
+\end{itemize}
+
+\subsection{Ring Analysis}
+
+\begin{itemize}
+  \item \texttt{FIND\_RINGS} \\
+  Identifies rings from molecular connectivity using graph traversal.
+  \begin{itemize}
+    \item Depends on: connectivity
+    \item Outputs: raw ring lists
+  \end{itemize}
+
+  \item \texttt{CANONICALIZE\_RING} \\
+  Produces a canonical representation of a ring by cyclic permutation and
+  direction selection.
+
+  \item \texttt{NORMALIZE\_RINGS} \\
+  Applies canonicalization to all detected rings.
+
+  \item \texttt{REMOVE\_DUPLICATE\_RINGS} \\
+  Eliminates identical rings after canonicalization.
+\end{itemize}
+
+\subsection{Ring Clustering}
+
+\begin{itemize}
+  \item \texttt{BUILD\_RING\_ATOM\_MAP} \\
+  Builds atom--to--ring incidence lists.
+
+  \item \texttt{SHARE\_ATOM} \\
+  Logical function testing whether two rings share at least one atom.
+
+  \item \texttt{BUILD\_RING\_CLUSTERS} \\
+  Groups rings into clusters based on shared atoms.
+
+  \item \texttt{REDUCE\_RING\_CLUSTER\_N1} \\
+  Applies the $M-1$ reduction rule to each ring cluster to remove linear
+  dependencies.
+\end{itemize}
+
+\subsection{Collective Coordinate Construction}
+
+\begin{itemize}
+  \item \texttt{BUILD\_COLLECTIVE\_FROM\_GROUP} \\
+  Constructs collective coordinates from groups of equivalent primitives.
+
+  \item \texttt{BUILD\_RING\_BREATHING} \\
+  Builds ring breathing coordinates (cyclic bond sums).
+
+  \item \texttt{BUILD\_CVB\_FOR\_RING} \\
+  Builds cyclic valence bending coordinates for a ring.
+
+  \item \texttt{BUILD\_CT\_FOR\_RING} \\
+  Builds cyclic torsional coordinates for a ring.
+
+  \item \texttt{BUILD\_BUTTERFLY\_FOR\_FUSED} \\
+  Builds butterfly coordinates for fused rings.
+
+  \item \texttt{BUILD\_HINGE\_FOR\_CLUSTERS} \\
+  Builds hinge--like inter--ring torsional coordinates for condensed ring
+  clusters (with $M-1$ reduction).
+
+  \item \texttt{BUILD\_ALL\_COLLECTIVE\_COORDS} \\
+  High--level driver assembling all collective coordinates:
+  local groups, ring breathing modes, CVB, cyclic torsions, butterfly/hinge
+  coordinates, and cluster reductions.
+\end{itemize}
+
+\subsection{Optional Pruning}
+
+\begin{itemize}
+  \item \texttt{PRUNE\_U\_SVD} \\
+  Removes residual dependencies by SVD of the assembled $U$.
+
+  \item \texttt{PRUNE\_U\_G} \\
+  Removes residual dependencies using $G_q = U^T G U$.
+\end{itemize}
+
+\subsection{Main Driver}
+
+\begin{itemize}
+  \item \texttt{MAIN\_LOCAL\_COORDS} \\
+  Sequential driver routine coordinating all steps of the workflow.
+\end{itemize}
+
+\subsection{Design Philosophy}
+
+The code is strictly procedural and compatible with Fortran~77 / old--style
+Fortran~90.
+All dependencies are explicit through subroutine arguments; no global state,
+modules, or implicit interfaces are used.
+This design favors transparency, portability, and long--term maintainability.
+
+\section{Local Pattern Reference}
+
+Representative local patterns inferred from equivalence classes and geometry:
+\begin{itemize}
+  \item Coord. 3: XY$_3$ (C$_{3v}$), XY$_2$Z (C$_{2v}$), XYZ (C$_1$)
+  \item Coord. 4: XY$_4$ (T$_d$), square--planar (D$_{4h}$), XY$_3$Z (C$_{3v}$),
+        XY$_2$Z$_2$ (C$_{2v}$/D$_{2h}$)
+  \item Coord. 5: TBP vs square--pyramidal (geometry matched)
+  \item Coord. 6: octahedral vs trigonal--prismatic
+  \item Coord. 8: square--antiprismatic, dodecahedral, cubic
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{wang2016tric}
+Wang, L.-P.; Song, C.
+\emph{Geometry Optimization Made Simple with Translation and Rotation Coordinates.}
+J. Chem. Phys. \textbf{2016}, 144, 214108.
+\bibitem{pulay_natural}
+Pulay, P.
+\emph{Ab initio calculation of force constants and equilibrium geometries in polyatomic molecules.}
+Mol. Phys. \textbf{1969}, 17, 197--204.
+\bibitem{molrp}
+Rappoport, D.; Furche, F.
+\emph{Molecular vibration analysis with natural internal coordinates.}
+Mol. Phys. \textbf{2010}, 108, 531--552.
+\bibitem{baker_deloc}
+Baker, J.
+\emph{Techniques for geometry optimization: A comparison of Cartesian and internal coordinates.}
+J. Comput. Chem. \textbf{1993}, 14, 1085--1100.
+\bibitem{cotton_group}
+Cotton, F. A.
+\emph{Chemical Applications of Group Theory}, 3rd ed.;
+Wiley: New York, 1990.
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,160 @@
+Addendum – Merlino 2.1
+Prep–Comp Workflow, GUI State Management e Logos
+Versione
+
+Merlino 2.1 – Freeze Prep/Comp
+Data: [inserire data]
+
+1. Struttura modulare confermata
+
+Merlino 2.1 è organizzato in tre macro-sezioni concettualmente indipendenti:
+
+Merlino-Prep
+Preparazione dell’input molecolare (xyzin), analisi rotazionale e topologica.
+
+Merlino-Comp
+Preparazione ed esecuzione di calcoli QM (tramite prova.x, MSR, Gaussian, VPT2, ecc.), con input qmin.
+
+Merlino-VMS
+Visualizzazione, modellazione e simulazione spettrale a partire da xyzin e qmin.
+
+Ogni sezione ha una propria finestra GUI e una propria identità visiva.
+
+2. File di input/output (stato congelato)
+2.1 xyzin (Prep)
+
+File testuale principale della sezione Prep.
+
+Contiene:
+
+geometria cartesiana
+
+sezione #BASIC (carica, molteplicità, simmetria)
+
+sezioni arricchite:
+
+#ROTATIONAL
+
+#THERMO
+
+#TOPOLOGY
+
+È l’unica sorgente di verità strutturale per tutto il progetto.
+
+2.2 qmin (Comp)
+
+File testuale analogo a xyzin, dedicato ai dati QM.
+
+Contiene (in forma modulare):
+
+dati prodotti da prova.x
+
+input per codici esterni (Gaussian, MSR, VPT2, ecc.)
+
+Progettato per essere estendibile; per dati molto voluminosi saranno introdotti file aggiuntivi in futuro.
+
+3. Flusso GUI Prep → Comp (congelato)
+3.1 Comportamento dopo Prep completata con successo
+
+Viene mantenuta la visualizzazione molecolare.
+
+Lo stato interno passa a Prep completata.
+
+Il logo attivo diventa quello di Merlino-Prep.
+
+Viene mostrato un popup:
+
+“Preparation completed successfully.
+Do you want to continue with Advanced calculations?”
+
+YES → apertura di AdvancedWindow (Merlino-Comp).
+
+NO → ritorno alla finestra principale con logo Prep visibile.
+
+3.2 Apertura di AdvancedWindow
+
+AdvancedWindow è aperta esclusivamente da MainWindow.
+
+Viene creata con:
+
+parent=MainWindow
+
+raise_() e activateWindow() per garantire il focus (macOS).
+
+La finestra Advanced è completamente indipendente dalla GUI Prep.
+
+3.3 Chiusura di AdvancedWindow
+
+Alla chiusura:
+
+il controllo ritorna a MainWindow
+
+viene forzata la visualizzazione del logo Prep
+
+La molecola non viene persa: rimane in xyzin.
+
+4. Gestione dei loghi (stato congelato)
+4.1 File e posizionamento
+
+gui/
+
+logo1.png → logo generale (startup, “26”)
+
+logo2.png → Merlino-Prep
+
+advanced/
+
+logo3.png → Merlino-Comp
+
+vms/
+
+logo4.png → Merlino-VMS
+
+Il file 4loghi.png è conservato solo come master grafico e non viene usato a runtime.
+
+4.2 Regole di visualizzazione
+
+Un solo logo visibile per finestra.
+
+Il logo non deve mai sovrascrivere una visualizzazione molecolare attiva.
+
+Il logo rappresenta lo stato della sezione, non il contenuto grafico principale.
+
+5. UX finale delle finestre
+MainWindow (Prep)
+
+InputPanel
+
+ViewerPanel
+
+Pulsante Close
+
+Gestisce:
+
+input
+
+Prep
+
+transizione verso Advanced
+
+AdvancedWindow (Comp)
+
+Logo Comp
+
+Sezioni keywords
+
+Pulsanti di esecuzione (prova, MSR, VPT2, Gaussian)
+
+Pulsante Close
+
+Entrambe le finestre hanno comportamento simmetrico e prevedibile.
+
+6. Stato del progetto
+
+Architettura Prep/Comp/VMS definita e congelata.
+
+Flusso GUI stabile e testato.
+
+Nessuna dipendenza ciclica tra sezioni.
+
+Pronto per l’estensione VMS e per l’integrazione dei launcher QM.

@@ -1,0 +1,12 @@
+2
+Merlino bootstrap
+H   0.00000   0.00000   0.00000
+H   0.00000   0.00000   0.74000
+
+#BASIC
+CHARGE              0
+SPIN_MULTIPLICITY   1
+POINT_GROUP         C1
+REPRESENTATION      Ir
+T_K =               298.15
+P_ATM =             1.000000

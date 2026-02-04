@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build/test artifacts
+*.log
+*.out
+*.err
+
+# Local runtime outputs
+work/
+
+# macOS Qt crash dumps (if any)
+*.crash
