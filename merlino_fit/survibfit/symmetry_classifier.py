@@ -108,9 +108,23 @@ def group_label(elements, linear=False):
     i_ops = [lab for lab in labels if lab.endswith("_i")]
 
     has_poly = any(lab.endswith(("_t", "_o", "_i")) for lab in labels)
-    has_sigma_v = any(lab.startswith("sigma_v") for lab in labels)
-    has_sigma_h = any(lab == "sigma_xy" for lab in labels)
-    has_c2_perp = any(lab.startswith("C2_xy") for lab in labels)
+    axis_use = axis if axis in {"x", "y", "z"} else "z"
+    sigma_h_label = {"x": "sigma_yz", "y": "sigma_xz", "z": "sigma_xy"}[axis_use]
+    sigma_v_labels = {
+        "x": {"sigma_xy", "sigma_xz"},
+        "y": {"sigma_xy", "sigma_yz"},
+        "z": {"sigma_xz", "sigma_yz"},
+    }[axis_use]
+    has_sigma_h = sigma_h_label in labels
+    has_sigma_v = any(lab.startswith("sigma_v") for lab in labels) or any(
+        lab in sigma_v_labels for lab in labels
+    )
+    c2_axes = set()
+    for lab in labels:
+        m = re.match(r"C2([xyz])\^", lab)
+        if m:
+            c2_axes.add(m.group(1))
+    has_c2_perp = any(ax != axis for ax in c2_axes)
 
     if linear and not has_poly:
         return "Dinfh" if has_i else "Cinfv"
@@ -128,10 +142,6 @@ def group_label(elements, linear=False):
     if n_t >= 6:
         return "Th" if has_i else "Td" if has_sigma else "T"
 
-    if has_sigma_h and not has_i and nmax > 1:
-        return f"C{nmax}h"
-    if has_sigma and not has_i and not (has_c2 and nmax >= 3) and nmax > 1:
-        return f"C{nmax}h"
     if has_s and (has_c2 or has_c2_perp) and not has_sigma:
         n_eff = nmax if nmax > 1 else snmax
         return f"D{n_eff}d"
@@ -139,7 +149,7 @@ def group_label(elements, linear=False):
         return f"S{snmax}"
 
     if nmax >= 2:
-        if has_sigma_h and (has_c2 or has_c2_perp):
+        if has_sigma_h and has_c2_perp:
             return f"D{nmax}h"
         if has_sigma_h:
             return f"C{nmax}h"

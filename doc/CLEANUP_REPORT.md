@@ -23,7 +23,7 @@
   - `bin/prova.x` and `fortran/prova/prova`
   - `fortran/read_xyzin.f` and `fortran/symmetry/read_xyzin.f`
   - `fortran/symmetry/xyzin` and `fortran/symmetry/xyzin2`
-  - `h2o.fchk` and `geometry/fchkin`
+  - `geometry/fchkin` (sample FCHK kept as canonical; root duplicate removed)
 
 ## Legacy Historical Docs Kept As-Is
 - `doc/merlino2.1_freeze.md`

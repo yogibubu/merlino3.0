@@ -10,6 +10,8 @@ DESIGN RULE (FINAL):
 - no in-memory structures are ever used
 """
 
+from __future__ import annotations
+
 # ==============================================================
 # Optional RDKit dependency
 # ==============================================================
@@ -106,4 +108,3 @@ def has_smiles(xyzin_path: str | Path) -> bool:
     """
     xyzin_path = Path(xyzin_path)
     return _extract_smiles_from_xyzin(xyzin_path) is not None
-

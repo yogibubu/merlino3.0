@@ -21,7 +21,7 @@ def _load_topology_elements():
     topo_parent = str(root)
     if topo_parent not in sys.path:
         sys.path.insert(0, topo_parent)
-    from merlino_fit.topology.elements import atomic_number
+    from topology.elements import atomic_number
     return atomic_number
 
 
@@ -30,7 +30,7 @@ def _load_covalent_radius():
     topo_parent = str(root)
     if topo_parent not in sys.path:
         sys.path.insert(0, topo_parent)
-    from merlino_fit.topology.covalent_radii import covalent_radius
+    from topology.covalent_radii import covalent_radius
     return covalent_radius
 
 
@@ -39,7 +39,7 @@ def _load_topology_bond_order():
     topo_parent = str(root)
     if topo_parent not in sys.path:
         sys.path.insert(0, topo_parent)
-    from merlino_fit.topology.continuous_graph import bond_order
+    from topology.continuous_graph import bond_order
     return bond_order
 
 

@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 
 from survibfit.modify_geom import read_xyz
-from merlino_fit.topology.elements import atomic_number
+from topology.elements import atomic_number
 from survibfit.pipeline import primitives_from_topology
 from survibfit.symmetry_global import orient_coords, symmetry_elements_from_geometry, symmetrize_u
 
@@ -152,7 +152,7 @@ def test_symmetry_center_idx_spherical_guess():
     # SF6 with explicit center index should yield Oh
     from pathlib import Path
     from survibfit.modify_geom import read_xyz
-    from merlino_fit.topology.elements import atomic_number
+    from topology.elements import atomic_number
 
     xyz = Path(__file__).resolve().parent / "data" / "sf6.xyz"
     atoms, coords_ang, _ = read_xyz(xyz)
@@ -205,7 +205,7 @@ def test_max_dev_strict_filters_ops():
 def test_symmetry_profile_and_confidence():
     from pathlib import Path
     from survibfit.modify_geom import read_xyz
-    from merlino_fit.topology.elements import atomic_number
+    from topology.elements import atomic_number
     from survibfit.symmetry_global import symmetrize_u
     from survibfit.pipeline import build_topology
 
@@ -249,7 +249,7 @@ def test_ignore_isotopes_effect():
     # CH4 with one H replaced by D (simulate isotope label)
     from pathlib import Path
     from survibfit.modify_geom import read_xyz
-    from merlino_fit.topology.elements import atomic_number
+    from topology.elements import atomic_number
     from survibfit.symmetry_global import symmetrize_u
 
     xyz = Path(__file__).resolve().parent / "data" / "ch4.xyz"

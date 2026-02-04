@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from merlino_fit.topology.elements import atomic_symbol
+from topology.elements import atomic_symbol
 
 from .symmetry_classifier import (
     group_label as _group_label,

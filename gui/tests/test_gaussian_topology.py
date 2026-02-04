@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from gui.gaussian import _build_gaussian_topology_lines
-from merlino_fit.topology.test_topology import _parse_gaussian_topology_overrides
+from topology.test_topology import _parse_gaussian_topology_overrides
 
 
 def test_build_gaussian_topology_lines_parses_cm5_and_mayer():

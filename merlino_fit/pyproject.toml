@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "merlino-fit"
 version = "0.0.1"
@@ -8,6 +12,9 @@ dependencies = ["numpy"]
 [project.scripts]
 merlino-fit = "survibfit.cli:main"
 merlino-similarity = "survibfit.synthon_similarity:main"
+
+[tool.setuptools]
+packages = ["survibfit", "topology"]
 
 [tool.pytest.ini_options]
 cache_dir = "/tmp/pytest-cache"

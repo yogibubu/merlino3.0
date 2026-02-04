@@ -2,8 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
-from merlino_fit.topology.pipeline import build_topology_objects
-from merlino_fit.topology.topology_reporting import print_topology_report
+from topology.pipeline import build_topology_objects
+from topology.topology_reporting import print_topology_report
 
 
 def test_topology_report_contains_symmetry_and_equivalent_classes(tmp_path, monkeypatch):

@@ -3,7 +3,7 @@ from pathlib import Path
 from geometry.rotational_pipeline import rotational_pipeline
 from geometry.thermo_pipeline import thermo_pipeline
 from geometry.rovib_pipeline import rovib_pipeline
-from merlino_fit.topology.test_topology import run_topology_on_xyzin
+from topology.test_topology import run_topology_on_xyzin
 
 
 class ProjectManager:

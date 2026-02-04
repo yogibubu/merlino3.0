@@ -293,7 +293,7 @@ def _orthonormal_basis_sumdiff(n):
 
 
 def _ring_ordered_indices(prims, ring, kind):
-    from merlino_fit.topology.ring_primitives import ring_valence_angles, ring_dihedrals, ring_bonds
+    from topology.ring_primitives import ring_valence_angles, ring_dihedrals, ring_bonds
 
     idxs = []
     # build map for fast lookup

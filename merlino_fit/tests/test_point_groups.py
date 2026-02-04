@@ -75,7 +75,7 @@ def test_no_radial_filter_does_not_crash():
 def test_co2_linear_dinfh():
     from pathlib import Path
     from survibfit.modify_geom import read_xyz
-    from merlino_fit.topology.elements import atomic_number
+    from topology.elements import atomic_number
     from survibfit.symmetry_global import orient_coords, symmetry_elements_from_geometry, _group_label
 
     xyz = Path(__file__).resolve().parent / "data" / "co2.xyz"
@@ -121,3 +121,21 @@ def test_benzene_not_overclassified_as_d8h():
     )
     pg = _group_label(elements)
     assert pg == "D6h"
+
+
+def test_pyridine_is_c2v():
+    from pathlib import Path
+    from survibfit.modify_geom import read_xyz
+    from topology.elements import atomic_number
+    from survibfit.symmetry_global import orient_coords, symmetry_elements_from_geometry, _group_label
+
+    xyz = Path(__file__).resolve().parents[1] / "pyridine_in.xyz"
+    atoms, coords_ang, _ = read_xyz(xyz)
+    Z = np.array([atomic_number(a) for a in atoms], dtype=int)
+    symbols = [a for a in atoms]
+    coords_oriented = orient_coords(coords_ang, weights=Z)
+    elements, _, _ = symmetry_elements_from_geometry(
+        symbols, coords_oriented, tol=1.0e-3, max_n=10
+    )
+    pg = _group_label(elements)
+    assert pg == "C2v"

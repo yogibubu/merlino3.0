@@ -3,7 +3,7 @@ import numpy as np
 import re
 
 from survibfit.modify_geom import read_xyz
-from merlino_fit.topology.elements import atomic_number
+from topology.elements import atomic_number
 from survibfit.pipeline import build_topology, primitives_from_topology
 from survibfit.transforms import build_u_with_names, format_readgic_lines
 

@@ -23,6 +23,8 @@ venv/
 
 # Local runtime outputs
 work/
+working/
+*.egg-info/
 
 # macOS Qt crash dumps (if any)
 *.crash
