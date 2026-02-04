@@ -1,12 +1,192 @@
-2
-Merlino bootstrap
-H   0.00000   0.00000   0.00000
-H   0.00000   0.00000   0.74000
+10
+Generated from SMILES
+N       0.06965181     -1.27849010     -0.47724421
+C      -1.12351277     -0.79060732     -0.04578616
+C      -1.19471681      0.51637425      0.44209347
+N      -0.06965181      1.27849009      0.47724422
+C       1.12351279      0.79060728      0.04578625
+C       1.19471680     -0.51637423     -0.44209353
+H      -2.00843714     -1.41182119     -0.08130649
+H      -2.13556193      0.92161026      0.78973372
+H       2.00843719      1.41182110      0.08130674
+H       2.13556187     -0.92161016     -0.78973401
 
 #BASIC
-CHARGE              0
 SPIN_MULTIPLICITY   1
-POINT_GROUP         C1
+POINT_GROUP      D2h
 REPRESENTATION      Ir
+CHARGE              0
 T_K =               298.15
 P_ATM =             1.000000
+
+# keys: Q_dimless U_kJmol H_kJmol S_JmolK Cv_JmolK Cp_JmolK
+Q_dimless_trasl = 27621191.651899293
+U_kJmol_trasl = 3.7184353330073514
+H_kJmol_trasl = 6.197392221678919
+S_JmolK_trasl = 163.24693007261854
+Cv_JmolK_trasl = 12.471693218203427
+Cp_JmolK_trasl = 20.78615536367238
+Q_dimless_rot = 30783.473267006502
+U_kJmol_rot = 3.7184355444035817
+H_kJmol_rot = 3.7184355444035817
+S_JmolK_rot = 98.39944714232651
+Cv_JmolK_rot = 12.47169392722986
+Cp_JmolK_rot = 12.47169392722986
+Qrot_rot = 30783.473267006502
+T_K_rot = 298.15
+lnQ_rot = 10.334733242709849
+Q_dimless_vib = 1.0
+U_kJmol_vib = 0.0
+H_kJmol_vib = 0.0
+S_JmolK_vib = 0.0
+Cv_JmolK_vib = 0.0
+Cp_JmolK_vib = 0.0
+T_K_vib = 298.15
+available_vib = False
+cutoff_cm1_vib = 10.0
+keep_low_positive_vib = False
+nfreq_total_vib = 0
+nfreq_used_vib = 0
+reason_vib = no usable frequencies in #VIBRATIONAL block
+vib_vib = {'U': 0.0, 'H': 0.0, 'S': 0.0, 'Cv': 0.0}
+Q_dimless_tot = 850276214819.1051
+U_kJmol_tot = 7.436870877410933
+H_kJmol_tot = 9.9158277660825
+S_JmolK_tot = 261.64637721494506
+Cv_JmolK_tot = 24.943387145433285
+Cp_JmolK_tot = 33.257849290902236
+
+#TOPOLOGY
+[ATOMS]
+  i   Z    Zeff  Charge   Coval   Deloc  Strain    Spin
+  1   6   5.844   0.006   0.487   0.103   0.044   0.000
+  2   6   5.853  -0.117   0.492   0.108   0.046   0.000
+  3   6   5.853  -0.117   0.492   0.108   0.045   0.000
+  4   6   5.853  -0.117   0.492   0.108   0.046   0.000
+  5   6   5.844   0.006   0.487   0.103   0.044   0.000
+  6   7   6.874  -0.245   0.482   0.000   0.153   0.000
+  7   1   0.843   0.117   0.482   0.000   0.000   0.000
+  8   1   0.843   0.117   0.482   0.000   0.000   0.000
+  9   1   0.843   0.117   0.482   0.000   0.000   0.000
+ 10   1   0.843   0.117   0.482   0.000   0.000   0.000
+ 11   1   0.843   0.117   0.482   0.000   0.000   0.000
+
+[BONDS]
+(i,j)
+(1,2)
+(1,6)
+(1,7)
+(2,3)
+(2,8)
+(3,4)
+(3,9)
+(4,5)
+(4,10)
+(5,6)
+(5,11)
+
+[RINGS]
+Ring 1: size=6 atoms=[1, 2, 3, 4, 5, 6]
+
+[AROMATICITY]
+Atoms: [1, 2, 3, 4, 5, 6]
+Bonds: [(1,2), (2,3), (4,5), (3,4), (5,6), (1,6)]
+
+[SMILES_Synthons]
+C1CCNCC1
+
+#SMILES
+n1ccncc1
+
+#ROTATIONAL
+rotor_type = asymmetric_top_quasi_oblate
+representation = Ir
+Watson Reduction = S
+Point Group = D2h
+Symm. Number = 4
+T_K = 298.150000
+P_atm = 1.000000
+A_MHz = 6164.9854995965243
+B_MHz = 5922.4674906194896
+C_MHz = 3020.6468005339921
+Q_rot = 14755.003953
+
+#VIBRATIONAL
+linear = 0
+nvib = 24
+n_imag_like = 0
+
+#THERMO
+# keys: Q_dimless U_kJmol H_kJmol S_JmolK Cv_JmolK Cp_JmolK
+Q_dimless_trasl = 28144513.044637565
+U_kJmol_trasl = 3.7184353330073514
+H_kJmol_trasl = 6.197392221678919
+S_JmolK_trasl = 163.40298525627085
+Cv_JmolK_trasl = 12.471693218203427
+Cp_JmolK_trasl = 20.78615536367238
+Q_dimless_rot = 14755.003953355512
+U_kJmol_rot = 3.7184355444035817
+H_kJmol_rot = 3.7184355444035817
+S_JmolK_rot = 92.28502718989171
+Cv_JmolK_rot = 12.47169392722986
+Cp_JmolK_rot = 12.47169392722986
+Qrot_rot = 14755.003953355512
+T_K_rot = 298.15
+lnQ_rot = 9.599337555310282
+Q_dimless_vib = 1.0
+U_kJmol_vib = 0.0
+H_kJmol_vib = 0.0
+S_JmolK_vib = 0.0
+Cv_JmolK_vib = 0.0
+Cp_JmolK_vib = 0.0
+T_K_vib = 298.15
+available_vib = False
+cutoff_cm1_vib = 10.0
+keep_low_positive_vib = False
+nfreq_total_vib = 0
+nfreq_used_vib = 0
+reason_vib = no usable frequencies in #VIBRATIONAL block
+vib_vib = {'U': 0.0, 'H': 0.0, 'S': 0.0, 'Cv': 0.0}
+Q_dimless_tot = 415272401238.89307
+U_kJmol_tot = 7.436870877410933
+H_kJmol_tot = 9.9158277660825
+S_JmolK_tot = 255.68801244616256
+Cv_JmolK_tot = 24.943387145433285
+Cp_JmolK_tot = 33.257849290902236
+
+#TOPOLOGY
+[ATOMS]
+  i   Z    Zeff  Charge   Coval   Deloc  Strain    Spin
+  1   7   6.874  -0.245   0.483   0.000   0.146   0.000
+  2   6   5.844   0.006   0.487   0.103   0.045   0.000
+  3   6   5.844   0.006   0.487   0.103   0.045   0.000
+  4   7   6.874  -0.245   0.483   0.000   0.146   0.000
+  5   6   5.844   0.006   0.487   0.103   0.045   0.000
+  6   6   5.844   0.006   0.487   0.103   0.045   0.000
+  7   1   0.843   0.117   0.482   0.000   0.000   0.000
+  8   1   0.843   0.117   0.482   0.000   0.000   0.000
+  9   1   0.843   0.117   0.482   0.000   0.000   0.000
+ 10   1   0.843   0.117   0.482   0.000   0.000   0.000
+
+[BONDS]
+(i,j)
+(1,2)
+(1,6)
+(2,3)
+(2,7)
+(3,4)
+(3,8)
+(4,5)
+(5,6)
+(5,9)
+(6,10)
+
+[RINGS]
+Ring 1: size=6 atoms=[1, 2, 3, 4, 5, 6]
+
+[AROMATICITY]
+Atoms: [1, 2, 3, 4, 5, 6]
+Bonds: [(1,2), (2,3), (4,5), (3,4), (5,6), (1,6)]
+
+[SMILES_Synthons]
+c1cnccn1
