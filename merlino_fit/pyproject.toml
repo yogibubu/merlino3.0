@@ -12,6 +12,7 @@ dependencies = ["numpy"]
 [project.scripts]
 merlino-fit = "survibfit.cli:main"
 merlino-similarity = "survibfit.synthon_similarity:main"
+merlino-auto-report = "survibfit.auto_report_pipeline:main"
 
 [tool.setuptools]
 packages = ["survibfit", "topology"]

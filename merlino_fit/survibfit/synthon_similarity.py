@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,39 @@ class GaussianModel:
     mean: np.ndarray
     cov: np.ndarray
     natoms: int
+
+
+def _feature_explain(
+    a: GaussianModel,
+    b: GaussianModel,
+    names: tuple[str, ...],
+):
+    sigma = 0.5 * (a.cov + b.cov)
+    inv_sigma = np.linalg.pinv(sigma)
+    delta = a.mean - b.mean
+    mean_terms = 0.125 * delta * (inv_sigma @ delta)
+
+    da = np.clip(np.diag(a.cov), 1.0e-15, None)
+    db = np.clip(np.diag(b.cov), 1.0e-15, None)
+    ds = np.clip(np.diag(sigma), 1.0e-15, None)
+    var_terms = 0.5 * (np.log(ds) - 0.5 * (np.log(da) + np.log(db)))
+
+    rows = []
+    for i, nm in enumerate(names):
+        total = float(mean_terms[i] + var_terms[i])
+        rows.append(
+            {
+                "feature": nm,
+                "mean_term": float(mean_terms[i]),
+                "variance_term": float(var_terms[i]),
+                "total_term": total,
+                "mean_a": float(a.mean[i]),
+                "mean_b": float(b.mean[i]),
+                "abs_mean_delta": float(abs(delta[i])),
+            }
+        )
+    rows.sort(key=lambda r: abs(r["total_term"]), reverse=True)
+    return rows
 
 
 def _xyz_to_au(path: Path):
@@ -198,6 +232,8 @@ def compare_molecules(
 
     ring_db = 0.0
     ring_sim = 1.0
+    ring_model_a = None
+    ring_model_b = None
     effective_ring_weight = 0.0
     if include_ring_comparison and ring_weight > 0.0:
         effective_ring_weight = ring_weight
@@ -220,6 +256,11 @@ def compare_molecules(
 
     combined_sim = float((1.0 - effective_ring_weight) * sim + effective_ring_weight * ring_sim)
     combined_db = float(-np.log(max(combined_sim, 1.0e-15)))
+    syn_explain = _feature_explain(model_a, model_b, FEATURE_NAMES)
+    if ring_model_a is not None and ring_model_b is not None:
+        ring_explain = _feature_explain(ring_model_a, ring_model_b, RING_FEATURE_NAMES)
+    else:
+        ring_explain = []
 
     return {
         "xyz_a": str(xyz_a),
@@ -243,6 +284,43 @@ def compare_molecules(
         "mean_b": model_b.mean.tolist(),
         "nrings_a": int(R_a.shape[0]),
         "nrings_b": int(R_b.shape[0]),
+        "explain": {
+            "synthon_feature_terms": syn_explain,
+            "ring_feature_terms": ring_explain,
+        },
+    }
+
+
+def compare_directory_sets(
+    query_xyz: list[Path],
+    library_xyz: list[Path],
+    *,
+    covariance_mode: str = "full",
+    regularization: float = 5.0e-2,
+    standardize: bool = True,
+    include_ring_comparison: bool = True,
+    ring_weight: float = 0.25,
+    top_k: int | None = None,
+):
+    reports = []
+    for query in sorted(query_xyz):
+        rep = compare_against_library(
+            query,
+            library_xyz,
+            covariance_mode=covariance_mode,
+            regularization=regularization,
+            standardize=standardize,
+            include_ring_comparison=include_ring_comparison,
+            ring_weight=ring_weight,
+        )
+        if top_k is not None:
+            rep["ranking"] = rep["ranking"][: max(0, int(top_k))]
+        reports.append(rep)
+    return {
+        "queries": [str(p) for p in sorted(query_xyz)],
+        "library_size_input": len(library_xyz),
+        "nqueries": len(reports),
+        "reports": reports,
     }
 
 
@@ -311,6 +389,7 @@ def main(argv=None):
     ap.add_argument("--xyz-a", default=None, help="First XYZ file (pair mode)")
     ap.add_argument("--xyz-b", default=None, help="Second XYZ file (pair mode)")
     ap.add_argument("--query-xyz", default=None, help="Query XYZ (library mode)")
+    ap.add_argument("--query-dir", default=None, help="Directory of queries (batch mode)")
     ap.add_argument(
         "--library-dir",
         default=None,
@@ -345,6 +424,11 @@ def main(argv=None):
         help="Optional output path for JSON report",
     )
     ap.add_argument(
+        "--csv-out",
+        default=None,
+        help="Optional output path for CSV report (library or batch mode)",
+    )
+    ap.add_argument(
         "--no-standardize",
         action="store_true",
         help="Disable global feature standardization before Gaussian fitting",
@@ -366,9 +450,12 @@ def main(argv=None):
 
     pair_mode = args.xyz_a is not None and args.xyz_b is not None
     lib_mode = args.query_xyz is not None and args.library_dir is not None
-    if pair_mode == lib_mode:
+    batch_mode = args.query_dir is not None and args.library_dir is not None
+    modes = [pair_mode, lib_mode, batch_mode]
+    if sum(bool(x) for x in modes) != 1:
         raise SystemExit(
-            "Use either pair mode (--xyz-a --xyz-b) or library mode (--query-xyz --library-dir)."
+            "Use exactly one mode: pair (--xyz-a --xyz-b), "
+            "library (--query-xyz --library-dir), or batch (--query-dir --library-dir)."
         )
 
     if pair_mode:
@@ -390,6 +477,77 @@ def main(argv=None):
         print(f"Molecule A atoms:           {result['natoms_a']}")
         print(f"Molecule B atoms:           {result['natoms_b']}")
         print(f"Molecule A/B rings:         {result['nrings_a']} / {result['nrings_b']}")
+        top_syn = result["explain"]["synthon_feature_terms"][:3]
+        if top_syn:
+            print("Top synthon contributors:")
+            for row in top_syn:
+                print(
+                    f"  - {row['feature']}: total={row['total_term']:.6f} "
+                    f"(mean={row['mean_term']:.6f}, var={row['variance_term']:.6f})"
+                )
+        return
+
+    if batch_mode:
+        query_dir = Path(args.query_dir)
+        lib_dir = Path(args.library_dir)
+        queries = sorted(query_dir.glob(args.library_glob))
+        library = sorted(lib_dir.glob(args.library_glob))
+        if not queries:
+            raise SystemExit("No query XYZ files found with current --query-dir/--library-glob.")
+        if not library:
+            raise SystemExit("No library XYZ files found with current --library-dir/--library-glob.")
+        result = compare_directory_sets(
+            queries,
+            library,
+            covariance_mode=args.covariance_mode,
+            regularization=args.regularization,
+            standardize=standardize,
+            include_ring_comparison=include_ring_comparison,
+            ring_weight=args.ring_weight,
+            top_k=args.top_k,
+        )
+        if args.json_out:
+            Path(args.json_out).write_text(json.dumps(result, indent=2) + "\n")
+        if args.csv_out:
+            with open(args.csv_out, "w", newline="", encoding="utf-8") as fh:
+                wr = csv.writer(fh)
+                wr.writerow(
+                    [
+                        "query_xyz",
+                        "candidate_xyz",
+                        "sim_comb",
+                        "sim_syn",
+                        "sim_ring",
+                        "db_comb",
+                        "db_syn",
+                        "db_ring",
+                    ]
+                )
+                for rep in result["reports"]:
+                    q = rep["query_xyz"]
+                    for row in rep["ranking"]:
+                        wr.writerow(
+                            [
+                                q,
+                                row["xyz"],
+                                row["similarity_combined"],
+                                row["similarity_exp_minus_db"],
+                                row["ring_similarity_exp_minus_db"],
+                                row["combined_distance_neglog"],
+                                row["bhattacharyya_distance"],
+                                row["ring_bhattacharyya_distance"],
+                            ]
+                        )
+        print(f"Batch queries: {result['nqueries']}")
+        for rep in result["reports"]:
+            top = rep["ranking"][0] if rep["ranking"] else None
+            if top is None:
+                print(f"- {rep['query_xyz']}: no matches")
+            else:
+                print(
+                    f"- {rep['query_xyz']}: best={top['xyz']} "
+                    f"sim_comb={top['similarity_combined']:.6f}"
+                )
         return
 
     query = Path(args.query_xyz)
@@ -408,6 +566,34 @@ def main(argv=None):
     )
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(result, indent=2) + "\n")
+    if args.csv_out:
+        with open(args.csv_out, "w", newline="", encoding="utf-8") as fh:
+            wr = csv.writer(fh)
+            wr.writerow(
+                [
+                    "query_xyz",
+                    "candidate_xyz",
+                    "sim_comb",
+                    "sim_syn",
+                    "sim_ring",
+                    "db_comb",
+                    "db_syn",
+                    "db_ring",
+                ]
+            )
+            for row in result["ranking"]:
+                wr.writerow(
+                    [
+                        result["query_xyz"],
+                        row["xyz"],
+                        row["similarity_combined"],
+                        row["similarity_exp_minus_db"],
+                        row["ring_similarity_exp_minus_db"],
+                        row["combined_distance_neglog"],
+                        row["bhattacharyya_distance"],
+                        row["ring_bhattacharyya_distance"],
+                    ]
+                )
     ranking = result["ranking"]
     if args.top_k is not None:
         ranking = ranking[: max(0, args.top_k)]

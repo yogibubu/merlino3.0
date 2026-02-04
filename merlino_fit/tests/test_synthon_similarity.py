@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from survibfit.synthon_similarity import compare_molecules, compare_against_library
+from survibfit.synthon_similarity import (
+    compare_molecules,
+    compare_against_library,
+    compare_directory_sets,
+)
 
 
 def test_similarity_is_high_for_identical_molecule():
@@ -41,3 +45,22 @@ def test_ring_comparison_penalizes_ring_mismatch():
     assert same["ring_similarity_exp_minus_db"] > 0.999
     assert diff["ring_similarity_exp_minus_db"] < same["ring_similarity_exp_minus_db"]
     assert diff["similarity_combined"] < same["similarity_combined"]
+
+
+def test_similarity_explain_present():
+    root = Path(__file__).resolve().parent / "data"
+    out = compare_molecules(root / "ch4.xyz", root / "co2.xyz", covariance_mode="full")
+    assert "explain" in out
+    assert len(out["explain"]["synthon_feature_terms"]) == 5
+
+
+def test_batch_directory_comparison_shape():
+    root = Path(__file__).resolve().parent / "data"
+    out = compare_directory_sets(
+        [root / "ch4.xyz", root / "co2.xyz"],
+        [root / "ch4.xyz", root / "co2.xyz", root / "c4_chain.xyz"],
+        covariance_mode="full",
+        top_k=2,
+    )
+    assert out["nqueries"] == 2
+    assert len(out["reports"]) == 2

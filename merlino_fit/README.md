@@ -136,6 +136,7 @@ python -m survibfit.synthon_similarity \
 ```
 Use `--no-standardize` to disable global feature standardization.
 Use `--no-ring-comparison` to disable the ring-aware term.
+Pair mode also prints the top feature contributors (Similarity Explain).
 
 Library mode (one query vs many molecules):
 ```
@@ -145,6 +146,28 @@ python -m survibfit.synthon_similarity \
   --library-glob "*.xyz" \
   --top-k 10 \
   --json-out ranking.json
+```
+
+Batch mode (many queries vs library) with CSV:
+```
+python -m survibfit.synthon_similarity \
+  --query-dir ./queries_xyz \
+  --library-dir ./library_xyz \
+  --library-glob "*.xyz" \
+  --top-k 5 \
+  --json-out batch.json \
+  --csv-out batch.csv
+```
+
+## Auto-report pipeline
+Generate per-query reports including topology report, point-group summary,
+and similarity ranking:
+```
+python -m survibfit.auto_report_pipeline \
+  --query-dir ./queries_xyz \
+  --library-dir ./library_xyz \
+  --out-dir ./auto_reports \
+  --top-k 10
 ```
 
 ## Notes

@@ -197,6 +197,15 @@ class SimilarityWindow(QDialog):
             f"Atoms A/B: {result['natoms_a']} / {result['natoms_b']}",
             f"Rings A/B: {result['nrings_a']} / {result['nrings_b']}",
         ]
+        top_syn = result.get("explain", {}).get("synthon_feature_terms", [])[:3]
+        if top_syn:
+            text.append("")
+            text.append("Top synthon contributors:")
+            for row in top_syn:
+                text.append(
+                    f" - {row['feature']}: total={row['total_term']:.6f} "
+                    f"(mean={row['mean_term']:.6f}, var={row['variance_term']:.6f})"
+                )
         self.output.setPlainText("\n".join(text))
 
     def _run_library(self):
