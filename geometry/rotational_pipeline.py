@@ -535,6 +535,7 @@ def rotational_pipeline(xyzin, report=True):
             coords_oriented,
             rot_info["rotor_type"],
             representation,
+            tol=5.0e-3,
         )
     except Exception:
         symm_sigma, symm_pg = None, None
