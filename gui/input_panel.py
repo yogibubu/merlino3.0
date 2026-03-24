@@ -15,7 +15,13 @@ from PySide6.QtWidgets import (
 )
 
 from .readers import read_structure
-from .gaussian import read_gaussian_properties
+from .gaussian import (
+    read_gaussian_properties,
+    compute_deltavib_from_alpha,
+    _find_gaussian_companion_files,
+)
+from .xyzin_utils import set_dvib_in_rotational
+from .deltavib_alpha_dialog import DeltaVibAlphaDialog
 
 
 class InputSource:
@@ -113,9 +119,21 @@ class InputPanel(QWidget):
         props_layout.addWidget(self.props_browse)
         main_layout.addLayout(props_layout)
 
+        alpha_layout = QHBoxLayout()
+        self.alpha_check = QCheckBox("Auto open DeltaVib panel")
+        self.alpha_check.setToolTip(
+            "Open the DeltaVib panel after computing ΔVib from alpha."
+        )
+        self.alpha_btn = QPushButton("Open DeltaVib panel…")
+        alpha_layout.addWidget(self.alpha_check)
+        alpha_layout.addWidget(self.alpha_btn)
+        alpha_layout.addStretch()
+        main_layout.addLayout(alpha_layout)
+
         self.props_check.stateChanged.connect(self._update_mode)
         self.props_edit.returnPressed.connect(self._on_file_commit)
         self.props_browse.clicked.connect(self._on_browse_props)
+        self.alpha_btn.clicked.connect(self._open_alpha_panel)
 
         # Initial enable/disable
         self._update_mode()
@@ -153,6 +171,23 @@ class InputPanel(QWidget):
         self.props_check.setEnabled(allow_props)
         self.props_edit.setEnabled(allow_props and self.props_check.isChecked())
         self.props_browse.setEnabled(allow_props and self.props_check.isChecked())
+        self.alpha_check.setEnabled(allow_props and self.props_check.isChecked())
+        self.alpha_btn.setEnabled(allow_props and self.props_check.isChecked())
+
+    def set_input_type(self, mode: str) -> None:
+        btn = self._type_buttons.get(mode)
+        if btn is None:
+            return
+        btn.setChecked(True)
+        self._update_mode()
+
+    def open_file_dialog(self) -> None:
+        mode = self._current_mode()
+        if mode in {"XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"}:
+            self._on_browse_file()
+            return
+        if mode == "SMILES":
+            self.smiles_edit.setFocus()
 
     # ==================================================
     # SMILES handler (COMMIT ONLY)
@@ -184,6 +219,41 @@ class InputPanel(QWidget):
                     )
                     return
                 read_gaussian_properties(ppath)
+                dvib = compute_deltavib_from_alpha(ppath, invert_imag=True)
+                if dvib is not None:
+                    set_dvib_in_rotational(*dvib)
+                    if self.alpha_check.isChecked():
+                        self._open_alpha_panel()
+                    else:
+                        reply = QMessageBox.question(
+                            self,
+                            "DeltaVib",
+                            "ΔVib (from Vibro-Rot alpha) has been added to #ROTATIONAL.\n"
+                            "Do you want to review or modify the included modes?",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes,
+                        )
+                        if reply == QMessageBox.Yes:
+                            self._open_alpha_panel()
+            elif mode == "Gaussian":
+                log_path, _ = _find_gaussian_companion_files(path)
+                if log_path is not None:
+                    dvib = compute_deltavib_from_alpha(log_path, invert_imag=True)
+                    if dvib is not None:
+                        set_dvib_in_rotational(*dvib)
+                        if self.alpha_check.isChecked():
+                            self._open_alpha_panel()
+                        else:
+                            reply = QMessageBox.question(
+                                self,
+                                "DeltaVib",
+                                "ΔVib (from Vibro-Rot alpha) has been added to #ROTATIONAL.\n"
+                                "Do you want to review or modify the included modes?",
+                                QMessageBox.Yes | QMessageBox.No,
+                                QMessageBox.Yes,
+                            )
+                            if reply == QMessageBox.Yes:
+                                self._open_alpha_panel()
         except Exception as e:
             self._show_error("Input error", str(e))
             return
@@ -223,6 +293,22 @@ class InputPanel(QWidget):
                     )
                     return
                 read_gaussian_properties(ppath)
+                dvib = compute_deltavib_from_alpha(ppath, invert_imag=True)
+                if dvib is not None:
+                    set_dvib_in_rotational(*dvib)
+                    if self.alpha_check.isChecked():
+                        self._open_alpha_panel()
+                    else:
+                        reply = QMessageBox.question(
+                            self,
+                            "DeltaVib",
+                            "ΔVib (from Vibro-Rot alpha) has been added to #ROTATIONAL.\n"
+                            "Do you want to review or modify the included modes?",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes,
+                        )
+                        if reply == QMessageBox.Yes:
+                            self._open_alpha_panel()
         except Exception as e:
             self._show_error("Input error", str(e))
             return
@@ -269,3 +355,24 @@ class InputPanel(QWidget):
             return
         self.props_edit.setText(path)
         self._on_file_commit()
+
+    def _open_alpha_panel(self):
+        if not self.props_check.isChecked():
+            self._show_error("DeltaVib", "Enable Gaussian properties first.")
+            return
+        ptext = self.props_edit.text().strip()
+        if not ptext:
+            self._show_error("DeltaVib", "Properties file not specified.")
+            return
+        ppath = Path(ptext)
+        if not ppath.exists():
+            self._show_error("DeltaVib", f"Properties file not found:\n{ppath}")
+            return
+        if ppath.suffix.lower() in {".fchk", ".fch"}:
+            self._show_error(
+                "DeltaVib",
+                "Use a Gaussian .log/.out for Vibro-Rot alpha matrix.",
+            )
+            return
+        dlg = DeltaVibAlphaDialog(ppath, parent=self)
+        dlg.exec()

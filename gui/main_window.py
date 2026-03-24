@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QDialogButtonBox,
     QCheckBox,
+    QRadioButton,
     QLabel,
     QHBoxLayout,
     QTextEdit,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QButtonGroup,
 )
 from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtGui import QKeySequence, QAction, QDesktopServices
@@ -43,6 +45,7 @@ from .gui_settings import GuiSettings
 from .status_reporter import StatusReporter
 from .bdpcs3_workflow import run_bdpcs3_report
 from geometry.thermo_trasl import read_xyz_from_xyzin
+from geometry.thermo_pipeline import read_xyz_from_xyzin as read_xyz_full_from_xyzin
 from geometry.vib_anh import read_rotational_block
 from .logging_utils import get_gui_logger
 from .symmetry_panel import (
@@ -52,6 +55,14 @@ from .symmetry_panel import (
 )
 from .similarity_window import SimilarityWindow
 from .fragment_pipeline_window import FragmentPipelineWindow
+from topology.elements import atomic_number
+from geometry.isotopes_table import get_default_isotope, get_isotopes
+from merlino_fit.survibfit.modify_geom import write_xyz, read_xyz
+from merlino_fit.survibfit.fragment_pipeline import run_fragment_pipeline, write_fragment_view_html
+from merlino_fit.survibfit.fragment_delta_correction import (
+    prepare_hpcs2_delta_workflow,
+    apply_delta_correction,
+)
 
 
 def get_project_root():
@@ -150,6 +161,14 @@ class MainWindow(QMainWindow):
         act_fragment = QAction("Fragment pipeline", self)
         act_fragment.triggered.connect(self._open_fragment_pipeline_window)
         self.toolbar.addAction(act_fragment)
+        self.toolbar.addSeparator()
+        act_isot = QAction("Isotopologues…", self)
+        act_isot.triggered.connect(self._open_isotopologues_dialog)
+        self.toolbar.addAction(act_isot)
+        self.toolbar.addSeparator()
+        act_actions = QAction("Run action…", self)
+        act_actions.triggered.connect(self._run_action_dialog)
+        self.toolbar.addAction(act_actions)
 
         central = QWidget(self)
         layout = QVBoxLayout(central)
@@ -193,21 +212,25 @@ class MainWindow(QMainWindow):
         primary_working = QPushButton("Open working")
         primary_similarity = QPushButton("Similarity")
         primary_fragment = QPushButton("Fragment pipeline")
+        primary_actions = QPushButton("Run action…")
 
         primary_basic.clicked.connect(self.open_basic_dialog)
         primary_working.clicked.connect(self._open_working_folder)
         primary_similarity.clicked.connect(self._open_similarity_window)
         primary_fragment.clicked.connect(self._open_fragment_pipeline_window)
+        primary_actions.clicked.connect(self._run_action_dialog)
 
         primary_basic.setStyleSheet("font-weight: 600; padding: 6px 12px;")
         primary_working.setStyleSheet("font-weight: 600; padding: 6px 12px;")
         primary_similarity.setStyleSheet("font-weight: 600; padding: 6px 12px;")
         primary_fragment.setStyleSheet("font-weight: 600; padding: 6px 12px;")
+        primary_actions.setStyleSheet("font-weight: 600; padding: 6px 12px;")
 
         primary_row.addWidget(primary_basic)
         primary_row.addWidget(primary_working)
         primary_row.addWidget(primary_similarity)
         primary_row.addWidget(primary_fragment)
+        primary_row.addWidget(primary_actions)
         primary_row.addStretch()
 
         layout.addWidget(self.input_panel)
@@ -223,6 +246,9 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._schedule_refresh()
+        self._startup_hidden = True
+        self.hide()
+        QTimer.singleShot(0, self._show_startup_dialog)
 
     # --------------------------------------------------
     # Drag & Drop / Paste
@@ -293,67 +319,11 @@ class MainWindow(QMainWindow):
             return
 
         self._schedule_refresh()
-
-        stamp = self._xyzin_stamp()
-        if self._last_xyzin_stamp is not None and stamp == self._last_xyzin_stamp:
-            self._log_event("xyzin unchanged; pipelines skipped")
+        action = self._prompt_action_choice()
+        if not action:
             return
-
-        try:
-            self._set_busy(True, "Running workflows…")
-            # ✅ CANONICAL WORKFLOW
-            self.manager.run_full_workflow()
-            self._log_event("pipelines: rotational, thermo, topology (bdpcs3 optional next)")
-        except Exception as e:
-            QMessageBox.critical(self, "Analysis error", str(e))
-            self._log_event(f"analysis error: {e}")
-            return
-        finally:
-            self._set_busy(False)
-
-        try:
-            self._run_dos_workflow()
-            self._log_event("dos workflow completed")
-        except Exception as e:
-            QMessageBox.warning(self, "DOS/Q(T) warning", str(e))
-            self._update_status(error=str(e))
-            self._log_event(f"dos warning: {e}")
-        self._last_xyzin_stamp = stamp
-
-        ask_open_report(
-            self,
-            "Rotational",
-            "Rotational OK.",
-            "rotational.report",
-            working_dir=self.working_dir,
-        )
-        vib_report = self.working_dir / "vibrational.report"
-        if vib_report.exists():
-            ask_open_report(
-                self,
-                "Vibrational",
-                "Vibrational OK.",
-                "vibrational.report",
-                working_dir=self.working_dir,
-            )
-        ask_open_report(
-            self,
-            "Thermo",
-            "Thermo OK.",
-            "thermo.report",
-            working_dir=self.working_dir,
-        )
-        ask_open_report(
-            self,
-            "Topology",
-            "Topology OK. Next step: optional DPCS3 \u2192 BDPCS3.",
-            "topology.report",
-            working_dir=self.working_dir,
-        )
-        self._ask_open_symmetry_panel()
-        self._ask_run_bdpcs3_after_topology()
-        self._update_fchkin_banner()
-        self._ask_open_advanced()
+        self._run_selected_action(action)
+        self._last_xyzin_stamp = self._xyzin_stamp()
 
     # --------------------------------------------------
     # BASIC dialog
@@ -586,6 +556,436 @@ class MainWindow(QMainWindow):
         self.advanced_window.activateWindow()
 
     # --------------------------------------------------
+    # Action menu
+    # --------------------------------------------------
+    def _prompt_action_choice(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Select action")
+        layout = QVBoxLayout(dlg)
+
+        title = QLabel("Choose what to run for the current input:")
+        title.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title)
+
+        group = QButtonGroup(dlg)
+        group.setExclusive(True)
+        options = [
+            ("geometry", "Geometry only (no analysis)"),
+            ("symmetry", "Symmetry (runs topology, then opens symmetry panel)"),
+            ("rotational", "Rotational"),
+            ("vibrational", "Vibrational"),
+            ("thermo", "Thermo"),
+            ("dos", "DOS/Q(T)"),
+            ("topology", "Topology"),
+            ("bdpcs3", "BDPCS3"),
+            ("hpcs2", "HPCS2 (PCS2 geometry from HPCS2 base)"),
+        ]
+        btns = {}
+        for idx, (key, label) in enumerate(options):
+            btn = QRadioButton(label, dlg)
+            btns[key] = btn
+            group.addButton(btn, idx)
+            layout.addWidget(btn)
+
+        btns["geometry"].setChecked(True)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            return None
+
+        for key, btn in btns.items():
+            if btn.isChecked():
+                return key
+        return None
+
+    def _export_xyzin_xyz(self) -> Path | None:
+        if not self.xyzin_path.exists():
+            return None
+        try:
+            _nat, comment, symbols, coords, _tail = read_xyz_full_from_xyzin(
+                str(self.xyzin_path)
+            )
+        except Exception:
+            return None
+        out = self.working_dir / f"{self.xyzin_path.stem}.xyz"
+        try:
+            write_xyz(out, symbols, coords, comment=comment or "xyzin export")
+        except Exception:
+            return None
+        return out
+
+    def _resolve_library_dirs(self):
+        se_local = self.working_dir / "projects" / "se_library"
+        pcs2_local = self.working_dir / "projects" / "pcs2_library"
+        hpcs2_local = self.working_dir / "projects" / "hpcs2_library"
+        se_parent = self.working_dir.parent / "projects" / "se_library"
+        pcs2_parent = self.working_dir.parent / "projects" / "pcs2_library"
+        hpcs2_parent = self.working_dir.parent / "projects" / "hpcs2_library"
+        se_dir = se_local if se_local.is_dir() else se_parent
+        pcs2_dir = pcs2_local if pcs2_local.is_dir() else pcs2_parent
+        hpcs2_dir = hpcs2_local if hpcs2_local.is_dir() else hpcs2_parent
+        return se_dir, pcs2_dir, hpcs2_dir
+
+    def _run_hpcs2_flow(self, query_xyz: Path):
+        se_dir, pcs2_dir, hpcs2_dir = self._resolve_library_dirs()
+        if not pcs2_dir.is_dir():
+            QMessageBox.warning(self, "HPCS2", "PCS2 library directory not found.")
+            return
+        if not hpcs2_dir.is_dir():
+            QMessageBox.warning(self, "HPCS2", "HPCS2 library directory not found.")
+            return
+        symm_tol = self._prompt_symmetry_tolerance()
+        if symm_tol is None:
+            return
+        symm_apply = False
+        apply_choice = self._prompt_symmetrize_coords()
+        if apply_choice is None:
+            return
+        symm_apply = bool(apply_choice)
+        try:
+            self.manager.run_topology(
+                symm_tol=float(symm_tol),
+                symmetrize_coords=symm_apply,
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "HPCS2", f"Topology failed: {e}")
+            return
+        ask_open_report(
+            self,
+            "Topology",
+            "Topology OK.",
+            "topology.report",
+            working_dir=self.working_dir,
+        )
+        if symm_apply:
+            self._apply_symmetrized_xyz()
+        out_dir = self.working_dir / "fragment_reports"
+        report = run_fragment_pipeline(
+            query_xyz,
+            se_dir,
+            pcs2_dir,
+            out_dir,
+            use_pcs2_only=True,
+            library_label="PCS2/HPCS2",
+        )
+        view_path = out_dir / "fragment_view.html"
+        if view_path.exists():
+            reply = QMessageBox.question(
+                self,
+                "Open fragment viewer",
+                "Open 3D fragment viewer now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if reply == QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(view_path)))
+        manifest = prepare_hpcs2_delta_workflow(
+            query_xyz,
+            out_dir / "fragment_pipeline.json",
+            hpcs2_dir,
+            out_dir / "delta_bundle_hpcs2",
+        )
+        if not manifest.get("entries"):
+            QMessageBox.warning(
+                self,
+                "HPCS2",
+                "No valid PCS2/HPCS2 fragment pairs found. Check libraries and rerun.",
+            )
+            return
+        out_xyz = self.working_dir / f"{query_xyz.stem}.pcs2.xyz"
+        meta = apply_delta_correction(
+            query_xyz,
+            out_dir / "delta_bundle_hpcs2" / "delta_manifest.json",
+            out_xyz,
+        )
+        write_fragment_view_html(
+            query_xyz,
+            report.get("fragments", []),
+            out_dir,
+            corrected_xyz=out_xyz,
+            corrected_label="PCS2",
+        )
+        QMessageBox.information(
+            self,
+            "HPCS2",
+            f"PCS2 geometry written:\n{out_xyz}\n\n"
+            f"Fragments used: {meta.get('entries_used', 0)} / {meta.get('entries_total', 0)}",
+        )
+
+    def _apply_symmetrized_xyz(self):
+        symm_xyz = self.working_dir / "symmetrized.xyz"
+        if not symm_xyz.exists():
+            return
+        try:
+            atoms, coords, _ = read_xyz(symm_xyz)
+            from .xyzin_utils import replace_xyz_block
+
+            lines = [str(len(atoms)), "Symmetrized coordinates"]
+            for a, (x, y, z) in zip(atoms, coords):
+                lines.append(f"{a} {x: .6f} {y: .6f} {z: .6f}")
+            replace_xyz_block(lines)
+            self._log_event("xyzin updated from symmetrized.xyz")
+        except Exception:
+            return
+
+    def _run_selected_action(self, action: str):
+        try:
+            self._set_busy(True, f"Running {action}…")
+            if action == "geometry":
+                self._schedule_refresh()
+                self.status_label.setText("Geometry ready.")
+                self._log_event("action: geometry only")
+                return
+            if action == "rotational":
+                self.manager.run_rotational()
+                ask_open_report(
+                    self,
+                    "Rotational",
+                    "Rotational OK.",
+                    "rotational.report",
+                    working_dir=self.working_dir,
+                )
+                vib_report = self.working_dir / "vibrational.report"
+                if vib_report.exists():
+                    ask_open_report(
+                        self,
+                        "Vibrational",
+                        "Vibrational OK.",
+                        "vibrational.report",
+                        working_dir=self.working_dir,
+                    )
+                self._log_event("action: rotational")
+                return
+            if action == "vibrational":
+                self.manager.run_vibrational()
+                if (self.working_dir / "vibrational.report").exists():
+                    ask_open_report(
+                        self,
+                        "Vibrational",
+                        "Vibrational OK.",
+                        "vibrational.report",
+                        working_dir=self.working_dir,
+                    )
+                else:
+                    QMessageBox.information(
+                        self,
+                        "Vibrational",
+                        "No vibrational data available (missing fchkin and #VIBRATIONAL block).",
+                    )
+                self._log_event("action: vibrational")
+                return
+            if action == "thermo":
+                self.manager.run_thermo()
+                ask_open_report(
+                    self,
+                    "Thermo",
+                    "Thermo OK.",
+                    "thermo.report",
+                    working_dir=self.working_dir,
+                )
+                self._log_event("action: thermo")
+                return
+            if action == "dos":
+                self._run_dos_workflow()
+                self._log_event("action: dos")
+                return
+            if action == "topology":
+                symm_tol = self._prompt_symmetry_tolerance()
+                if symm_tol is None:
+                    return
+                apply_choice = self._prompt_symmetrize_coords()
+                if apply_choice is None:
+                    return
+                symm_apply = bool(apply_choice)
+                self.manager.run_topology(symm_tol=float(symm_tol), symmetrize_coords=symm_apply)
+                if symm_apply:
+                    self._apply_symmetrized_xyz()
+                ask_open_report(
+                    self,
+                    "Topology",
+                    "Topology OK.",
+                    "topology.report",
+                    working_dir=self.working_dir,
+                )
+                self._log_event("action: topology")
+                return
+            if action == "symmetry":
+                symm_tol = self._prompt_symmetry_tolerance()
+                if symm_tol is None:
+                    return
+                apply_choice = self._prompt_symmetrize_coords()
+                if apply_choice is None:
+                    return
+                symm_apply = bool(apply_choice)
+                self.manager.run_topology(symm_tol=float(symm_tol), symmetrize_coords=symm_apply)
+                if symm_apply:
+                    self._apply_symmetrized_xyz()
+                self._open_symmetry_panel()
+                self._log_event("action: symmetry")
+                return
+            if action == "bdpcs3":
+                self._generate_bdpcs3_report()
+                self._log_event("action: bdpcs3")
+                return
+            if action == "hpcs2":
+                query_xyz = self._export_xyzin_xyz()
+                if query_xyz is None or not query_xyz.exists():
+                    QMessageBox.warning(
+                        self,
+                        "HPCS2",
+                        "Unable to export current xyzin to XYZ for HPCS2 workflow.",
+                    )
+                    return
+                self._run_hpcs2_flow(query_xyz)
+                self._log_event("action: hpcs2")
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Analysis error", str(e))
+            self._log_event(f"analysis error: {e}")
+        finally:
+            self._set_busy(False)
+            self._ask_run_another_action()
+
+    def _run_action_dialog(self):
+        action = self._prompt_action_choice()
+        if not action:
+            return
+        self._run_selected_action(action)
+
+    def _ask_run_another_action(self):
+        reply = QMessageBox.question(
+            self,
+            "Run another action",
+            "Do you want to run another action on the same input?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        action = self._prompt_action_choice()
+        if not action:
+            return
+        self._run_selected_action(action)
+
+    # --------------------------------------------------
+    # Startup flow
+    # --------------------------------------------------
+    def _show_startup_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Select input type")
+        layout = QVBoxLayout(dlg)
+        title = QLabel("Choose input type to begin:")
+        title.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title)
+
+        group = QButtonGroup(dlg)
+        group.setExclusive(True)
+        options = ["SMILES", "XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"]
+        btns = {}
+        for idx, name in enumerate(options):
+            btn = QRadioButton(name, dlg)
+            btns[name] = btn
+            group.addButton(btn, idx)
+            layout.addWidget(btn)
+        btns["SMILES"].setChecked(True)
+
+        rep_row = QHBoxLayout()
+        rep_label = QLabel("Representation:")
+        rep_edit = QLineEdit(self.basic_representation)
+        rep_edit.setPlaceholderText("Ir / IIr / IIIr / Il / IIl / IIIl")
+        rep_row.addWidget(rep_label)
+        rep_row.addWidget(rep_edit)
+        layout.addLayout(rep_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            self.close()
+            return
+
+        rep = rep_edit.text().strip() or "Ir"
+        if rep not in {"Ir", "IIr", "IIIr", "Il", "IIl", "IIIl"}:
+            QMessageBox.warning(self, "Invalid Representation", "Reset to Ir.")
+            rep = "Ir"
+        self.basic_representation = rep
+        self._update_basic_section_in_xyzin()
+
+        selected = "SMILES"
+        for name, btn in btns.items():
+            if btn.isChecked():
+                selected = name
+                break
+        self.input_panel.set_input_type(selected)
+        if selected != "Gaussian":
+            self.input_panel.open_file_dialog()
+        if self._startup_hidden:
+            self._startup_hidden = False
+            self.show()
+
+    def _prompt_symmetry_tolerance(self) -> float | None:
+        if self._input_source == "smiles":
+            return 5.0e-2
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Symmetry tolerance")
+        layout = QVBoxLayout(dlg)
+        title = QLabel("Choose symmetry tolerance:")
+        title.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title)
+
+        group = QButtonGroup(dlg)
+        group.setExclusive(True)
+        opt_strict = QRadioButton("Strict (1e-3 Å)", dlg)
+        opt_loose = QRadioButton("Loose (5e-2 Å)", dlg)
+        opt_strict.setChecked(True)
+        group.addButton(opt_strict, 0)
+        group.addButton(opt_loose, 1)
+        layout.addWidget(opt_strict)
+        layout.addWidget(opt_loose)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        return 1.0e-3 if opt_strict.isChecked() else 5.0e-2
+
+    def _prompt_symmetrize_coords(self) -> bool | None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Symmetrize coordinates")
+        layout = QVBoxLayout(dlg)
+        title = QLabel("Symmetrize coordinates (replace xyzin geometry)?")
+        title.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title)
+
+        group = QButtonGroup(dlg)
+        group.setExclusive(True)
+        opt_yes = QRadioButton("Yes (apply symmetrized coordinates to xyzin)", dlg)
+        opt_no = QRadioButton("No (report only)", dlg)
+        opt_no.setChecked(True)
+        group.addButton(opt_yes, 0)
+        group.addButton(opt_no, 1)
+        layout.addWidget(opt_yes)
+        layout.addWidget(opt_no)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        return bool(opt_yes.isChecked())
+
+    # --------------------------------------------------
     # DOS/Q(T) workflow
     # --------------------------------------------------
     def _run_dos_workflow(self):
@@ -616,6 +1016,7 @@ class MainWindow(QMainWindow):
             self.status_label,
             input_type,
             self._input_source,
+            self.basic_representation,
             vib_q,
             rovib_q,
             self.dos_emin,
@@ -628,6 +1029,7 @@ class MainWindow(QMainWindow):
         self.status_reporter.write_summary(
             input_type,
             self._input_source,
+            self.basic_representation,
             self.dos_emin,
             self.dos_emax,
             self.dos_bin,
@@ -791,6 +1193,185 @@ class MainWindow(QMainWindow):
     def _open_fragment_pipeline_window(self):
         dlg = FragmentPipelineWindow(self.working_dir, self)
         dlg.exec()
+
+    def _open_isotopologues_dialog(self):
+        if not self.xyzin_path.exists():
+            QMessageBox.warning(self, "Isotopologues", "No xyzin available.")
+            return
+        try:
+            _nat, _comment, symbols, _coords, _tail = read_xyz_full_from_xyzin(
+                str(self.xyzin_path)
+            )
+        except Exception:
+            QMessageBox.warning(self, "Isotopologues", "Failed to read xyzin.")
+            return
+
+        default_isos = []
+        for s in symbols:
+            z = atomic_number(s)
+            iso = get_default_isotope(int(z))
+            default_isos.append(iso.A if iso is not None else None)
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Isotopologues")
+        dlg.resize(620, 420)
+        layout = QVBoxLayout(dlg)
+
+        title = QLabel("Define isotopologues (only non-default isotopes).")
+        title.setStyleSheet("font-weight: 600;")
+        layout.addWidget(title)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Number of isotopologues:"))
+        iso_count = QSpinBox(dlg)
+        iso_count.setRange(1, 100)
+        iso_count.setValue(1)
+        row.addWidget(iso_count)
+        row.addStretch()
+        layout.addLayout(row)
+
+        table = QTableWidget(dlg)
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Isotopologue #", "Atom (1-based)", "Isotope mass A"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.setRowCount(0)
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        add_row = QPushButton("Add row")
+        del_row = QPushButton("Remove row")
+        btn_row.addWidget(add_row)
+        btn_row.addWidget(del_row)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        err_label = QLabel("")
+        err_label.setStyleSheet("color: #b00020;")
+        layout.addWidget(err_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        def _build_atom_combo():
+            combo = QComboBox(dlg)
+            for i, s in enumerate(symbols, start=1):
+                d = default_isos[i - 1]
+                combo.addItem(f"{i}: {s} (A={d})", i)
+            return combo
+
+        def _build_iso_combo(atom_idx: int):
+            combo = QComboBox(dlg)
+            s = symbols[atom_idx - 1]
+            z = atomic_number(s)
+            default_a = default_isos[atom_idx - 1]
+            for iso in get_isotopes(int(z)) or []:
+                if default_a is not None and int(iso.A) == int(default_a):
+                    continue
+                combo.addItem(f"{iso.A}", int(iso.A))
+            return combo
+
+        def _set_row_widgets(row: int):
+            iso_spin = QSpinBox(dlg)
+            iso_spin.setRange(1, 100)
+            iso_spin.setValue(1)
+            atom_combo = _build_atom_combo()
+            iso_combo = _build_iso_combo(1)
+
+            def _atom_changed():
+                idx = int(atom_combo.currentData() or 1)
+                iso_combo.clear()
+                s = symbols[idx - 1]
+                z = atomic_number(s)
+                default_a = default_isos[idx - 1]
+                for iso in get_isotopes(int(z)) or []:
+                    if default_a is not None and int(iso.A) == int(default_a):
+                        continue
+                    iso_combo.addItem(f"{iso.A}", int(iso.A))
+
+            atom_combo.currentIndexChanged.connect(_atom_changed)
+            table.setCellWidget(row, 0, iso_spin)
+            table.setCellWidget(row, 1, atom_combo)
+            table.setCellWidget(row, 2, iso_combo)
+
+        def _add_row():
+            row = table.rowCount()
+            table.setRowCount(row + 1)
+            _set_row_widgets(row)
+
+        def _del_row():
+            if table.rowCount() > 0:
+                table.setRowCount(table.rowCount() - 1)
+
+        add_row.clicked.connect(_add_row)
+        del_row.clicked.connect(_del_row)
+        _add_row()
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        n_iso = int(iso_count.value())
+        rows = []
+        for r in range(table.rowCount()):
+            w0 = table.cellWidget(r, 0)
+            w1 = table.cellWidget(r, 1)
+            w2 = table.cellWidget(r, 2)
+            if w0 is None or w1 is None or w2 is None:
+                continue
+            i_iso = int(w0.value())
+            atom_idx = int(w1.currentData() or 0)
+            mass_a = int(w2.currentData() or 0)
+            rows.append((i_iso, atom_idx, mass_a))
+
+        if not rows:
+            err_label.setText("No valid substitutions specified.")
+            return
+
+        # Validate ranges and defaults
+        for i_iso, atom_idx, mass_a in rows:
+            if i_iso < 1 or i_iso > n_iso:
+                err_label.setText(f"Isotopologue # out of range: {i_iso}")
+                return
+            if atom_idx < 1 or atom_idx > len(symbols):
+                err_label.setText(f"Atom index out of range: {atom_idx}")
+                return
+            default_a = default_isos[atom_idx - 1]
+            if default_a is not None and int(mass_a) == int(default_a):
+                err_label.setText(
+                    f"Atom {atom_idx} uses default isotope {default_a}; choose a non-default A."
+                )
+                return
+            # Validate isotope exists for element
+            z = atomic_number(symbols[atom_idx - 1])
+            allowed = {int(iso.A) for iso in (get_isotopes(int(z)) or [])}
+            if int(mass_a) not in allowed:
+                err_label.setText(
+                    f"Isotope A={mass_a} not available for element {symbols[atom_idx - 1]}."
+                )
+                return
+
+        # Build output
+        by_iso = {i: [] for i in range(1, n_iso + 1)}
+        for i_iso, atom_idx, mass_a in rows:
+            by_iso[i_iso].append((atom_idx, mass_a))
+
+        out_lines = [str(n_iso)]
+        for i in range(1, n_iso + 1):
+            subs = by_iso.get(i, [])
+            out_lines.append(str(len(subs)))
+            for atom_idx, mass_a in subs:
+                out_lines.append(f"{atom_idx} {mass_a}")
+
+        out_path = self.working_dir / "isotopologues.txt"
+        out_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+        QMessageBox.information(
+            self,
+            "Isotopologues",
+            f"Saved: {out_path}",
+        )
 
     def _open_symmetry_panel(self):
         report_path = self.working_dir / "topology.report"

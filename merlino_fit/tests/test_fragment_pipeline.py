@@ -16,7 +16,24 @@ def test_fragment_pipeline_outputs_reports(tmp_path):
     )
     assert "fragments" in out
     assert "to_curate" in out
+    assert "high_level_curation_queue" in out
+    assert "global_assembly" in out
+    assert "available" in out["global_assembly"]
+    if out["global_assembly"]["available"]:
+        assert "reuse_ratio" in out["global_assembly"]
+        assert "reuse_factor" in out["global_assembly"]
+    if out["fragments"] and out["fragments"][0]["ranking"]:
+        top = out["fragments"][0]["ranking"][0]
+        assert "similarity_feature" in top
+        assert "similarity_3d" in top
+        assert "ring_rmsd_3d" in top
+        assert "chemical_compatibility" in top
+        assert "local_type_similarity" in top
+        assert "torsion_similarity" in top
+        assert "reliability" in top
+        assert "candidate_fragment_label" in top
     assert (tmp_path / "fragment_pipeline.json").exists()
+    assert (tmp_path / "high_level_curation_queue.json").exists()
     assert (tmp_path / "to_curate.json").exists()
     assert (tmp_path / "fragment_pipeline.md").exists()
 
@@ -46,3 +63,21 @@ def test_fragment_pipeline_prefers_se_for_same_molecule(tmp_path):
     for row in out["fragments"]:
         if row["ranking"]:
             assert row["ranking"][0]["candidate_library"] == "SE"
+
+
+def test_fragment_pipeline_suggests_high_level_for_low_score(tmp_path):
+    root = Path(__file__).resolve().parent / "data"
+    out = run_fragment_pipeline(
+        root / "c5h5.xyz",
+        root,
+        root,
+        tmp_path,
+        top_k=2,
+        low_score_threshold=1.0,
+    )
+    assert out["fragments"]
+    assert out["low_score_fragments"] >= 1
+    for row in out["fragments"]:
+        if row["ranking"]:
+            assert row["is_low_score"] is True
+            assert row["suggested_new_fragment"] is not None

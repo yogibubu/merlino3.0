@@ -14,6 +14,7 @@ merlino-fit = "survibfit.cli:main"
 merlino-similarity = "survibfit.synthon_similarity:main"
 merlino-auto-report = "survibfit.auto_report_pipeline:main"
 merlino-fragment-pipeline = "survibfit.fragment_pipeline:main"
+merlino-fragment-delta = "survibfit.fragment_delta_correction:main"
 
 [tool.setuptools]
 packages = ["survibfit", "topology"]

@@ -282,6 +282,159 @@ def _parse_harmonic_freq_ir_from_log(lines: List[str]):
     return freq, (ir if ir else None)
 
 
+def _parse_vibro_rot_alpha_matrix(lines: List[str]):
+    """
+    Parse the "Vibro-Rot alpha Matrix (in MHz)" block.
+    Returns list of dicts: {mode, a, b, c} or None if not found.
+    """
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == "Vibro-Rot alpha Matrix (in MHz)":
+            header_idx = i
+
+    if header_idx is None:
+        return None
+
+    rows = []
+    q_pattern = re.compile(r"Q\\(\\s*(\\d+)\\)")
+    num_pattern = re.compile(r"[+-]?\\d*\\.?\\d+(?:[DEde][+-]?\\d+)?")
+
+    for k in range(header_idx + 1, len(lines)):
+        s = lines[k].strip()
+        if not s:
+            if rows:
+                break
+            continue
+        if s.startswith("-") or s.startswith("A(") or s.startswith("B("):
+            continue
+
+        m = q_pattern.search(s)
+        if not m:
+            if rows:
+                break
+            continue
+        mode = int(m.group(1))
+        nums = num_pattern.findall(s)
+        if len(nums) < 4:
+            continue
+        # First number is the mode index; remaining are A, B, C
+        a = _parse_gaussian_float(nums[1])
+        b = _parse_gaussian_float(nums[2])
+        c = _parse_gaussian_float(nums[3])
+        if a is None or b is None or c is None:
+            continue
+        rows.append({"mode": mode, "a": a, "b": b, "c": c})
+
+    return rows if rows else None
+
+
+def read_gaussian_alpha_with_freq(log_path: Path):
+    """
+    Read Gaussian LOG/OUT and return (alpha_rows, freq_cm1).
+    alpha_rows: list of dicts {mode, a, b, c}
+    freq_cm1: list of harmonic frequencies (may be None)
+    """
+    try:
+        lines = Path(log_path).read_text(errors="ignore").splitlines()
+    except Exception:
+        return None, None
+
+    alpha_rows = _parse_vibro_rot_alpha_matrix(lines)
+    freq, _ = _parse_harmonic_freq_ir_from_log(lines)
+    return alpha_rows, freq
+
+
+def compute_deltavib_from_alpha(log_path: Path, invert_imag=True, exclude_modes=None):
+    """
+    Compute DeltaVib (MHz) from Vibro-Rot alpha matrix.
+    Returns (dva, dvb, dvc) or None if alpha not available.
+    """
+    alpha_rows, freq = read_gaussian_alpha_with_freq(log_path)
+    if not alpha_rows:
+        return None
+
+    exclude_modes = set(exclude_modes or [])
+    freq = freq or []
+
+    sum_a = sum_b = sum_c = 0.0
+    for row in alpha_rows:
+        mode = row["mode"]
+        if mode in exclude_modes:
+            continue
+        a = row["a"]
+        b = row["b"]
+        c = row["c"]
+        if invert_imag and (mode - 1) < len(freq) and freq[mode - 1] < 0:
+            a, b, c = -a, -b, -c
+        sum_a += a
+        sum_b += b
+        sum_c += c
+
+    return (sum_a / 2, sum_b / 2, sum_c / 2)
+
+
+def _parse_vibro_rot_alpha_matrix(lines: List[str]):
+    """
+    Parse the "Vibro-Rot alpha Matrix (in MHz)" block.
+    Returns list of dicts: {mode, a, b, c} or None if not found.
+    """
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == "Vibro-Rot alpha Matrix (in MHz)":
+            header_idx = i
+
+    if header_idx is None:
+        return None
+
+    rows = []
+    q_pattern = re.compile(r"Q\(\s*(\d+)\)")
+    num_pattern = re.compile(r"[+-]?\d*\.?\d+(?:[DEde][+-]?\d+)?")
+
+    for k in range(header_idx + 1, len(lines)):
+        s = lines[k].strip()
+        if not s:
+            if rows:
+                break
+            continue
+        if s.startswith("-") or s.startswith("A(") or s.startswith("B("):
+            continue
+
+        m = q_pattern.search(s)
+        if not m:
+            if rows:
+                break
+            continue
+        mode = int(m.group(1))
+        nums = num_pattern.findall(s)
+        if len(nums) < 4:
+            continue
+        # First number is the mode index; remaining are A, B, C
+        a = _parse_gaussian_float(nums[1])
+        b = _parse_gaussian_float(nums[2])
+        c = _parse_gaussian_float(nums[3])
+        if a is None or b is None or c is None:
+            continue
+        rows.append({"mode": mode, "a": a, "b": b, "c": c})
+
+    return rows if rows else None
+
+
+def read_gaussian_alpha_with_freq(log_path: Path):
+    """
+    Read Gaussian LOG/OUT and return (alpha_rows, freq_cm1).
+    alpha_rows: list of dicts {mode, a, b, c}
+    freq_cm1: list of harmonic frequencies (may be None)
+    """
+    try:
+        lines = Path(log_path).read_text(errors="ignore").splitlines()
+    except Exception:
+        return None, None
+
+    alpha_rows = _parse_vibro_rot_alpha_matrix(lines)
+    freq, _ = _parse_harmonic_freq_ir_from_log(lines)
+    return alpha_rows, freq
+
+
 def _parse_anharmonic_x_matrix(lines: List[str]):
     """
     Parse the "Total Anharmonic X Matrix (in cm^-1)" block.
