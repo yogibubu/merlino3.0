@@ -181,10 +181,45 @@ python -m survibfit.fragment_pipeline \
   --top-k 5 \
   --gap-threshold 0.75
 ```
+PCS2 target mode (use HPCS2 base geometry, PCS2-only matching):
+```
+python -m survibfit.fragment_pipeline \
+  --xyz query.xyz \
+  --se-dir /path/to/se_library \
+  --pcs2-dir /path/to/pcs2_library \
+  --out ./fragment_report \
+  --target-pcs2
+```
 Outputs:
 - `fragment_pipeline.json`
 - `to_curate.json` (fragments below threshold)
 - `fragment_pipeline.md`
+
+PCS2 delta correction from HPCS2 base geometry:
+```
+python -m survibfit.fragment_delta_correction prepare-hpcs2 \
+  --query-xyz query.xyz \
+  --fragment-report ./fragment_report/fragment_pipeline.json \
+  --hpcs2-dir /path/to/hpcs2_library \
+  --out ./fragment_report/delta_bundle_hpcs2
+
+python -m survibfit.fragment_delta_correction apply \
+  --query-xyz query.xyz \
+  --manifest ./fragment_report/delta_bundle_hpcs2/delta_manifest.json \
+  --out-xyz ./fragment_report/query.pcs2.xyz
+```
+
+Status:
+- the `fragment_delta_correction` module is active code, not an archive helper
+- targeted tests live in `tests/test_fragment_delta_correction.py`
+- the current repo layout treats `se_library`, `pcs2_library`, and `hpcs2_library`
+  as local data libraries rather than source trees
+
+Rovibrational note:
+- any local `DeltaVib/alpha` integration in Merlino should be considered a
+  downstream compatibility layer
+- the primary methodological development for that part now belongs to
+  `CeDiTT + alpha_resonances`
 
 ## Notes
 - Topology perception is performed in Å; coordinates are converted from au internally.

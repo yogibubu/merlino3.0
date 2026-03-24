@@ -19,19 +19,23 @@ merlino3.0/
 ├─ working/
 │ └─ xyzin
 ├─ gui/
-│ ├─ main_window.py
-│ ├─ input_panel.py
-│ ├─ viewer_panel.py
-│ ├─ readers.py
-│ ├─ smiles_reader.py
-│ ├─ xyz_reader.py
-│ ├─ xyzin_utils.py
-│ ├─ viewer2d.py
-│ └─ merlino_logo.png
+├─ geometry/
+├─ merlino_fit/
+├─ projects/
+│ ├─ se_library/
+│ ├─ pcs2_library/
+│ └─ hpcs2_library/
+└─ doc/
 
 
-Ogni directory è **autoconsistente** e può essere sviluppata e testata
-indipendentemente dalle altre.
+`projects/` qui non è un contenitore di "progetti" nel senso organizzativo.
+È una libreria dati locale usata dai workflow di similarità e frammentazione.
+
+Le aree operative principali sono:
+- `gui/` per l'interfaccia e i workflow utente
+- `geometry/` per pipeline rotazionali, vibrazionali e termochimiche
+- `merlino_fit/` per similarity, fragment pipeline e delta correction
+- `working/` come workspace runtime
 
 ---
 
@@ -42,6 +46,10 @@ indipendentemente dalle altre.
 - Esiste sempre
 - Viene pulito **a fine sessione**
 - In modalità `DEBUG` non viene pulito
+
+Nota pratica: dal punto di vista architetturale `working/` è runtime-only.
+Se qualche file dentro `working/` risulta tracciato da git, quello è un problema
+di stato del repository, non una scelta di design.
 
 ### `xyzin`
 - **Single source of truth**
@@ -82,6 +90,24 @@ Questo consente di ottenere in automatico:
 - `dos_vib.dat`
 - `dos_rovib.dat`
 - `rovib_qt.dat` (Q(T) rovibrazionale)
+
+## 🧩 Workflow attivi aggiuntivi
+
+### Fragment pipeline e delta correction
+- Fragment-level similarity su librerie `SE`, `PCS2`, `HPCS2`
+- Preparazione bundle di correzione locale
+- Applicazione di correzioni geometriche locali su frammenti
+
+### Bridge DeltaVib da matrice vibro-rotazionale `alpha`
+- Lettura di `alpha` da Gaussian log
+- Somma selettiva per modo
+- inversione opzionale del segno per frequenze immaginarie
+- scrittura di `ΔVib` nella sezione rotazionale di `xyzin`
+
+Nota di architettura:
+- questa non è più la linea scientifica principale per il problema vibro-rotazionale
+- il lavoro principale vive nella nuova linea `CeDiTT + alpha_resonances`
+- in `Merlino 3.0` il blocco `DeltaVib/alpha` va mantenuto come ponte di compatibilità applicativa
 
 ---
 
