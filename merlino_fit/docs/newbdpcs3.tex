@@ -45,7 +45,7 @@ with
 \begin{equation}
   A_{n_i,n_j} 
   = -K\,r_{Z_i,Z_j}^{\mathrm{cov}}
-    \left\{1 + 0.56\,\chi_{\mathrm{CH}}(i)\,\chi_{\mathrm{CH}}(j)\right\}
+    \left\{1 + 0.25\,\chi_{\mathrm{CH},ij}\right\}
     \,[\max(n_i,n_j)^2-1]\,
     f_{\mathrm{coord}}\!\bigl(r_{ij}^{\mathrm{DPCS3}}\bigr),
 \end{equation}
@@ -55,8 +55,12 @@ and the long-range cutoff
   \frac{1}{2}\left[\,1 - \erf\!\left(\frac{r-(r_{Z_i,Z_j}^{\mathrm{cov}}+0.35)}{\sigma}\right)\right],
 \end{equation}
 so that \(\Delta r(r)\!\to\!0\) for \(r\gtrsim r_{Z_i,Z_j}^{\mathrm{cov}}+0.35\)~\AA.
+\begin{align}
+  \chi_{\mathrm{CS}}(x)&=\delta_{Z_x,6}+0.5\,\delta_{Z_x,16},\\
+  \chi_{\mathrm{CH},ij}&=\delta_{Z_i,6}\delta_{Z_j,1}+\delta_{Z_i,1}\delta_{Z_j,6}.
+\end{align}
 
-Optimized parameters: \(K=0.000415\), \(\Delta r=0.17\)~\AA, \(\sigma=0.057\)~\AA.  
+Optimized parameters: \(K=0.006\), \(\Delta r=0.17\)~\AA, \(\sigma=0.057\)~\AA.  
 Covalent radii (Pyykk\"o--Atsumi, \AA): H 0.31, C 0.76, O 0.66, S 1.05.
 
 \medskip
@@ -65,7 +69,7 @@ Covalent radii (Pyykk\"o--Atsumi, \AA): H 0.31, C 0.76, O 0.66, S 1.05.
 
 \begin{table}[h]
 \centering
-\caption{CH: values at $r=r^{\mathrm{cov}}_{CH}+\Delta x$ with $\Delta x\in\{-0.40,-0.25,-0.10,0.00,+0.10,+0.25,+0.40\}$; $r^{\mathrm{cov}}_{CH}=1.07$~\AA. Parameters: $K=0.000415$, $\Delta r=0.17$~\AA, $\sigma=0.057$~\AA.}
+\caption{CH: values at $r=r^{\mathrm{cov}}_{CH}+\Delta x$ with $\Delta x\in\{-0.40,-0.25,-0.10,0.00,+0.10,+0.25,+0.40\}$; $r^{\mathrm{cov}}_{CH}=1.07$~\AA. Parameters: $K=0.006$, $\Delta r=0.17$~\AA, $\sigma=0.057$~\AA.}
 \begin{tabular}{rcccc}
 \hline
 $r$ (\AA) & $A_{ij}(r)$ (\AA) & $\chi_{\mathrm{CS}}e^{-((r-r^{\mathrm{cov}}+\Delta r)/\sigma)^2}$ & total $\Delta r$ (\AA) & $r_{\mathrm{BDPCS}}$ (\AA) \\
@@ -162,7 +166,7 @@ C--C & 1.90 &  0.0000 & -0.0006 & C--S & 1.80 & -0.0045 & -0.0058 \\
 \centering
 \begin{tikzpicture}
   % Parameters
-  \pgfmathsetmacro{\K}{0.000415}
+  \pgfmathsetmacro{\K}{0.006}
   \pgfmathsetmacro{\dr}{0.17}
   \pgfmathsetmacro{\sig}{0.057}
 
@@ -172,9 +176,9 @@ C--C & 1.90 &  0.0000 & -0.0006 & C--S & 1.80 & -0.0045 & -0.0058 \\
   \pgfmathsetmacro{\rcovCO}{1.42}
   \pgfmathsetmacro{\rcovCS}{1.81}
 
-  % Prefactors {1+0.56*chi_CH} and [max(n)^2-1]:
-  \pgfmathsetmacro{\prefCH}{1.56} \pgfmathsetmacro{\nfacCH}{3}
-  \pgfmathsetmacro{\prefCC}{1.56} \pgfmathsetmacro{\nfacCC}{3}
+  % Prefactors {1+0.25*chi_CH} and [max(n)^2-1]:
+  \pgfmathsetmacro{\prefCH}{1.25} \pgfmathsetmacro{\nfacCH}{3}
+  \pgfmathsetmacro{\prefCC}{1.00} \pgfmathsetmacro{\nfacCC}{3}
   \pgfmathsetmacro{\prefCO}{1.0} \pgfmathsetmacro{\nfacCO}{3}
   \pgfmathsetmacro{\prefCS}{1.0} \pgfmathsetmacro{\nfacCS}{8}
 
@@ -235,7 +239,7 @@ C--C & 1.90 &  0.0000 & -0.0006 & C--S & 1.80 & -0.0045 & -0.0058 \\
 
   \end{axis}
 \end{tikzpicture}
-\caption{BDPCS3 total corrections $\Delta r(r)$ with $K=0.000415$, $\Delta r=0.17$~\AA, $\sigma=0.057$~\AA. For each bond the correction smoothly goes to zero for $r \gtrsim r^{\mathrm{cov}}+0.35$~\AA\ (vertical dashed lines) because $f_{\mathrm{coord}}(r)\to 0$ as $\erf\to 1$.}
+\caption{BDPCS3 total corrections $\Delta r(r)$ with $K=0.006$, $\Delta r=0.17$~\AA, $\sigma=0.057$~\AA. For each bond the correction smoothly goes to zero for $r \gtrsim r^{\mathrm{cov}}+0.35$~\AA\ (vertical dashed lines) because $f_{\mathrm{coord}}(r)\to 0$ as $\erf\to 1$.}
 \label{fig:bdpcs3-centered}
 \end{figure}
 

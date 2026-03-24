@@ -93,6 +93,10 @@ def _is_nitrogen(z: int) -> bool:
     return int(z) == 7
 
 
+def _is_oxygen(z: int) -> bool:
+    return int(z) == 8
+
+
 def _is_sulfur(z: int) -> bool:
     return int(z) == 16
 
@@ -135,9 +139,7 @@ def _bdpcs3_delta_bv(z1: int, z2: int, bond_order: float, delta_bcv: float) -> f
 
 
 _BDPCS3_UPDATED_PARAMS = {
-    "K": 0.000415,
-    "delta_r": 0.17,
-    "sigma": 0.057,
+    "sigma_coord": 0.057,
 }
 
 _BDPCS3_UPDATED_RCOV = {
@@ -159,16 +161,68 @@ def _bdpcs3_updated_rcov_ct(z1: int, z2: int) -> float:
     return _bdpcs3_updated_rcov(z1) + _bdpcs3_updated_rcov(z2)
 
 
-def _bdpcs3_updated_chi_cs(z: int) -> float:
+def _load_pyykko_radii():
+    root = Path(__file__).resolve().parents[1]
+    topo_parent = str(root)
+    if topo_parent not in sys.path:
+        sys.path.insert(0, topo_parent)
+    from topology.pykko_radii import covalent_radius as pyykko_radius
+    return pyykko_radius
+
+
+def _bdpcs3_pyykko_radius(z: int, coord: float | None) -> float:
+    pyy = _load_pyykko_radii()
+    val = pyy(int(z), coord)
+    if val is None:
+        return _bdpcs3_updated_rcov(z)
+    return val
+
+
+def _bdpcs3_pyykko_single_double_triple(z: int):
+    # Explicit coordination choices for BDPCS3 delocalization.
     if _is_carbon(z):
-        return 1.0
+        return (
+            _bdpcs3_pyykko_radius(z, 3),  # single
+            _bdpcs3_pyykko_radius(z, 2),  # double
+            _bdpcs3_pyykko_radius(z, 1),  # triple
+        )
     if _is_sulfur(z):
-        return 0.5
-    return 0.0
+        return (
+            _bdpcs3_pyykko_radius(z, 4),  # single
+            _bdpcs3_pyykko_radius(z, 2),  # double
+            _bdpcs3_pyykko_radius(z, 6),  # triple
+        )
+    # Fallback: use updated single radius for all.
+    r = _bdpcs3_updated_rcov(z)
+    return r, r, r
 
 
-def _bdpcs3_updated_chi_ch(z: int) -> float:
-    return 1.0 if (_is_carbon(z) or _is_hydrogen(z)) else 0.0
+def _is_ch_pair(z1: int, z2: int) -> bool:
+    return (_is_carbon(z1) and _is_hydrogen(z2)) or (_is_carbon(z2) and _is_hydrogen(z1))
+
+
+def _bdpcs3_electronegativity_scale(z1: int, z2: int) -> float:
+    return 0.0025
+
+
+def _bdpcs3_delocalization_cc_cs(z1: int, z2: int, r_ang: float, delta_cv: float) -> float:
+    is_cc = _is_carbon(z1) and _is_carbon(z2)
+    is_cs = (_is_carbon(z1) and _is_sulfur(z2)) or (_is_carbon(z2) and _is_sulfur(z1))
+    if not (is_cc or is_cs):
+        return 0.0
+
+    r1_single, r1_double, r1_triple = _bdpcs3_pyykko_single_double_triple(z1)
+    r2_single, r2_double, r2_triple = _bdpcs3_pyykko_single_double_triple(z2)
+    r_single = r1_single + r2_single
+    r_double = r1_double + r2_double
+    r_triple = r1_triple + r2_triple
+
+    d1 = abs(r_double - r_single)
+    d2 = abs(r_triple - r_double)
+    sigma = max(1.0e-6, min(d1, d2) / 1.5) if min(d1, d2) > 0.0 else 0.05
+
+    # Compensate CV exactly at r_double.
+    return -delta_cv * math.exp(-((r_ang - r_double) / sigma) ** 2)
 
 
 def topology_bond_order_for_pair(i: int, j: int, Z, coords_ang, cache=None) -> float:
@@ -199,18 +253,16 @@ def bdpcs3_delta_and_order_updated(
     ni = min(_principal_quantum(z1), 3)
     nj = min(_principal_quantum(z2), 3)
     nmax = max(ni, nj)
-    nfac = nmax * nmax - 1
-    if nfac <= 0 or val0 <= 0.0:
+    if nmax <= 1 or val0 <= 0.0:
         return 0.0, bond_order
 
-    chi_ch = _bdpcs3_updated_chi_ch(z1) * _bdpcs3_updated_chi_ch(z2)
-    chi_cs = _bdpcs3_updated_chi_cs(z1) * _bdpcs3_updated_chi_cs(z2)
-    sigma = params["sigma"]
-    f_coord = 0.5 * (1.0 - math.erf((r_ang - (val0 + 0.35)) / sigma))
-    pref = 1.0 + 0.56 * chi_ch
-    A = -params["K"] * val0 * pref * nfac * f_coord
-    gauss = math.exp(-((r_ang - val0 + params["delta_r"]) / sigma) ** 2)
-    delta_r = A * (1.0 - chi_cs * gauss)
+    sigma_coord = params["sigma_coord"]
+    f_coord = 0.5 * (1.0 - math.erf((r_ang - (1.3 * val0)) / sigma_coord))
+
+    scale = _bdpcs3_electronegativity_scale(z1, z2)
+    delta_cv = -scale * float(nmax - 1)
+    delta_deloc = _bdpcs3_delocalization_cc_cs(z1, z2, r_ang, delta_cv)
+    delta_r = (delta_cv + delta_deloc) * f_coord
 
     return delta_r, bond_order
 
@@ -506,9 +558,16 @@ def _backtransform_iterative(
     mass_weighted=False,
     damping=1.0,
     adaptive=False,
+    weights=None,
 ):
     coords = coords0.copy()
     prev_norm = None
+    if weights is not None:
+        w = np.array(weights, dtype=float).reshape(-1)
+        if w.size != len(prims):
+            raise ValueError("weights size does not match primitives")
+    else:
+        w = None
     for _ in range(max_iter):
         s = eval_primitives(prims, coords)
         ds = s_target - s
@@ -516,6 +575,9 @@ def _backtransform_iterative(
         if norm < tol:
             break
         B = b_matrix(prims, coords, fd_step=1e-4)
+        if w is not None:
+            B = B * w[:, None]
+            ds = ds * w
         G1B = compute_fortran_update_matrix(B, masses if mass_weighted else None, tol=1e-5)
         dx = G1B @ ds
         step = damping

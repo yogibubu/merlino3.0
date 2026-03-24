@@ -28,10 +28,11 @@ def test_bdpcs3_no_correction_for_weak_cc_cs_bonds():
 @pytest.mark.parametrize(
     ("z1", "z2", "r_ang", "expected_delta"),
     [
-        (6, 1, 1.07, -0.002078154),  # CH
-        (6, 6, 1.52, -0.002951739360067995),  # CC
-        (6, 8, 1.42, -0.0017679),  # CO
-        (6, 16, 1.81, -0.006008788170109689),  # CS
+        (6, 1, 1.07, -0.0025),  # CH
+        (6, 6, 1.52, -0.0024393779762205857),  # CC
+        (6, 7, 1.40, -0.0025),  # CN
+        (6, 8, 1.42, -0.0025),  # CO
+        (6, 16, 1.81, -0.004984244442007778),  # CS
     ],
 )
 def test_bdpcs3_updated_matches_reference(z1, z2, r_ang, expected_delta):
@@ -42,6 +43,12 @@ def test_bdpcs3_updated_matches_reference(z1, z2, r_ang, expected_delta):
 def test_bdpcs3_updated_differs_from_legacy():
     legacy, _ = bdpcs3_delta_and_order(6, 16, 1.81)
     updated, _ = bdpcs3_delta_and_order_updated(6, 16, 1.81)
+    assert abs(updated - legacy) > 1e-4
+
+
+def test_bdpcs3_updated_differs_from_legacy_cn():
+    legacy, _ = bdpcs3_delta_and_order(6, 7, 1.40)
+    updated, _ = bdpcs3_delta_and_order_updated(6, 7, 1.40)
     assert abs(updated - legacy) > 1e-4
 
 

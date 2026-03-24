@@ -117,6 +117,78 @@ Unless otherwise stated, distances are reported in \AA, rotational constants in 
 The unified workflow is geometry-driven and dominated by repeated evaluations of pairwise distances and local descriptor terms. For a molecule with $N$ atoms, the descriptor layer scales approximately as $\mathcal{O}(N^2)$ for dense pair evaluations, while bonded and angle-level post-processing scales with graph sparsity in practical molecular systems. The BDPCS3 correction step itself is lightweight relative to upstream electronic-structure calculations and is therefore suitable for high-throughput post-processing.
 The current implementation targets molecules up to about 100 atoms, where this $\mathcal{O}(N^2)$ regime is computationally adequate and robust in practice. For this reason, no linear-scaling machinery (e.g., neighbor-list/cell-list acceleration or sparse long-range screening) has been introduced yet. For substantially larger systems, dedicated linear- or near-linear-scaling strategies can be implemented without changing the underlying descriptor and correction formalism.
 
+\subsection{Fragment similarity and delta-correction workflow}
+To enable robust structure refinement from compact high-accuracy libraries, we employ a fragment-based similarity workflow that handles both cyclic and non-cyclic substructures. Ring fragments are defined as each perceived cycle plus its first-shell neighbors. Non-cyclic fragments are defined as bond-centered neighborhoods (two bonded atoms plus their first-shell neighbors), with a preference for heteroatom-containing bonds to maximize chemical relevance. This yields a mixed fragment pool labeled by \texttt{kind} (ring vs bond) and a small \texttt{core} subgraph (ring cycle or bond pair).
+
+Each fragment is represented by a continuous descriptor vector combining synthon averages, composition statistics, and local geometry. In addition to the global synthon-based similarity, three complementary terms are used: (i) a 3D alignment term based on Kabsch RMSD in the core geometry; (ii) a chemical compatibility term based on heteroatom fraction, local aromaticity proxy, and element profile; (iii) a local chemical type term encoding ring size or bond class (element pair and bond order class). For non-cyclic fragments, a torsional term is included when a local dihedral can be defined across the bond center. Descriptor distances are computed in a standardized feature space, and each feature is down-weighted by its library-derived uncertainty, so that unstable descriptors contribute less to the final score.
+
+Similarity is computed only within the same fragment kind, and core-size mismatch is penalized. The final score is a weighted combination of feature similarity, 3D alignment, chemical compatibility, local type similarity, and (for bond fragments) torsional agreement. Fragments whose best score falls below a low-score threshold are flagged for curation. In such cases, the workflow proposes a new high-level library entry derived directly from the query fragment (not from an existing library candidate), together with the closest library reference as a qualitative guide.
+
+The key correction step is performed through a \emph{delta} workflow rather than direct replacement. For each query fragment, a low-level calculation is performed at the target molecule's level of theory, while the high-level reference is taken from the curated library (or newly computed for low-score fragments). The local difference between high- and low-level geometries is transferred to the corresponding subgraph of the full molecule and accumulated across fragments with similarity-based weights. This yields a robust correction of the large molecule while maintaining consistency with the target level of theory and avoiding overfitting to any single library fragment.
+
+\subsection{Gaussian synthon similarity}
+At the molecular level we compare two structures by fitting a multivariate Gaussian model to the distribution of atomic synthon vectors and then using the Bhattacharyya distance. For a molecule with $N$ atoms, let $\mathbf{x}_i\in\mathbb{R}^d$ be the atomic synthon vector (here $d=5$ for charge, covalency, delocalization, strain, and $Z^{\mathrm{eff}}$-related components). The empirical Gaussian parameters are
+\begin{equation}
+\boldsymbol{\mu}=\frac{1}{N}\sum_{i=1}^N \mathbf{x}_i,\qquad
+\mathbf{\Sigma}=\frac{1}{N-1}\sum_{i=1}^N (\mathbf{x}_i-\boldsymbol{\mu})(\mathbf{x}_i-\boldsymbol{\mu})^{\!\top}.
+\end{equation}
+Given two Gaussian models $(\boldsymbol{\mu}_A,\mathbf{\Sigma}_A)$ and $(\boldsymbol{\mu}_B,\mathbf{\Sigma}_B)$, the Bhattacharyya distance is
+\begin{equation}
+D_B=\frac{1}{8}(\boldsymbol{\mu}_A-\boldsymbol{\mu}_B)^{\!\top}\mathbf{\Sigma}^{-1}(\boldsymbol{\mu}_A-\boldsymbol{\mu}_B)
+\;+\;\frac{1}{2}\ln\frac{\det\mathbf{\Sigma}}{\sqrt{\det\mathbf{\Sigma}_A\,\det\mathbf{\Sigma}_B}},
+\qquad
+\mathbf{\Sigma}=\frac{\mathbf{\Sigma}_A+\mathbf{\Sigma}_B}{2}.
+\end{equation}
+The Gaussian synthon similarity is defined as $\mathrm{Sim}=\exp(-D_B)$ so that identical distributions yield $\mathrm{Sim}\approx 1$, while increasing separation decreases the score smoothly. A ring-level Gaussian similarity is computed analogously from ring descriptors and combined with the synthon score via a convex weight.
+In the fragment pipeline, this Gaussian synthon similarity provides the global descriptor term; it is then modulated by geometric, chemical, and torsional components (Table~\ref{tab:fragment_similarity_terms}) and by a core-size penalty to form the final fragment-level score used for ranking and curation.
+
+\begin{table}[ht]
+\caption{Similarity components used in the fragment workflow.}
+\label{tab:fragment_similarity_terms}
+\centering
+\begin{tabular}{ll}
+\toprule
+Component & Role in similarity \\
+\midrule
+Feature similarity & Distance in standardized descriptor space (uncertainty-weighted) \\
+3D core alignment & Kabsch RMSD of core geometry (ring or bond) \\
+Chemical compatibility & Heteroatom fraction, element profile, aromaticity proxy \\
+Local type match & Ring size or bond class (element pair, bond-order class) \\
+Torsional agreement & Dihedral-based term for bond-centered fragments \\
+Size penalty & Core-size mismatch damping \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\caption{Analytic forms of the fragment similarity terms.}
+\label{tab:fragment_similarity_forms}
+\centering
+\begin{tabular}{ll}
+\toprule
+Term & Definition (schematic) \\
+\midrule
+Feature similarity & $\exp\!\big(-\lVert \mathbf{f}_A-\mathbf{f}_B\rVert_{\mathbf{w}}\big)$ with $\mathbf{w}$ from feature uncertainty \\
+3D core alignment & $\exp(-\alpha\,\mathrm{RMSD}_{\mathrm{Kabsch}})$ on core geometry \\
+Chemical compatibility & $\exp\!\big[-(a\,\Delta\mathrm{hetero}+b\,\Delta\mathrm{elem}+c\,\Delta\mathrm{arom})\big]$ \\
+Local type match & discrete score from ring size or bond class match \\
+Torsional agreement & $0.5(1+\cos\Delta\phi)$ for bond-centered fragments \\
+Size penalty & $\exp(-\beta\,\Delta s)$ with $\Delta s$ core-size mismatch \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Low-score fragments are routed to a curation queue: instead of reusing an imperfect library candidate, the workflow proposes a new fragment derived directly from the target subgraph, to be computed at high level and added to the library. This prevents the propagation of systematic biases from sparse libraries and provides a controlled path to incremental library expansion.
+
+\begin{verbatim}
+Algorithm 1: Fragment similarity + delta correction (summary)
+1. Build ring and bond-centered fragments for query and library.
+2. Compute similarity per fragment: feature + 3D + chem + type (+ torsion).
+3. Rank candidates; flag low-score fragments for curation.
+4. For each fragment, compute LL geometry; take HL from library (or new HL).
+5. Transfer local HL-LL deltas to the full molecule and average by weights.
+\end{verbatim}
+
 \subsection{Notation and symbols}
 \begin{table}[ht]
 \caption{Core notation and abbreviations used throughout the manuscript.}
@@ -511,43 +583,40 @@ Updated BDPCS3 equations are:
 \begin{equation}
 r_{ij}^{\mathrm{BDPCS3}}=r_{ij}^{\mathrm{DPCS3}}+\Delta r_{ij},
 \end{equation}
-\begin{equation}
-\Delta r_{ij}=A_{ij}(r_{ij})\left[1-\chi_{\mathrm{CS}}(i)\chi_{\mathrm{CS}}(j)
-\exp\!\left(-\left(\frac{r_{ij}-r^{\mathrm{cov}}_{ij}+\Delta r}{\sigma}\right)^2\right)\right],
-\end{equation}
 with
 \begin{equation}
-A_{ij}(r)=-K\,r^{\mathrm{cov}}_{ij}
-\left(1+0.56\,\chi_{\mathrm{CH}}(i)\chi_{\mathrm{CH}}(j)\right)
-\left[\max(n_i,n_j)^2-1\right]
-f_{\mathrm{coord}}(r),
+\Delta r_{ij}=\left(\Delta r^{\mathrm{CV}}_{ij}+\Delta r^{\mathrm{deloc}}_{ij}\right)
+f_{\mathrm{coord}}(r_{ij}).
 \end{equation}
+The core--valence term is
 \begin{equation}
-f_{\mathrm{coord}}(r)=\frac{1}{2}\left[1-\operatorname{erf}\!\left(\frac{r-(r^{\mathrm{cov}}_{ij}+0.35)}{\sigma}\right)\right],
+\Delta r^{\mathrm{CV}}_{ij}=-0.0025\,[\max(n_i,n_j)-1],
 \end{equation}
-\begin{align}
-\chi_{\mathrm{CS}}(x)&=\delta_{Z_x,6}+0.5\,\delta_{Z_x,16},\\
-\chi_{\mathrm{CH}}(x)&=\delta_{Z_x,6}+\delta_{Z_x,1}.
-\end{align}
-The selector $\chi_{\mathrm{CS}}$ activates the sulfur-specific modulation in C/S environments, while $\chi_{\mathrm{CH}}$ identifies C/H-containing pairs for the hydrocarbon-focused prefactor correction.
+with $n_i$ capped at 3 (third-period and beyond). The delocalization term is activated only for C--C and C--S:
+\begin{equation}
+\Delta r^{\mathrm{deloc}}_{ij}=
+-\Delta r^{\mathrm{CV}}_{ij}\,
+\exp\!\left(-\left(\frac{r_{ij}-r^{\mathrm{cov}}_{ij,\mathrm{dbl}}}{\sigma_{\mathrm{deloc}}}\right)^2\right),
+\end{equation}
+so that the total correction vanishes at the Pyykk\"o double-bond covalent distance. The width is
+\begin{equation}
+\sigma_{\mathrm{deloc}}=\frac{1}{1.5}\min\!\left(\left|r^{\mathrm{cov}}_{ij,\mathrm{dbl}}-r^{\mathrm{cov}}_{ij,\mathrm{sng}}\right|,
+\left|r^{\mathrm{cov}}_{ij,\mathrm{trl}}-r^{\mathrm{cov}}_{ij,\mathrm{dbl}}\right|\right),
+\end{equation}
+using Pyykk\"o covalent radii for single/double/triple coordination.
+
+The long-range cutoff is
+\begin{equation}
+f_{\mathrm{coord}}(r)=\frac{1}{2}\left[1-\operatorname{erf}\!\left(\frac{r-1.3\,r^{\mathrm{cov}}_{ij}}{\sigma_{\mathrm{coord}}}\right)\right],
+\end{equation}
+so $\Delta r_{ij}\to 0$ for $r\gtrsim 1.3\,r^{\mathrm{cov}}_{ij}$.
 
 Parameters:
 \begin{equation}
-K=4.15\times10^{-4},\qquad
-\Delta r=0.17~\text{\AA},\qquad
-\sigma=0.057~\text{\AA}.
+\sigma_{\mathrm{coord}}=0.057~\text{\AA}.
 \end{equation}
-These updated values are tuned to remain legacy-aligned within method precision (sub-m\AA level), while preserving full consistency with the unified topology-driven descriptor layer.
+These updated values are tuned to preserve the unified topology-driven descriptor layer while matching the current BDPCS3 calibration.
 
-\paragraph{Implementation form.}
-\begin{equation}
-\Delta r_{ij}=
-\left[-K\,r^{\mathrm{cov}}_{ij}(1+0.56\,\chi_{\mathrm{CH},ij})N_{ij}f_{\mathrm{coord}}(r)\right]
-\left(1-\chi_{\mathrm{CS},ij}e^{-((r-r^{\mathrm{cov}}_{ij}+\Delta r)/\sigma)^2}\right),
-\end{equation}
-with $\chi_{\mathrm{CH},ij}=\chi_{\mathrm{CH}}(i)\chi_{\mathrm{CH}}(j)$,
-$\chi_{\mathrm{CS},ij}=\chi_{\mathrm{CS}}(i)\chi_{\mathrm{CS}}(j)$,
-$N_{ij}=\max(n_i,n_j)^2-1$.
 Because all terms depend on the same continuous topology layer, BDPCS3 corrections remain aligned with descriptor reporting and synthon-based analysis.
 
 \subsection{Cartesian reconstruction and Gaussian verification}

@@ -116,7 +116,7 @@ with
 \begin{equation}
 A_{ij}(r)
 =-K\,r^{\mathrm{cov}}_{ij}
-\left(1+0.56\,\chi_{\mathrm{CH}}(i)\chi_{\mathrm{CH}}(j)\right)
+\left(1+0.25\,\chi_{\mathrm{CH},ij}\right)
 \left[\max(n_i,n_j)^2-1\right]
 f_{\mathrm{coord}}(r),
 \end{equation}
@@ -127,12 +127,12 @@ f_{\mathrm{coord}}(r)=\frac{1}{2}\left[1-\operatorname{erf}\!\left(\frac{r-(r^{\
 Element selectors:
 \begin{align}
 \chi_{\mathrm{CS}}(x)&=\delta_{Z_x,6}+0.5\,\delta_{Z_x,16},\\
-\chi_{\mathrm{CH}}(x)&=\delta_{Z_x,6}+\delta_{Z_x,1}.
+\chi_{\mathrm{CH},ij}&=\delta_{Z_i,6}\delta_{Z_j,1}+\delta_{Z_i,1}\delta_{Z_j,6}.
 \end{align}
 
 Current parameters (updated model):
 \begin{equation}
-K=4.15\times10^{-4},\qquad
+K=6.0\times10^{-3},\qquad
 \Delta r=0.17~\text{\AA},\qquad
 \sigma=0.057~\text{\AA}.
 \end{equation}
@@ -141,10 +141,10 @@ K=4.15\times10^{-4},\qquad
 The practical coded form is:
 \begin{equation}
 \Delta r_{ij}
-=\left[-K\,r^{\mathrm{cov}}_{ij}(1+0.56\,\chi_{\mathrm{CH},ij})N_{ij}f_{\mathrm{coord}}(r)\right]
+=\left[-K\,r^{\mathrm{cov}}_{ij}(1+0.25\,\chi_{\mathrm{CH},ij})N_{ij}f_{\mathrm{coord}}(r)\right]
 \left(1-\chi_{\mathrm{CS},ij}e^{-((r-r^{\mathrm{cov}}_{ij}+\Delta r)/\sigma)^2}\right),
 \end{equation}
-with $\chi_{\mathrm{CH},ij}=\chi_{\mathrm{CH}}(i)\chi_{\mathrm{CH}}(j)$,
+with $\chi_{\mathrm{CH},ij}$ as defined above,
 $\chi_{\mathrm{CS},ij}=\chi_{\mathrm{CS}}(i)\chi_{\mathrm{CS}}(j)$,
 $N_{ij}=\max(n_i,n_j)^2-1$.
 

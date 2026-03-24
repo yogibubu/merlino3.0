@@ -33,6 +33,12 @@ class Bdpcs3Result:
     bond_targets: list[tuple[int, int, float, float]]  # i, j, r_corr(Ang), bond order
     s0_bond: np.ndarray
     s1_bond: np.ndarray
+    bond_target_lengths: list[float]
+    bond_residuals: list[float]
+    backtransform_resid_norm: float
+    backtransform_max_abs: float
+    worst_primitives: list[tuple[str, tuple[int, ...], float]]
+    backtransform_used_weights: bool
     B0_mhz: np.ndarray
     B1_mhz: np.ndarray
 
@@ -118,6 +124,7 @@ def compute_bdpcs3(
 
     bond_orders = []
     bond_targets = []
+    bond_target_lengths = []
     bo_cache = {}
     for idx, p in enumerate(prims_all):
         if p.kind != "bond":
@@ -135,6 +142,40 @@ def compute_bdpcs3(
         s_target_all[idx] = r_corr * ANG_TO_BOHR
         bond_targets.append((i, j, r_corr, bndord))
         bond_orders.append(bndord)
+        bond_target_lengths.append(r_corr)
+
+    def _eval_backtransform(coords_bdpcs3_au):
+        s1_bond = eval_primitives(prims_bond, coords_bdpcs3_au)
+        coords_bdpcs3_ang = coords_bdpcs3_au * BOHR_TO_ANG
+        s1_all = eval_primitives(prims_all, coords_bdpcs3_au)
+        resid = s_target_all - s1_all
+        backtransform_resid_norm = float(np.linalg.norm(resid))
+        backtransform_max_abs = float(np.max(np.abs(resid)))
+        worst_primitives = []
+        if resid.size:
+            idxs = np.argsort(np.abs(resid))[-8:][::-1]
+            for idx in idxs:
+                p = prims_all[idx]
+                diff = float(resid[idx])
+                if p.kind == "bond":
+                    diff = diff * BOHR_TO_ANG
+                worst_primitives.append((p.kind, tuple(p.atoms), diff))
+        bond_residuals = []
+        max_bond_resid = 0.0
+        for r1, r_target in zip(s1_bond, bond_target_lengths):
+            resid_bond = (r1 * BOHR_TO_ANG) - r_target
+            bond_residuals.append(resid_bond)
+            if abs(resid_bond) > max_bond_resid:
+                max_bond_resid = abs(resid_bond)
+        return (
+            s1_bond,
+            coords_bdpcs3_ang,
+            bond_residuals,
+            backtransform_resid_norm,
+            backtransform_max_abs,
+            worst_primitives,
+            max_bond_resid,
+        )
 
     coords_bdpcs3_au = _backtransform_iterative(
         s_target_all,
@@ -146,9 +187,40 @@ def compute_bdpcs3(
         damping=1.0,
         adaptive=True,
     )
+    (
+        s1_bond,
+        coords_bdpcs3_ang,
+        bond_residuals,
+        backtransform_resid_norm,
+        backtransform_max_abs,
+        worst_primitives,
+        max_bond_resid,
+    ) = _eval_backtransform(coords_bdpcs3_au)
 
-    s1_bond = eval_primitives(prims_bond, coords_bdpcs3_au)
-    coords_bdpcs3_ang = coords_bdpcs3_au * BOHR_TO_ANG
+    used_weights = False
+    if max_bond_resid > 0.02:
+        weights = [1.0 if p.kind == "bond" else 0.2 for p in prims_all]
+        coords_bdpcs3_au = _backtransform_iterative(
+            s_target_all,
+            coords_au,
+            prims_all,
+            masses=masses,
+            max_iter=80,
+            tol=1e-8,
+            damping=0.8,
+            adaptive=True,
+            weights=weights,
+        )
+        (
+            s1_bond,
+            coords_bdpcs3_ang,
+            bond_residuals,
+            backtransform_resid_norm,
+            backtransform_max_abs,
+            worst_primitives,
+            _,
+        ) = _eval_backtransform(coords_bdpcs3_au)
+        used_weights = True
 
     B0 = rotational_constants(coords_au, masses) * 1000.0
     B1 = rotational_constants(coords_bdpcs3_au, masses) * 1000.0
@@ -161,6 +233,12 @@ def compute_bdpcs3(
         bond_targets=bond_targets,
         s0_bond=s0_bond,
         s1_bond=s1_bond,
+        bond_target_lengths=bond_target_lengths,
+        bond_residuals=bond_residuals,
+        backtransform_resid_norm=backtransform_resid_norm,
+        backtransform_max_abs=backtransform_max_abs,
+        worst_primitives=worst_primitives,
+        backtransform_used_weights=used_weights,
         B0_mhz=B0,
         B1_mhz=B1,
     )
@@ -187,15 +265,30 @@ def write_bdpcs3_outputs(
     lines.append("")
     lines.append("Bond lengths (Angstrom)")
     lines.append("")
-    lines.append("  i  El |  j  El |        DPCS3 |       BDPCS3 |        Delta | BondOrder")
-    lines.append("--------+--------+-------------+-------------+------------+----------")
+    lines.append("  i  El |  j  El |        DPCS3 |      Target |       BDPCS3 |     Delta |  Resid | BondOrder")
+    lines.append("--------+--------+-------------+-------------+-------------+----------+--------+----------")
     for idx, (r0, r1) in enumerate(zip(result.s0_bond, result.s1_bond)):
         i, j = result.bond_targets[idx][0], result.bond_targets[idx][1]
         delta = (r1 - r0) * BOHR_TO_ANG
+        target = result.bond_target_lengths[idx]
+        resid = result.bond_residuals[idx]
         lines.append(
             f"{i+1:3d} {result.symbols[i]:2s} | {j+1:3d} {result.symbols[j]:2s} |"
-            f" {r0 * BOHR_TO_ANG: 11.6f} | {r1 * BOHR_TO_ANG: 11.6f} | {delta: 10.6f} | {result.bond_orders[idx]:8.3f}"
+            f" {r0 * BOHR_TO_ANG: 11.6f} | {target: 11.6f} | {r1 * BOHR_TO_ANG: 11.6f} |"
+            f" {delta: 8.6f} | {resid: 6.3f} | {result.bond_orders[idx]:8.3f}"
         )
+    lines.append("")
+    lines.append("Backtransform residuals (internal units; bonds in Angstrom)")
+    lines.append(f"  Weighted backtransform: {'yes' if result.backtransform_used_weights else 'no'}")
+    lines.append(f"  L2 norm: {result.backtransform_resid_norm:.6f}")
+    lines.append(f"  Max abs: {result.backtransform_max_abs:.6f}")
+    if result.worst_primitives:
+        lines.append("  Worst primitives (kind, atoms, residual):")
+        for kind, atoms, diff in result.worst_primitives:
+            if kind == "bond":
+                lines.append(f"    {kind} {tuple(a + 1 for a in atoms)} {diff: .6f} A")
+            else:
+                lines.append(f"    {kind} {tuple(a + 1 for a in atoms)} {diff: .6f}")
     lines.append("")
     lines.append("Rotational constants (MHz)")
     lines.append("")
@@ -237,8 +330,8 @@ def write_bdpcs3_outputs(
     for sym, (x, y, z) in zip(result.symbols, result.coords_dpcs3_ang):
         gjf_lines.append(f"{sym:2s} {x: 11.6f} {y: 11.6f} {z: 11.6f}")
     gjf_lines.append("")
-    for i, j, r_corr, _ in result.bond_targets:
-        gjf_lines.append(f"B {i+1} {j+1} {r_corr:.6f}")
+    for (i, j, _, _), r_target in zip(result.bond_targets, result.bond_target_lengths):
+        gjf_lines.append(f"B {i+1} {j+1} {r_target:.6f}")
     gjf_lines.append("")
     bdpcs3_gjf_path.write_text("\n".join(gjf_lines) + "\n", encoding="utf-8")
 

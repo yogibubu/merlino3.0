@@ -87,7 +87,13 @@ def _primitive_label(p):
     return "(" + ",".join(str(a + 1) for a in p.atoms) + ")"
 
 
-def _symmetry_summary(cg, dg):
+def _symmetry_summary(
+    cg,
+    dg,
+    *,
+    symm_tol: float = 1.0e-3,
+    symmetrize_coords: bool = False,
+):
     """
     Compute point group and symmetry-equivalent primitive classes.
     Uses the same geometry already available in topology.
@@ -96,15 +102,40 @@ def _symmetry_summary(cg, dg):
     coords = np.asarray(cg.coords, dtype=float)
     symbols = [_element_symbol(z) for z in Z]
 
-    coords_oriented = orient_coords(coords, weights=Z.astype(float))
+    def _mass_weights(Zvals):
+        try:
+            from geometry.average_atomic_masses import atomic_mass
+            return np.array([atomic_mass(int(z)) for z in Zvals], dtype=float)
+        except Exception:
+            return np.array(Zvals, dtype=float)
+
+    weights = _mass_weights(Z)
+
+    def _orient_with_frame(x, w):
+        x = np.array(x, dtype=float)
+        w = np.array(w, dtype=float)
+        wsum = float(np.sum(w))
+        com = np.sum(x * w[:, None], axis=0) / max(wsum, 1.0e-12)
+        x0 = x - com[None, :]
+        I = np.zeros((3, 3))
+        for i, r in enumerate(x0):
+            I += w[i] * ((np.dot(r, r) * np.eye(3)) - np.outer(r, r))
+        evals, evecs = np.linalg.eigh(I)
+        order = np.argsort(evals)
+        V = evecs[:, order]
+        if np.linalg.det(V) < 0:
+            V[:, -1] *= -1.0
+        return x0 @ V, com, V
+
+    coords_oriented, com, V = _orient_with_frame(coords, weights)
     elements, atom_classes, permutations = symmetry_elements_from_geometry(
         symbols,
         coords_oriented,
-        tol=1.0e-3,
+        tol=float(symm_tol),
         max_n=8,
         auto_max_n=True,
     )
-    point_group = _group_label(elements, linear=is_linear(coords_oriented, tol=1.0e-3))
+    point_group = _group_label(elements, linear=is_linear(coords_oriented, tol=float(symm_tol)))
 
     prims = build_primitives(dg, coords)
     nprim = len(prims)
@@ -125,19 +156,47 @@ def _symmetry_summary(cg, dg):
         kind = prims[idxs_sorted[0]].kind
         by_kind.setdefault(kind, []).append(idxs_sorted)
 
-    return {
+    out = {
         "point_group": point_group,
         "atom_classes": [sorted(cls) for cls in atom_classes],
         "primitive_classes_by_kind": by_kind,
         "primitives": prims,
     }
 
+    if symmetrize_coords and permutations and elements:
+        coords_symm = np.zeros_like(coords_oriented)
+        count = 0
+        for _label, R in elements:
+            coords_t = coords_oriented @ R.T
+            coords_perm = np.zeros_like(coords_t)
+            for i, j in enumerate(permutations[count]):
+                coords_perm[i] = coords_t[j]
+            coords_symm += coords_perm
+            count += 1
+        if count > 0:
+            coords_symm /= float(count)
+            coords_symm_world = coords_symm @ V.T + com[None, :]
+            # Snap tiny numerical noise for strict symmetry.
+            coords_symm_world = np.round(coords_symm_world, decimals=8)
+            out["symmetrized_coords"] = coords_symm_world
+    return out
+
 
 # ============================================================
 # Topology reporting
 # ============================================================
 
-def print_topology_report(cg, dg, synthons, arom=None, filename="topology.report", ringset=None):
+def print_topology_report(
+    cg,
+    dg,
+    synthons,
+    arom=None,
+    filename="topology.report",
+    ringset=None,
+    *,
+    symm_tol: float = 1.0e-3,
+    symmetrize_coords: bool = False,
+):
     """
     Write a diagnostic report of the molecular topology to a file.
 
@@ -255,10 +314,27 @@ def print_topology_report(cg, dg, synthons, arom=None, filename="topology.report
                 fh.write("Aromatic bonds: none\n")
 
         # ========================================================
+        # Representation
+        # ========================================================
+        try:
+            from geometry.thermo_trasl import parse_xyzin_basic_section
+            rep = parse_xyzin_basic_section(Path(filename).with_name("xyzin")).get(
+                "REPRESENTATION", "Ir"
+            )
+        except Exception:
+            rep = "Ir"
+        fh.write(f"Representation: {rep}\n")
+
+        # ========================================================
         # Global symmetry and equivalent parameters
         # ========================================================
         try:
-            sym = _symmetry_summary(cg, dg)
+            sym = _symmetry_summary(
+                cg,
+                dg,
+                symm_tol=symm_tol,
+                symmetrize_coords=symmetrize_coords,
+            )
             fh.write("\nGLOBAL SYMMETRY\n")
             fh.write("---------------\n")
             fh.write(f"Point group: {sym['point_group']}\n")
@@ -272,6 +348,20 @@ def print_topology_report(cg, dg, synthons, arom=None, filename="topology.report
                     fh.write(f"  class {icls:2d}: {cls}\n")
             else:
                 fh.write("Equivalent atom classes: none (C1-like partition)\n")
+
+            if symmetrize_coords and "symmetrized_coords" in sym:
+                try:
+                    report_path = Path(filename)
+                    out_xyz = report_path.with_name("symmetrized.xyz")
+                    coords_symm = sym["symmetrized_coords"]
+                    fh.write("\nSymmetrized XYZ: ")
+                    fh.write(str(out_xyz) + "\n")
+                    lines = [str(len(Z)), "Symmetrized coordinates"]
+                    for symb, (x, y, z) in zip(symbols, coords_symm):
+                        lines.append(f"{symb} {x: .6f} {y: .6f} {z: .6f}")
+                    out_xyz.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                except Exception:
+                    pass
 
             fh.write("\nEQUIVALENT INTERNAL-PARAMETER CLASSES\n")
             fh.write("------------------------------------\n")

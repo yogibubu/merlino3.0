@@ -105,7 +105,13 @@ def read_xyz_from_xyzin(xyzin):
     return np.array(coords), Z
 
 
-def run_topology_on_xyzin(xyzin):
+def run_topology_on_xyzin(
+    xyzin,
+    *,
+    symm_tol: float = 1.0e-3,
+    symmetrize_coords: bool = False,
+):
+    from geometry.thermo_trasl import parse_xyzin_basic_section
     from .topology_reporting import print_topology_report
 
     try:
@@ -151,6 +157,7 @@ def run_topology_on_xyzin(xyzin):
             force_aromatic=False,
         )
 
+    rep = parse_xyzin_basic_section(str(xyzin)).get("REPRESENTATION", "Ir")
     print_topology_report(
         cg=cg,
         dg=dg,
@@ -158,6 +165,8 @@ def run_topology_on_xyzin(xyzin):
         arom=aromaticity,
         ringset=ringset,
         filename="topology.report",
+        symm_tol=float(symm_tol),
+        symmetrize_coords=bool(symmetrize_coords),
     )
 
     with open(xyzin, "a") as fh:

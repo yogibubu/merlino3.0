@@ -124,6 +124,8 @@ def group_label(elements, linear=False):
         m = re.match(r"C2([xyz])\^", lab)
         if m:
             c2_axes.add(m.group(1))
+        if lab.startswith("C2_xy"):
+            c2_axes.add("xy")
     has_c2_perp = any(ax != axis for ax in c2_axes)
 
     if linear and not has_poly:

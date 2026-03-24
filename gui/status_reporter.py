@@ -13,6 +13,7 @@ class StatusReporter:
         label,
         input_type,
         source,
+        representation,
         vib_q,
         rovib_q,
         dos_emin,
@@ -25,6 +26,8 @@ class StatusReporter:
         parts.append(f"Input: {input_type or 'unknown'}")
         if source:
             parts.append(f"Source: {source}")
+        if representation:
+            parts.append(f"Rep: {representation}")
         if vib_q is not None:
             parts.append(f"Q_vib: {vib_q:.6e}")
         if rovib_q is not None:
@@ -61,6 +64,7 @@ class StatusReporter:
         self,
         input_type,
         source,
+        representation,
         dos_emin,
         dos_emax,
         dos_bin,
@@ -76,6 +80,8 @@ class StatusReporter:
             lines.append("MERLINO GUI SUMMARY\n")
             lines.append(f"Input type: {input_type or 'unknown'}\n")
             lines.append(f"Source: {source}\n")
+            if representation:
+                lines.append(f"Representation: {representation}\n")
             lines.append(f"Emin_cm1: {dos_emin}\n")
             lines.append(f"Emax_cm1: {dos_emax}\n")
             lines.append(f"Bin_cm1: {dos_bin}\n")
