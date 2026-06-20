@@ -81,6 +81,48 @@ def test_gic_symmetry_postcheck_is_byte_deterministic(tmp_path):
     assert not any(source.startswith("global_") for source in diagnostics["sources"])
 
 
+def test_gic_symmetry_keeps_cs_mirror_with_identity_permutation(tmp_path):
+    (tmp_path / "xyzin").write_text(
+        "\n".join(
+            [
+                "3",
+                "planar Cs asymmetric triatomic",
+                "C 0.000000 0.000000 0.000000",
+                "O 1.200000 0.000000 0.000000",
+                "N 0.250000 1.100000 0.000000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "gauin").write_text(
+        "\n".join(
+            [
+                "%chk=cs.chk",
+                "",
+                "0 1",
+                "",
+                " R1=[ 1.00000000*R(  1,  2)]",
+                " R2=[ 1.00000000*R(  1,  3)]",
+                " A1=[ 1.00000000*A(  2,  1,  3)]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_gic_symmetry_files(tmp_path)
+    diagnostics = json.loads((tmp_path / "gic_symmetry_diagnostics.json").read_text(encoding="utf-8"))
+    gicsym = (tmp_path / "gicsym").read_text(encoding="utf-8")
+
+    assert diagnostics["operation_order"] == ["E", "sigma_xy"]
+    assert diagnostics["targets"] == {"A'": 3, "A''": 0}
+    assert diagnostics["counts"] == {"A'": 3, "A''": 0}
+    assert "A'Str0001,A'" in gicsym
+    assert "cartesian_mixed_projection" not in diagnostics["sources"]
+    assert not any(source.startswith("global_") for source in diagnostics["sources"])
+
+
 def test_gic_symmetry_preserves_cyclopentadiene_irrep_and_class_counts(tmp_path):
     (tmp_path / "xyzin").write_text(
         "\n".join(

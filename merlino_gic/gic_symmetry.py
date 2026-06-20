@@ -144,9 +144,13 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
     seen = set()
     for element, permutation in zip(elements, permutations):
         mapped = tuple(int(item) for item in permutation)
-        if mapped in seen:
+        # Planar Cs molecules can have E and sigma with the same atom
+        # permutation.  The rotation/reflection matrix is therefore part of
+        # the identity of the symmetry operation.
+        op_key = (mapped, tuple(np.round(np.asarray(element[1], dtype=float).reshape(-1), 8)))
+        if op_key in seen:
             continue
-        seen.add(mapped)
+        seen.add(op_key)
         unique.append((element[0], element[1], mapped, primitive_permutation(prims, mapped)))
     identity = tuple(range(len(atoms)))
     op_data = unique or [("E", np.eye(3), identity, primitive_permutation(prims, identity))]
@@ -442,13 +446,19 @@ def _irrep_characters(labels: list[str]) -> list[tuple[str, np.ndarray]]:
     if len(labels) == 1:
         return [("A", np.ones(1))]
     if len(labels) == 2:
+        if any(label.startswith("sigma") for label in labels):
+            return [("A'", np.array([1.0, 1.0])), ("A''", np.array([1.0, -1.0]))]
         return [("A", np.array([1.0, 1.0])), ("B", np.array([1.0, -1.0]))]
     if len(labels) == 4 and any(label.startswith("C2") for label in labels) and sum(label.startswith("sigma") for label in labels) == 2:
+        sigma_labels = [label for label in labels if label.startswith("sigma")]
+        preferred = ("sigma_xz", "sigma_yz", "sigma_xy")
+        first_sigma = next((label for label in preferred if label in sigma_labels), sorted(sigma_labels)[0])
+        second_sigma = next(label for label in sorted(sigma_labels) if label != first_sigma)
         char_by_label = {
             "E": (1.0, 1.0, 1.0, 1.0),
             "C2": (1.0, 1.0, -1.0, -1.0),
-            "sigma_xz": (1.0, -1.0, 1.0, -1.0),
-            "sigma_xy": (1.0, -1.0, -1.0, 1.0),
+            first_sigma: (1.0, -1.0, 1.0, -1.0),
+            second_sigma: (1.0, -1.0, -1.0, 1.0),
         }
         chars = [char_by_label["C2" if label.startswith("C2") else label] for label in labels]
         arr = np.array(chars, dtype=float)
@@ -502,7 +512,7 @@ def _write_gicsym(path: Path, sym_gics) -> None:
 def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int, class_targets: dict[str, int]) -> None:
     irreps = _irrep_characters([item[0] for item in op_data])
     targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = {irrep: 0 for irrep in targets}
     class_counts: dict[str, int] = {}
     sources: dict[str, int] = {}
     for name, irrep, source, _column in sym_gics:
