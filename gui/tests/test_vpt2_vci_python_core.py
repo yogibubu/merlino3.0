@@ -5,6 +5,7 @@ import numpy as np
 from merlino_vpt2_vci import (
     QuarticForceField,
     AnharmonicInput,
+    VCIOptions,
     davidson_lowest,
     generate_vibrational_basis,
     gf_from_gaussian_fchk_with_merlino_gics,
@@ -32,7 +33,7 @@ def test_vci_harmonic_basis_and_energies_are_deterministic():
     qff = zero_anharmonic_force_field(np.array([100.0, 200.0]))
     result = solve_vci(qff, max_quanta=1)
 
-    assert result.basis == ((0, 0), (0, 1), (1, 0))
+    assert result.basis == ((0, 0), (1, 0), (0, 1))
     assert np.allclose(result.energies_cm, [150.0, 250.0, 350.0])
 
 
@@ -145,6 +146,32 @@ def test_canonical_anharmonic_input_runs_vci_and_shifts_levels():
     assert np.allclose(harmonic.excitation_energies_cm[:4], [0.0, 1000.0, 1500.0, 2000.0])
     assert not np.allclose(anharmonic.excitation_energies_cm, harmonic.excitation_energies_cm)
     assert np.all(anharmonic.excitation_energies_cm[1:] > 0.0)
+
+
+def test_vci_basis_cutoff_frequency_window_pruning_blocks_and_contributions():
+    qff = QuarticForceField(
+        harmonic_frequencies_cm=np.array([500.0, 1000.0, 1800.0]),
+        cubic_cm={(0, 0, 1): 0.001, (1, 1, 1): 20.0},
+        quartic_cm={(1, 1, 1, 1): 5.0, (0, 0, 1, 1): 0.0001},
+    )
+    options = VCIOptions(
+        frequency_min_cm=800.0,
+        frequency_max_cm=1600.0,
+        basis_energy_cutoff_cm=2200.0,
+        force_constant_threshold_cm=0.01,
+        mode_symmetries=("a", "b", "c"),
+        separate_symmetry_blocks=True,
+        coefficient_threshold=0.05,
+    )
+
+    result = solve_vci(qff, max_quanta=4, n_roots=4, options=options)
+
+    assert len(result.basis) == 3
+    assert result.basis == ((0,), (1,), (2,))
+    assert {block.label for block in result.blocks} == {"A", "b"}
+    assert len(result.state_contributions) == 3
+    assert np.allclose(result.state_contributions[1].mode_quanta, [1.0], atol=1.0e-8)
+    assert result.state_contributions[1].dominant_basis_states[0][0] == (1,)
 
 
 def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():

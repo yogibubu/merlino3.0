@@ -29,7 +29,10 @@ from .internal_gf import (
 from .models import AnharmonicInput, HessianInput
 from .vci import (
     QuarticForceField,
+    VCIBlockInfo,
+    VCIOptions,
     VCIResult,
+    VCIStateContribution,
     build_vci_hamiltonian,
     force_field_from_anharmonic_input,
     generate_vibrational_basis,
@@ -50,8 +53,11 @@ __all__ = [
     "HessianInput",
     "PEDTable",
     "QuarticForceField",
+    "VCIBlockInfo",
+    "VCIOptions",
     "VCIRequest",
     "VCIResult",
+    "VCIStateContribution",
     "VPT2VCIInventory",
     "VPT2VCIRun",
     "anharmonic_input_from_gaussian_fchk",

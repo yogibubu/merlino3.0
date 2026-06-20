@@ -69,6 +69,18 @@ computed by Merlino.
 
 ## Next Numerical Step
 
-The dense VCI path is for small validation spaces. Large VCI spaces use the
-standalone Davidson contract. Gaussian/GDV routines are not dependencies or
-copy sources for Merlino4.
+## VCI Basis Control
+
+`VCIOptions` controls the numerical basis before diagonalization:
+
+- active-mode selection and frequency windows
+- harmonic basis energy cutoff and maximum basis size
+- cubic/quartic force-constant pruning
+- optional block separation by mode symmetry labels
+- coefficient threshold for reporting dominant basis-state contributions
+
+The VCI result reports excitation energies, solved block metadata, expectation
+values of modal quanta for each final state, and dominant basis-state weights.
+
+Large VCI spaces use the standalone Davidson contract. Gaussian/GDV routines
+are not dependencies or copy sources for Merlino4.
