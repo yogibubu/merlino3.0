@@ -16,5 +16,9 @@ Rules:
 - Gaussian, Fortran and other external formats are adapters, not internal data
   models.
 - Prefer typed Merlino errors from `merlino_core.errors`.
+- Important numerical fits should use the shared `merlino_core.numerics`
+  primitives for damped normal equations, step limiting and rank/condition
+  diagnostics unless a workflow has a documented reason to use a specialized
+  solver.
 - Store new project outputs under `inputs/`, `runs/`, `outputs/`, `reports/`,
   `cache/` or `logs/`.

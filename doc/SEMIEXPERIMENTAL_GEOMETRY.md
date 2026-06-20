@@ -14,6 +14,7 @@ python -m merlino semiexp \
   --xyz parent_initial.xyz \
   --observations isotopologues.csv \
   --outdir semiexp_run \
+  --observable moments \
   --max-step 0.25
 ```
 
@@ -46,11 +47,21 @@ Merlino generates primitive internal coordinates from the starting Cartesian
 geometry, builds the same non-redundant GIC transform used by the GF workflow,
 and optimizes active GIC values by least squares.
 
-For each isotopologue the solver computes equilibrium rotational constants from
-the current geometry and isotope masses. The Wilson B matrix is analytic for the
-standard Merlino primitive coordinates used here (bonds, angles, linear bends,
-dihedrals and out-of-plane terms). The Jacobian of rotational constants with
-respect to the active non-redundant GICs is then used for the weighted
+For each isotopologue the solver computes either principal moments of inertia
+or rotational constants from the current geometry and isotope masses. The
+default is `--observable moments`, because moments are linear in mass geometry
+and avoid the reciprocal amplification present in rotational constants. Use
+`--observable rotational_constants` only when that is the intended experimental
+fit target.
+
+For planar molecules and `--observable rotational_constants
+--rotational-components auto`, Merlino evaluates the initial Jacobian for
+`AB`, `AC` and `BC` and selects the pair with best rank and smallest condition
+number. Non-planar molecules use `ABC` by default.
+
+The Wilson B matrix is analytic for the standard Merlino primitive coordinates
+used here (bonds, angles, linear bends, dihedrals and out-of-plane terms). The
+Jacobian with respect to active non-redundant GICs is used for the weighted
 least-squares normal equations and for error propagation.
 
 Parameters can be frozen with:
@@ -69,6 +80,16 @@ the damping is increased, and the next iteration retries a more conservative
 normal equation. `--max-step` limits the active-GIC step norm and is useful when
 the starting geometry is only approximate.
 
+QM-estimated parameters can be added as weighted predicates:
+
+```bash
+python -m merlino semiexp ... --qm-predicate "GIC001:1.234:0.010:qm"
+```
+
+The format is `label_pattern:value:sigma[:source]`. The label pattern is matched
+against generated GIC labels and contributes a pseudo-observation with weight
+`1/sigma^2`.
+
 ## Output
 
 The output directory contains:
@@ -76,8 +97,9 @@ The output directory contains:
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
-- `semiexp_residuals.csv`: observed equilibrium constants, calculated constants
-  and residuals in MHz.
+- `semiexp_residuals.csv`: observed, calculated and residual values for the
+  selected observable. Units are MHz for rotational constants, amu Angstrom^2
+  for moments of inertia and native GIC units for QM predicates.
 - `semiexp_covariance.csv`: propagated covariance matrix for active parameters.
 - `semiexp_correlation.csv`: correlation matrix for active parameters.
 - `semiexp_hessian.csv`: Gauss-Newton least-squares Hessian.

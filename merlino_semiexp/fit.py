@@ -7,16 +7,28 @@ from io import StringIO
 
 import numpy as np
 
+from geometry.inertia import principal_moments
+from geometry.physical_constants import Phy, get_physical_constants
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_core import ScientificValidationError, build_run_manifest
+from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic, build_topology, primitives_from_topology
 from merlino_fit.survibfit.primitives import eval_primitives
 from merlino_fit.survibfit.transforms import build_u
 from merlino_vpt2_vci.internal_gf import gic_labels_from_u, primitive_label
 
-from .contracts import IsotopologueObservation, SemiexperimentalFitRequest
+from .contracts import IsotopologueObservation, QMParameterPredicate, SemiexperimentalFitRequest
+
+
+ROTATIONAL_COMPONENTS = ("A", "B", "C")
+MOMENT_COMPONENTS = ("Ia", "Ib", "Ic")
+ROTCONST_TO_MOMENT = (
+    get_physical_constants()[Phy.PLANCK]
+    / (8.0 * np.pi**2 * get_physical_constants()[Phy.TO_KG] * (1.0e-10) ** 2)
+    * 1.0e-6
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +59,19 @@ class SemiexperimentalFitDiagnostics:
     damping: float
     accepted_steps: int
     rejected_steps: int
+    observable: str
+    components: tuple[str, ...]
+    planar: bool
+
+
+@dataclass(frozen=True)
+class MeasurementModel:
+    observable: str
+    components: tuple[str, ...]
+    labels: tuple[tuple[str, str], ...]
+    observed: np.ndarray
+    weights: np.ndarray
+    planar: bool
 
 
 @dataclass(frozen=True)
@@ -93,6 +118,7 @@ def fit_semiexperimental_geometry(
     _validate_observations(request.observations, len(atoms))
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers)
+    measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
     active_mask = _active_mask(labels, request.fixed_parameters)
     if not np.any(active_mask):
         raise ScientificValidationError("All semiexperimental GIC parameters are fixed")
@@ -106,20 +132,22 @@ def fit_semiexperimental_geometry(
         prims, u_matrix, labels = _gic_model(coords, z_numbers)
         active_mask = _active_mask(labels, request.fixed_parameters)
         q = _gic_values(prims, u_matrix, coords)
-        calc = _constants_vector(atoms, coords, request.observations)
-        obs = _observed_vector(request.observations)
-        weights = _weights_vector(request.observations)
+        calc = _measurement_vector(atoms, coords, request, q, labels, measurement_model)
+        obs = measurement_model.observed
+        weights = measurement_model.weights
         sqrt_weights = np.sqrt(weights)
         residual = obs - calc
         weighted_residual = residual * sqrt_weights
-        objective = _objective(weighted_residual)
+        current_objective = objective(weighted_residual)
         jac = _jacobian_constants_wrt_gics(
             atoms,
             coords,
-            request.observations,
+            request,
             prims,
             u_matrix,
             active_mask,
+            labels,
+            measurement_model,
             step=step,
         )
         if np.sqrt(np.mean(residual * residual)) < tolerance_MHz:
@@ -130,22 +158,23 @@ def fit_semiexperimental_geometry(
         if float(np.linalg.norm(gradient, ord=np.inf)) < gradient_tolerance:
             convergence_reason = "gradient_tolerance"
             break
-        lhs = jac_weighted.T @ jac_weighted + current_damping * np.eye(jac.shape[1])
-        dq_active = np.linalg.solve(lhs, gradient)
-        dq_active = _limit_step(dq_active, max_step)
+        dq_active = damped_normal_step(jac_weighted, weighted_residual, current_damping)
+        dq_active = limit_step(dq_active, max_step)
         dq = np.zeros_like(q)
         dq[np.where(active_mask)[0]] = dq_active
         candidate, candidate_objective = _line_search_update(
             atoms,
             coords,
             z_numbers,
-            request.observations,
+            request,
+            labels,
+            measurement_model,
             prims,
             u_matrix,
             dq,
-            current_objective=objective,
+            current_objective=current_objective,
         )
-        if candidate_objective < objective:
+        if candidate_objective < current_objective:
             coords = candidate
             accepted_steps += 1
             current_damping = max(current_damping / 3.0, 1.0e-14)
@@ -163,13 +192,14 @@ def fit_semiexperimental_geometry(
     active_mask = _active_mask(labels, request.fixed_parameters)
     q_final = _gic_values(prims, u_matrix, coords)
     bq = u_matrix.T @ b_matrix_analytic(prims, coords)
-    calc = _constants_vector(atoms, coords, request.observations)
-    obs = _observed_vector(request.observations)
+    measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
+    calc = _measurement_vector(atoms, coords, request, q_final, labels, measurement_model)
+    obs = measurement_model.observed
     residual = obs - calc
     jac = _jacobian_constants_wrt_gics(
-        atoms, coords, request.observations, prims, u_matrix, active_mask, step=step
+        atoms, coords, request, prims, u_matrix, active_mask, labels, measurement_model, step=step
     )
-    sqrt_weights = np.sqrt(_weights_vector(request.observations))
+    sqrt_weights = np.sqrt(measurement_model.weights)
     weighted_jac = jac * sqrt_weights[:, None]
     weighted_residual = residual * sqrt_weights
     hessian = _least_squares_hessian(weighted_jac)
@@ -184,10 +214,13 @@ def fit_semiexperimental_geometry(
         damping=current_damping,
         accepted_steps=accepted_steps,
         rejected_steps=rejected_steps,
+        observable=measurement_model.observable,
+        components=measurement_model.components,
+        planar=measurement_model.planar,
     )
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active)
-    residual_rows = _residual_rows(request.observations, calc, obs)
+    residual_rows = _residual_rows(measurement_model, calc, obs)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
     manifest = None
     if outdir is not None:
@@ -295,7 +328,7 @@ def parameters_csv(parameters: tuple[SemiexperimentalParameter, ...]) -> str:
 def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
     stream = StringIO()
     writer = csv.writer(stream)
-    writer.writerow(["isotopologue", "constant", "observed_equilibrium_MHz", "calculated_MHz", "residual_MHz"])
+    writer.writerow(["isotopologue", "observable", "observed", "calculated", "residual"])
     for r in residuals:
         writer.writerow([
             r.isotopologue,
@@ -368,23 +401,30 @@ def _active_mask(labels: tuple[str, ...], fixed: tuple[str, ...]) -> np.ndarray:
 def _jacobian_constants_wrt_gics(
     atoms: list[str],
     coords: np.ndarray,
-    observations: tuple[IsotopologueObservation, ...],
+    request: SemiexperimentalFitRequest,
     prims: object,
     u_matrix: np.ndarray,
     active_mask: np.ndarray,
+    labels: tuple[str, ...],
+    measurement_model: "MeasurementModel",
     *,
     step: float,
 ) -> np.ndarray:
     active_indices = np.where(active_mask)[0]
     base_q = _gic_values(prims, u_matrix, coords)
-    jac = np.zeros((3 * len(observations), len(active_indices)), dtype=float)
+    jac = np.zeros((len(measurement_model.observed), len(active_indices)), dtype=float)
     for col, idx in enumerate(active_indices):
         dq = np.zeros_like(base_q)
         dq[idx] = step
         plus = _displace_along_gics(coords, prims, u_matrix, dq)
+        plus_q = _gic_values(prims, u_matrix, plus)
         dq[idx] = -step
         minus = _displace_along_gics(coords, prims, u_matrix, dq)
-        jac[:, col] = (_constants_vector(atoms, plus, observations) - _constants_vector(atoms, minus, observations)) / (2.0 * step)
+        minus_q = _gic_values(prims, u_matrix, minus)
+        jac[:, col] = (
+            _measurement_vector(atoms, plus, request, plus_q, labels, measurement_model)
+            - _measurement_vector(atoms, minus, request, minus_q, labels, measurement_model)
+        ) / (2.0 * step)
     return jac
 
 
@@ -398,15 +438,17 @@ def _line_search_update(
     atoms: list[str],
     coords: np.ndarray,
     z_numbers: np.ndarray,
-    observations: tuple[IsotopologueObservation, ...],
+    request: SemiexperimentalFitRequest,
+    labels: tuple[str, ...],
+    measurement_model: "MeasurementModel",
     prims: object,
     u_matrix: np.ndarray,
     dq: np.ndarray,
     *,
     current_objective: float,
 ) -> tuple[np.ndarray, float]:
-    observed = _observed_vector(observations)
-    sqrt_weights = np.sqrt(_weights_vector(observations))
+    observed = measurement_model.observed
+    sqrt_weights = np.sqrt(measurement_model.weights)
     best_coords = coords
     best_objective = current_objective
     for scale in (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625):
@@ -415,11 +457,14 @@ def _line_search_update(
             _gic_model(candidate, z_numbers)
         except Exception:
             continue
-        residual = (observed - _constants_vector(atoms, candidate, observations)) * sqrt_weights
-        objective = _objective(residual)
-        if objective < best_objective:
+        q_candidate = _gic_values(prims, u_matrix, candidate)
+        residual = (
+            observed - _measurement_vector(atoms, candidate, request, q_candidate, labels, measurement_model)
+        ) * sqrt_weights
+        candidate_objective = objective(residual)
+        if candidate_objective < best_objective:
             best_coords = candidate
-            best_objective = objective
+            best_objective = candidate_objective
             break
     return best_coords, best_objective
 
@@ -437,6 +482,99 @@ def _constants_vector(
     return np.array(values, dtype=float)
 
 
+def _moments_vector(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    observations: tuple[IsotopologueObservation, ...],
+) -> np.ndarray:
+    values: list[float] = []
+    for obs in observations:
+        isotopes = _isotopes_for_observation(atoms, obs)
+        structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in coords], isotopes=isotopes)
+        values.extend(principal_moments(structure, isotopic=True))
+    return np.array(values, dtype=float)
+
+
+def _build_measurement_model(
+    request: SemiexperimentalFitRequest,
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+) -> MeasurementModel:
+    observable = "moments" if request.observable == "auto" else request.observable
+    planar = _is_planar(coords)
+    components = _select_components(request, observable, atoms, coords, prims, u_matrix, planar)
+    observed = _experimental_observed_vector(request, observable, components)
+    weights = _experimental_weights_vector(request, observable, components)
+    row_labels: list[tuple[str, str]] = []
+    for obs in request.observations:
+        row_labels.extend((obs.label, comp) for comp in components)
+    predicate_values, predicate_weights, predicate_labels = _predicate_observations(request.qm_predicates, labels)
+    if predicate_values.size:
+        observed = np.concatenate([observed, predicate_values])
+        weights = np.concatenate([weights, predicate_weights])
+        row_labels.extend(predicate_labels)
+    return MeasurementModel(
+        observable=observable,
+        components=components,
+        labels=tuple(row_labels),
+        observed=observed,
+        weights=weights,
+        planar=planar,
+    )
+
+
+def _measurement_vector(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    request: SemiexperimentalFitRequest,
+    q_values: np.ndarray,
+    labels: tuple[str, ...],
+    model: MeasurementModel,
+) -> np.ndarray:
+    if model.observable == "moments":
+        raw = _moments_vector(atoms, coords, request.observations)
+        selected = _select_raw_components(raw, MOMENT_COMPONENTS, model.components)
+    else:
+        raw = _constants_vector(atoms, coords, request.observations)
+        selected = _select_raw_components(raw, ROTATIONAL_COMPONENTS, model.components)
+    predicate_values = _predicate_values(request.qm_predicates, labels, q_values)
+    if predicate_values.size:
+        return np.concatenate([selected, predicate_values])
+    return selected
+
+
+def _experimental_observed_vector(
+    request: SemiexperimentalFitRequest,
+    observable: str,
+    components: tuple[str, ...],
+) -> np.ndarray:
+    if observable == "moments":
+        raw = []
+        for obs in request.observations:
+            raw.extend(_constants_to_moments(obs.corrected.as_tuple()))
+        return _select_raw_components(np.array(raw, dtype=float), MOMENT_COMPONENTS, components)
+    raw = _observed_vector(request.observations)
+    return _select_raw_components(raw, ROTATIONAL_COMPONENTS, components)
+
+
+def _experimental_weights_vector(
+    request: SemiexperimentalFitRequest,
+    observable: str,
+    components: tuple[str, ...],
+) -> np.ndarray:
+    values: list[float] = []
+    for obs in request.observations:
+        if observable == "moments":
+            values.extend(_moment_weights(obs))
+        else:
+            values.extend(obs.weights.as_tuple() if obs.weights is not None else (1.0, 1.0, 1.0))
+    component_names = MOMENT_COMPONENTS if observable == "moments" else ROTATIONAL_COMPONENTS
+    return _select_raw_components(np.array(values, dtype=float), component_names, components)
+
+
 def _observed_vector(observations: tuple[IsotopologueObservation, ...]) -> np.ndarray:
     values: list[float] = []
     for obs in observations:
@@ -451,17 +589,135 @@ def _weights_vector(observations: tuple[IsotopologueObservation, ...]) -> np.nda
     return np.array(values, dtype=float)
 
 
-def _residual_rows(
+def _select_components(
+    request: SemiexperimentalFitRequest,
+    observable: str,
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    planar: bool,
+) -> tuple[str, ...]:
+    if observable == "moments":
+        return MOMENT_COMPONENTS
+    if request.rotational_components != "auto":
+        return tuple(request.rotational_components)
+    if not planar:
+        return ROTATIONAL_COMPONENTS
+    return _best_planar_rotational_pair(atoms, coords, request.observations, prims, u_matrix)
+
+
+def _best_planar_rotational_pair(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
     observations: tuple[IsotopologueObservation, ...],
+    prims: object,
+    u_matrix: np.ndarray,
+) -> tuple[str, ...]:
+    candidates = (("A", "B"), ("A", "C"), ("B", "C"))
+    base_q = _gic_values(prims, u_matrix, coords)
+    full = np.zeros((3 * len(observations), len(base_q)), dtype=float)
+    for idx in range(len(base_q)):
+        dq = np.zeros_like(base_q)
+        dq[idx] = 1.0e-4
+        plus = _displace_along_gics(coords, prims, u_matrix, dq)
+        dq[idx] = -1.0e-4
+        minus = _displace_along_gics(coords, prims, u_matrix, dq)
+        full[:, idx] = (_constants_vector(atoms, plus, observations) - _constants_vector(atoms, minus, observations)) / 2.0e-4
+    best = candidates[0]
+    best_score = (-1, float("inf"))
+    for pair in candidates:
+        subset = _select_raw_components(full, ROTATIONAL_COMPONENTS, pair)
+        singular = np.linalg.svd(subset, compute_uv=False)
+        rank = int(np.sum(singular > max(subset.shape) * np.finfo(float).eps * (singular[0] if singular.size else 0.0)))
+        cond = float(singular[0] / singular[-1]) if singular.size and singular[-1] > 0.0 else float("inf")
+        score = (rank, cond)
+        if score[0] > best_score[0] or (score[0] == best_score[0] and score[1] < best_score[1]):
+            best = pair
+            best_score = score
+    return best
+
+
+def _select_raw_components(raw: np.ndarray, component_names: tuple[str, ...], selected: tuple[str, ...]) -> np.ndarray:
+    arr = np.asarray(raw, dtype=float)
+    if arr.ndim == 1:
+        arr = arr.reshape((-1, len(component_names)))
+        idx = [component_names.index(item) for item in selected]
+        return arr[:, idx].reshape(-1)
+    idx = []
+    for block in range(arr.shape[0] // len(component_names)):
+        idx.extend(block * len(component_names) + component_names.index(item) for item in selected)
+    return arr[idx, :]
+
+
+def _constants_to_moments(constants: tuple[float, float, float]) -> tuple[float, float, float]:
+    return tuple(ROTCONST_TO_MOMENT / value if value > 0.0 else 0.0 for value in constants)
+
+
+def _moment_weights(obs: IsotopologueObservation) -> tuple[float, float, float]:
+    if obs.weights is None:
+        return (1.0, 1.0, 1.0)
+    constants = obs.corrected.as_tuple()
+    sigmas_b = tuple((1.0 / weight) ** 0.5 for weight in obs.weights.as_tuple())
+    weights = []
+    for b_value, sigma_b in zip(constants, sigmas_b):
+        sigma_i = abs(ROTCONST_TO_MOMENT * sigma_b / (b_value * b_value))
+        weights.append(1.0 / (sigma_i * sigma_i) if sigma_i > 0.0 else 1.0)
+    return tuple(weights)
+
+
+def _predicate_observations(
+    predicates: tuple[QMParameterPredicate, ...],
+    labels: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray, list[tuple[str, str]]]:
+    values = []
+    weights = []
+    row_labels = []
+    for predicate in predicates:
+        matches = _predicate_indices(predicate, labels)
+        if not matches:
+            raise ScientificValidationError(f"QM predicate did not match any GIC: {predicate.label_pattern}")
+        for idx in matches:
+            values.append(predicate.value)
+            weights.append(predicate.weight)
+            row_labels.append((predicate.source, labels[idx]))
+    return np.array(values, dtype=float), np.array(weights, dtype=float), row_labels
+
+
+def _predicate_values(
+    predicates: tuple[QMParameterPredicate, ...],
+    labels: tuple[str, ...],
+    q_values: np.ndarray,
+) -> np.ndarray:
+    values = []
+    for predicate in predicates:
+        for idx in _predicate_indices(predicate, labels):
+            values.append(float(q_values[idx]))
+    return np.array(values, dtype=float)
+
+
+def _predicate_indices(predicate: QMParameterPredicate, labels: tuple[str, ...]) -> list[int]:
+    pattern = predicate.label_pattern.lower()
+    return [idx for idx, label in enumerate(labels) if pattern in label.lower()]
+
+
+def _is_planar(coords: np.ndarray, tol: float = 1.0e-3) -> bool:
+    centered = np.asarray(coords, dtype=float) - np.mean(coords, axis=0)
+    if centered.shape[0] < 4:
+        return False
+    singular = np.linalg.svd(centered, compute_uv=False)
+    scale = max(float(singular[0]), 1.0)
+    return float(singular[-1]) / scale < tol
+
+
+def _residual_rows(
+    model: MeasurementModel,
     calculated: np.ndarray,
     observed: np.ndarray,
 ) -> tuple[SemiexperimentalResidual, ...]:
     rows = []
-    labels = ("A", "B", "C")
-    for iso_idx, obs in enumerate(observations):
-        for comp_idx, label in enumerate(labels):
-            idx = 3 * iso_idx + comp_idx
-            rows.append(SemiexperimentalResidual(obs.label, label, float(observed[idx]), float(calculated[idx]), float(observed[idx] - calculated[idx])))
+    for idx, (isotopologue, label) in enumerate(model.labels):
+        rows.append(SemiexperimentalResidual(isotopologue, label, float(observed[idx]), float(calculated[idx]), float(observed[idx] - calculated[idx])))
     return tuple(rows)
 
 
@@ -489,18 +745,6 @@ def _covariance(jac: np.ndarray, residual: np.ndarray) -> np.ndarray:
     sigma2 = float(residual @ residual) / dof
     return sigma2 * np.linalg.pinv(jac.T @ jac, rcond=1.0e-10)
 
-
-def _objective(weighted_residual: np.ndarray) -> float:
-    return 0.5 * float(weighted_residual @ weighted_residual)
-
-
-def _limit_step(step: np.ndarray, max_norm: float) -> np.ndarray:
-    norm = float(np.linalg.norm(step))
-    if max_norm <= 0.0 or norm <= max_norm:
-        return step
-    return step * (max_norm / norm)
-
-
 def _diagnostics(
     weighted_jac: np.ndarray,
     weighted_residual: np.ndarray,
@@ -509,30 +753,26 @@ def _diagnostics(
     damping: float,
     accepted_steps: int,
     rejected_steps: int,
+    observable: str,
+    components: tuple[str, ...],
+    planar: bool,
 ) -> SemiexperimentalFitDiagnostics:
-    if weighted_jac.size:
-        singular = np.linalg.svd(weighted_jac, compute_uv=False)
-        threshold = max(weighted_jac.shape) * np.finfo(float).eps * (float(singular[0]) if singular.size else 0.0)
-        rank = int(np.sum(singular > threshold))
-        if singular.size and singular[-1] > threshold:
-            condition = float(singular[0] / singular[-1])
-        else:
-            condition = float("inf")
-    else:
-        rank = 0
-        condition = float("inf")
-    objective = _objective(weighted_residual)
+    conditioning = rank_condition(weighted_jac)
+    obj = objective(weighted_residual)
     dof = max(weighted_residual.size - weighted_jac.shape[1], 1) if weighted_jac.ndim == 2 else 1
     return SemiexperimentalFitDiagnostics(
         convergence_reason=convergence_reason,
-        objective=objective,
+        objective=obj,
         weighted_rms=float(np.sqrt(np.mean(weighted_residual * weighted_residual))) if weighted_residual.size else 0.0,
         reduced_chi_square=float((weighted_residual @ weighted_residual) / dof) if weighted_residual.size else 0.0,
-        rank=rank,
-        condition_number=condition,
+        rank=conditioning.rank,
+        condition_number=conditioning.condition_number,
         damping=float(damping),
         accepted_steps=accepted_steps,
         rejected_steps=rejected_steps,
+        observable=observable,
+        components=components,
+        planar=planar,
     )
 
 

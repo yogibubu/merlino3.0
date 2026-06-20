@@ -7,6 +7,7 @@ stable helpers that older Merlino3 modules can adopt incrementally.
 from .config import MerlinoConfig, load_config, write_default_config
 from .errors import BackendError, InputError, MerlinoError, ParseError, ScientificValidationError
 from .manifest import RunManifest, build_run_manifest, file_checksums, sha256_file, write_manifest
+from .numerics import RankCondition, damped_normal_step, limit_step, objective, rank_condition
 from .paths import repo_root
 from .project import ProjectState, ensure_project_state
 from .workspace import WorkspaceLayout, ensure_workspace, slugify
@@ -18,14 +19,19 @@ __all__ = [
     "MerlinoError",
     "ParseError",
     "ProjectState",
+    "RankCondition",
     "RunManifest",
     "ScientificValidationError",
     "WorkspaceLayout",
     "build_run_manifest",
+    "damped_normal_step",
     "ensure_project_state",
     "ensure_workspace",
     "file_checksums",
+    "limit_step",
     "load_config",
+    "objective",
+    "rank_condition",
     "repo_root",
     "sha256_file",
     "slugify",

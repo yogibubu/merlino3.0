@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
+import pytest
+
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_core.cli import main as merlino_cli
+from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_gaussian import summarize_gaussian_log
 from merlino_semiexp import IsotopologueObservation, RotationalConstants, write_observations_csv
 from merlino_gui import discover_manifests
@@ -38,6 +42,20 @@ def test_workspace_config_and_manifest_contracts(tmp_path):
     assert manifest["workflow"] == "demo"
     assert "input" in manifest["input_sha256"]
     assert "output" in manifest["output_sha256"]
+
+
+def test_shared_numerics_lm_step_and_conditioning():
+    jac = np.array([[1.0], [2.0]])
+    residual = np.array([1.0, 1.0])
+
+    step = damped_normal_step(jac, residual, damping=0.0)
+    conditioning = rank_condition(jac)
+
+    assert step == pytest.approx([0.6])
+    assert limit_step(np.array([3.0, 4.0]), 1.0) == pytest.approx([0.6, 0.8])
+    assert objective(residual) == pytest.approx(1.0)
+    assert conditioning.rank == 1
+    assert np.isfinite(conditioning.condition_number)
 
 
 def test_gaussian_log_summary_parser(tmp_path):

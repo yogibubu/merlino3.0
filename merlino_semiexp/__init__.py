@@ -3,6 +3,7 @@
 from .contracts import (
     CorrectedRotationalConstants,
     IsotopologueObservation,
+    QMParameterPredicate,
     RotationalConstants,
     SemiexperimentalFitRequest,
     VibrationalCorrection,
@@ -32,6 +33,7 @@ __all__ = [
     "SemiexperimentalParameter",
     "SemiexperimentalResidual",
     "IsotopologueObservation",
+    "QMParameterPredicate",
     "RotationalConstants",
     "SemiexperimentalFitRequest",
     "VibrationalCorrection",

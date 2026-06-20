@@ -57,10 +57,29 @@ class IsotopologueObservation:
 
 
 @dataclass(frozen=True)
+class QMParameterPredicate:
+    """Weighted QM prior/predicate for a generated GIC parameter."""
+
+    label_pattern: str
+    value: float
+    sigma: float
+    source: str = "qm"
+
+    @property
+    def weight(self) -> float:
+        if self.sigma <= 0.0:
+            raise ValueError("QM predicate sigma must be positive")
+        return 1.0 / (self.sigma * self.sigma)
+
+
+@dataclass(frozen=True)
 class SemiexperimentalFitRequest:
     initial_geometry: Path
     observations: tuple[IsotopologueObservation, ...]
     fixed_parameters: tuple[str, ...] = ()
+    observable: str = "moments"
+    rotational_components: str = "auto"
+    qm_predicates: tuple[QMParameterPredicate, ...] = ()
 
     def validate(self) -> None:
         if not self.observations:
@@ -68,3 +87,12 @@ class SemiexperimentalFitRequest:
         labels = [item.label for item in self.observations]
         if len(set(labels)) != len(labels):
             raise ValueError("Duplicate isotopologue labels are not allowed")
+        if self.observable not in {"moments", "rotational_constants", "auto"}:
+            raise ValueError("observable must be moments, rotational_constants or auto")
+        if self.rotational_components not in {"auto", "ABC", "AB", "AC", "BC"}:
+            raise ValueError("rotational_components must be auto, ABC, AB, AC or BC")
+        for predicate in self.qm_predicates:
+            if not predicate.label_pattern.strip():
+                raise ValueError("QM predicate label pattern cannot be empty")
+            if predicate.sigma <= 0.0:
+                raise ValueError("QM predicate sigma must be positive")

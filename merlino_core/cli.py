@@ -10,7 +10,7 @@ from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
 from merlino_gaussian import summarize_gaussian_log
 from merlino_gic import run_gicforge
-from merlino_semiexp import SemiexperimentalFitRequest, fit_semiexperimental_geometry, read_observations_csv
+from merlino_semiexp import QMParameterPredicate, SemiexperimentalFitRequest, fit_semiexperimental_geometry, read_observations_csv
 from merlino_vpt2_vci import (
     QuarticForceField,
     VCIOptions,
@@ -80,6 +80,14 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--step", type=float, default=1.0e-4)
     semiexp.add_argument("--damping", type=float, default=1.0e-8)
     semiexp.add_argument("--max-step", type=float, default=0.25)
+    semiexp.add_argument("--observable", choices=("moments", "rotational_constants", "auto"), default="moments")
+    semiexp.add_argument("--rotational-components", choices=("auto", "ABC", "AB", "AC", "BC"), default="auto")
+    semiexp.add_argument(
+        "--qm-predicate",
+        action="append",
+        default=[],
+        help="QM prior as label_pattern:value:sigma[:source]; can be repeated",
+    )
     return parser
 
 
@@ -185,6 +193,9 @@ def main(argv: list[str] | None = None) -> int:
             initial_geometry=args.xyz,
             observations=observations,
             fixed_parameters=fixed,
+            observable=args.observable,
+            rotational_components=args.rotational_components,
+            qm_predicates=_parse_qm_predicates(args.qm_predicate),
         )
         result = fit_semiexperimental_geometry(
             request,
@@ -201,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"convergence: {result.diagnostics.convergence_reason}")
         print(f"rank: {result.diagnostics.rank}")
         print(f"condition_number: {result.diagnostics.condition_number:.8g}")
+        print(f"observable: {result.diagnostics.observable}")
+        print(f"components: {','.join(result.diagnostics.components)}")
         return 0
 
     if args.command == "gaussian-summary":
@@ -272,6 +285,17 @@ def _parse_active_modes(raw: str) -> tuple[int, ...] | None:
 
 def _parse_fixed_parameters(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.replace(";", ",").split(",") if part.strip())
+
+
+def _parse_qm_predicates(items: list[str]) -> tuple[QMParameterPredicate, ...]:
+    predicates = []
+    for item in items:
+        parts = item.split(":")
+        if len(parts) not in {3, 4}:
+            raise ValueError("--qm-predicate must be label_pattern:value:sigma[:source]")
+        source = parts[3] if len(parts) == 4 else "qm"
+        predicates.append(QMParameterPredicate(parts[0], float(parts[1]), float(parts[2]), source=source))
+    return tuple(predicates)
 
 
 if __name__ == "__main__":

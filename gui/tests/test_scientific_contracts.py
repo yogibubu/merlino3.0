@@ -10,6 +10,7 @@ from merlino_fit.survibfit.primitives import Primitive
 from merlino_semiexp import (
     CorrectedRotationalConstants,
     IsotopologueObservation,
+    QMParameterPredicate,
     RotationalConstants,
     SemiexperimentalFitRequest,
     VibrationalCorrection,
@@ -163,6 +164,8 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     result = fit_semiexperimental_geometry(request, max_iter=8, outdir=tmp_path / "semiexp")
 
     assert result.rms_MHz < initial_rms
+    assert result.diagnostics.observable == "moments"
+    assert result.diagnostics.components == ("Ia", "Ib", "Ic")
     assert result.b_matrix.shape[0] == len(result.gic_labels)
     assert result.b_matrix.shape[1] == 3 * len(atoms)
     assert result.hessian.shape == result.covariance.shape
@@ -187,6 +190,76 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
+
+
+def test_semiexperimental_qm_predicate_adds_weighted_parameter_prior(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+    request = SemiexperimentalFitRequest(
+        xyz,
+        (observation,),
+        qm_predicates=(QMParameterPredicate("GIC001", 1.0, 0.1, source="qm-estimate"),),
+    )
+
+    result = fit_semiexperimental_geometry(request, max_iter=1)
+
+    assert any(residual.isotopologue == "qm-estimate" for residual in result.residuals)
+    assert result.diagnostics.rank <= result.jacobian.shape[1]
+
+
+def test_planar_rotational_constants_auto_selects_stable_pair(tmp_path):
+    atoms = ["C", "O", "H", "H"]
+    coords = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [1.2000, 0.0000, 0.0000],
+            [-0.6000, 0.9000, 0.0000],
+            [-0.6000, -0.9000, 0.0000],
+        ],
+        dtype=float,
+    )
+    xyz = tmp_path / "formaldehyde.xyz"
+    xyz.write_text(
+        "\n".join(["4", "planar", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            observable="rotational_constants",
+            rotational_components="auto",
+        ),
+        max_iter=1,
+    )
+
+    assert result.diagnostics.planar is True
+    assert len(result.diagnostics.components) == 2
+    assert set(result.diagnostics.components).issubset({"A", "B", "C"})
 
 
 def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
