@@ -35,6 +35,10 @@ Be = B0 - delta
 `substitutions` is a semicolon-separated list of one-based atom substitutions,
 for example `2:13;5:18`. Empty substitutions mean the parent isotopologue.
 
+Optional columns `sigma_A_MHz`, `sigma_B_MHz` and `sigma_C_MHz` provide
+experimental uncertainties. When present, Merlino uses inverse-variance weights
+`1/sigma^2` and propagates these uncertainties to the fitted GIC parameters.
+
 ## Fit Model
 
 Merlino generates primitive internal coordinates from the starting Cartesian
@@ -42,9 +46,11 @@ geometry, builds the same non-redundant GIC transform used by the GF workflow,
 and optimizes active GIC values by least squares.
 
 For each isotopologue the solver computes equilibrium rotational constants from
-the current geometry and isotope masses. The Jacobian is evaluated numerically
-with respect to the non-redundant GICs, using the GIC B matrix to back-transform
-internal-coordinate steps to Cartesian displacements.
+the current geometry and isotope masses. The Wilson B matrix is analytic for the
+standard Merlino primitive coordinates used here (bonds, angles, linear bends,
+dihedrals and out-of-plane terms). The Jacobian of rotational constants with
+respect to the active non-redundant GICs is then used for the weighted
+least-squares normal equations and for error propagation.
 
 Parameters can be frozen with:
 
@@ -65,6 +71,12 @@ The output directory contains:
   active/fixed flags.
 - `semiexp_residuals.csv`: observed equilibrium constants, calculated constants
   and residuals in MHz.
+- `semiexp_covariance.csv`: propagated covariance matrix for active parameters.
+- `semiexp_correlation.csv`: correlation matrix for active parameters.
+- `semiexp_hessian.csv`: Gauss-Newton least-squares Hessian.
+- `semiexp_hessian_eigenvalues.csv`: eigenvalues used to classify the fitted
+  stationary point as `minimum`, `flat_or_rank_deficient` or
+  `transition_state_or_saddle`.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
 The parameter values use the native Merlino GIC units: stretches in Angstrom and

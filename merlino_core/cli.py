@@ -195,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"manifest: {result.manifest}")
         print(f"rms_MHz: {result.rms_MHz:.8g}")
         print(f"iterations: {result.iterations}")
+        print(f"stationary_point: {result.stationary_point}")
         return 0
 
     if args.command == "gaussian-summary":

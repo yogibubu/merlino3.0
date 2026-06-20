@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+mkdir -p build
+gfortran -std=legacy -ffixed-form -c semiexp_core.f -o build/semiexp_core.o
+echo "built build/semiexp_core.o"

@@ -11,7 +11,7 @@ from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
-from merlino_fit.survibfit.pipeline import b_matrix, build_topology, primitives_from_topology
+from merlino_fit.survibfit.pipeline import b_matrix_analytic, build_topology, primitives_from_topology
 from merlino_fit.survibfit.primitives import eval_primitives
 from merlino_fit.survibfit.transforms import build_u
 from merlino_vpt2_vci.internal_gf import gic_labels_from_u, primitive_label
@@ -44,7 +44,11 @@ class SemiexperimentalFitResult:
     parameters: tuple[SemiexperimentalParameter, ...]
     residuals: tuple[SemiexperimentalResidual, ...]
     covariance: np.ndarray
+    correlation: np.ndarray
     jacobian: np.ndarray
+    hessian: np.ndarray
+    hessian_eigenvalues: np.ndarray
+    stationary_point: str
     gic_labels: tuple[str, ...]
     b_matrix: np.ndarray
     iterations: int
@@ -120,7 +124,7 @@ def fit_semiexperimental_geometry(
     prims, u_matrix, labels = _gic_model(coords, z_numbers)
     active_mask = _active_mask(labels, request.fixed_parameters)
     q_final = _gic_values(prims, u_matrix, coords)
-    bq = u_matrix.T @ b_matrix(prims, coords, 1.0e-4)
+    bq = u_matrix.T @ b_matrix_analytic(prims, coords)
     calc = _constants_vector(atoms, coords, request.observations)
     obs = _observed_vector(request.observations)
     residual = obs - calc
@@ -128,14 +132,32 @@ def fit_semiexperimental_geometry(
         atoms, coords, request.observations, prims, u_matrix, active_mask, step=step
     )
     sqrt_weights = np.sqrt(_weights_vector(request.observations))
-    covariance = _covariance(jac * sqrt_weights[:, None], residual * sqrt_weights)
+    weighted_jac = jac * sqrt_weights[:, None]
+    weighted_residual = residual * sqrt_weights
+    hessian = _least_squares_hessian(weighted_jac)
+    covariance = _covariance(weighted_jac, weighted_residual)
+    correlation = _correlation(covariance)
+    hessian_eigenvalues = np.linalg.eigvalsh(hessian) if hessian.size else np.array(())
+    stationary_point = _stationary_point_type(hessian_eigenvalues)
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active)
     residual_rows = _residual_rows(request.observations, calc, obs)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
     manifest = None
     if outdir is not None:
-        manifest = write_semiexperimental_outputs(Path(outdir), request, atoms, coords, parameters, residual_rows)
+        manifest = write_semiexperimental_outputs(
+            Path(outdir),
+            request,
+            atoms,
+            coords,
+            parameters,
+            residual_rows,
+            covariance=covariance,
+            correlation=correlation,
+            hessian=hessian,
+            hessian_eigenvalues=hessian_eigenvalues,
+            stationary_point=stationary_point,
+        )
     return SemiexperimentalFitResult(
         atoms=tuple(atoms),
         initial_coordinates_angstrom=np.asarray(coords0, dtype=float),
@@ -143,7 +165,11 @@ def fit_semiexperimental_geometry(
         parameters=parameters,
         residuals=residual_rows,
         covariance=covariance,
+        correlation=correlation,
         jacobian=jac,
+        hessian=hessian,
+        hessian_eigenvalues=hessian_eigenvalues,
+        stationary_point=stationary_point,
         gic_labels=labels,
         b_matrix=bq,
         iterations=iteration,
@@ -159,22 +185,44 @@ def write_semiexperimental_outputs(
     coords: np.ndarray,
     parameters: tuple[SemiexperimentalParameter, ...],
     residuals: tuple[SemiexperimentalResidual, ...],
+    covariance: np.ndarray | None = None,
+    correlation: np.ndarray | None = None,
+    hessian: np.ndarray | None = None,
+    hessian_eigenvalues: np.ndarray | None = None,
+    stationary_point: str = "not_checked",
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     xyz = outdir / "semiexp_geometry.xyz"
     params = outdir / "semiexp_parameters.csv"
     residual_csv = outdir / "semiexp_residuals.csv"
+    covariance_csv = outdir / "semiexp_covariance.csv"
+    correlation_csv = outdir / "semiexp_correlation.csv"
+    hessian_csv = outdir / "semiexp_hessian.csv"
+    hessian_eigs_csv = outdir / "semiexp_hessian_eigenvalues.csv"
+    active_names = tuple(p.name for p in parameters if p.active)
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
     residual_csv.write_text(residuals_csv(residuals), encoding="utf-8")
+    covariance_csv.write_text(_matrix_csv(active_names, covariance), encoding="utf-8")
+    correlation_csv.write_text(_matrix_csv(active_names, correlation), encoding="utf-8")
+    hessian_csv.write_text(_matrix_csv(active_names, hessian), encoding="utf-8")
+    hessian_eigs_csv.write_text(_eigenvalues_csv(hessian_eigenvalues), encoding="utf-8")
     manifest = build_run_manifest(
         workflow="semiexperimental_geometry",
         status="completed",
         run_dir=outdir,
         inputs={"initial_geometry": request.initial_geometry},
-        outputs={"geometry": xyz, "parameters": params, "residuals": residual_csv},
-        parameters={"fixed_parameters": request.fixed_parameters},
-        backend={"solver": "python", "coordinate_model": "merlino-gic"},
+        outputs={
+            "geometry": xyz,
+            "parameters": params,
+            "residuals": residual_csv,
+            "covariance": covariance_csv,
+            "correlation": correlation_csv,
+            "hessian": hessian_csv,
+            "hessian_eigenvalues": hessian_eigs_csv,
+        },
+        parameters={"fixed_parameters": request.fixed_parameters, "stationary_point": stationary_point},
+        backend={"solver": "python", "coordinate_model": "merlino-gic", "b_matrix": "analytic"},
     )
     return manifest.write(outdir / "semiexp_manifest.json")
 
@@ -200,6 +248,25 @@ def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
             f"{r.calculated_MHz:.12g}",
             f"{r.residual_MHz:.12g}",
         ])
+    return stream.getvalue()
+
+
+def _matrix_csv(labels: tuple[str, ...], matrix: np.ndarray | None) -> str:
+    mat = np.asarray(matrix if matrix is not None else np.zeros((0, 0)), dtype=float)
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["parameter", *labels])
+    for label, row in zip(labels, mat):
+        writer.writerow([label, *[f"{value:.12g}" for value in row]])
+    return stream.getvalue()
+
+
+def _eigenvalues_csv(values: np.ndarray | None) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["index", "eigenvalue"])
+    for idx, value in enumerate(np.asarray(values if values is not None else (), dtype=float), start=1):
+        writer.writerow([idx, f"{value:.12g}"])
     return stream.getvalue()
 
 
@@ -254,7 +321,7 @@ def _jacobian_constants_wrt_gics(
 
 
 def _displace_along_gics(coords: np.ndarray, prims: object, u_matrix: np.ndarray, dq: np.ndarray) -> np.ndarray:
-    bq = u_matrix.T @ b_matrix(prims, coords, 1.0e-4)
+    bq = u_matrix.T @ b_matrix_analytic(prims, coords)
     dx = np.linalg.pinv(bq, rcond=1.0e-8) @ dq
     return coords + dx.reshape(coords.shape)
 
@@ -352,6 +419,33 @@ def _covariance(jac: np.ndarray, residual: np.ndarray) -> np.ndarray:
     dof = max(jac.shape[0] - jac.shape[1], 1)
     sigma2 = float(residual @ residual) / dof
     return sigma2 * np.linalg.pinv(jac.T @ jac, rcond=1.0e-10)
+
+
+def _least_squares_hessian(weighted_jac: np.ndarray) -> np.ndarray:
+    if weighted_jac.size == 0:
+        return np.zeros((0, 0), dtype=float)
+    return 2.0 * (weighted_jac.T @ weighted_jac)
+
+
+def _correlation(covariance: np.ndarray) -> np.ndarray:
+    if covariance.size == 0:
+        return np.zeros((0, 0), dtype=float)
+    diag = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+    denom = np.outer(diag, diag)
+    corr = np.zeros_like(covariance)
+    np.divide(covariance, denom, out=corr, where=denom > 0.0)
+    return np.clip(corr, -1.0, 1.0)
+
+
+def _stationary_point_type(eigenvalues: np.ndarray) -> str:
+    if eigenvalues.size == 0:
+        return "not_checked"
+    tol = max(1.0e-10, 1.0e-8 * float(np.max(np.abs(eigenvalues))))
+    if np.all(eigenvalues > tol):
+        return "minimum"
+    if np.any(eigenvalues < -tol):
+        return "transition_state_or_saddle"
+    return "flat_or_rank_deficient"
 
 
 def _isotopes_for_observation(atoms: list[str] | tuple[str, ...], obs: IsotopologueObservation) -> list[int | None]:

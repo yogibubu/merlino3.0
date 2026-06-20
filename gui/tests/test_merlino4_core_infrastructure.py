@@ -155,6 +155,8 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_geometry.xyz").exists()
     assert (outdir / "semiexp_parameters.csv").exists()
     assert (outdir / "semiexp_residuals.csv").exists()
+    assert (outdir / "semiexp_covariance.csv").exists()
+    assert (outdir / "semiexp_hessian.csv").exists()
     assert (outdir / "semiexp_manifest.json").exists()
 
 

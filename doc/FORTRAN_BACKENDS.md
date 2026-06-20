@@ -73,5 +73,20 @@ Gaussian/GDV.
 
 No historical Gaussian/GDV harmonic Fortran source is kept in Merlino4.
 
+## Semiexperimental Geometry Core
+
+`fortran/semiexp/` contains the Fortran77 numerical kernel for
+semiexperimental equilibrium geometry fitting:
+
+- `semiexp_core.f`: analytic B rows for basic internal coordinates, rotational
+  constants from Cartesian coordinates and isotope masses, weighted normal
+  equations, covariance and least-squares Hessian.
+- `compile_check`: fixed-form compile check producing only local build
+  artifacts.
+
+Python remains responsible for CSV/XYZ parsing, GIC construction, isotope
+bookkeeping, line search and workflow manifests. The Fortran source receives
+only numerical arrays and is registered as a source backend named `semiexp`.
+
 The `fortran/` root is intentionally documentation-only. Generated compiler
 logs such as `error` files are not source and should not be committed.

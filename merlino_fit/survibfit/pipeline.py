@@ -260,6 +260,17 @@ def b_matrix(prims, coords, fd_step):
     return b.copy()
 
 
+def b_matrix_analytic(prims, coords):
+    """Return the analytic primitive B matrix.
+
+    Standard valence primitives use closed-form gradients. Fragment translation
+    and rotation primitives retain the finite-difference fallback implemented in
+    `grad_primitive`; semiexperimental geometry fits use connected molecular
+    GICs, so their B matrix is analytic.
+    """
+    return b_matrix(prims, coords, fd_step=1e-4)
+
+
 def load_u_matrix(path, nprim):
     if path is None:
         return np.eye(nprim)

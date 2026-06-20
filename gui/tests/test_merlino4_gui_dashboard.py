@@ -20,6 +20,7 @@ def test_workflow_detail_text_lists_contract_fields():
     workflow = default_workflows()[0]
     text = workflow_detail_text(workflow)
     assert workflow.title in text
+    assert "Category:" in text
     assert "Inputs:" in text
     assert "Outputs:" in text
     assert workflow.service in text
@@ -31,16 +32,37 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     qtbot.addWidget(window)
 
     assert window.windowTitle() == "Merlino 4.0"
-    assert window.workflow_list.count() == len(default_workflows())
-    listed = {
-        window.workflow_list.item(i).data(Qt.UserRole)
-        for i in range(window.workflow_list.count())
-    }
+    assert _workflow_tree_count(window) == len(default_workflows())
+    listed = _workflow_tree_ids(window)
     assert "dvr" in listed
     assert "vpt2_vci" in listed
     assert "semiexp_geometry" in listed
+    assert window.menuBar().actions()
+    assert {window.menuBar().actions()[i].text() for i in range(window.menuBar().actions().__len__())} >= {
+        "Project",
+        "Structure",
+        "Coordinates",
+        "Vibrations",
+        "Dynamics",
+    }
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):
     args = build_parser().parse_args(["--workdir", str(tmp_path)])
     assert args.workdir == tmp_path
+
+
+def _workflow_tree_count(window):
+    total = 0
+    for top_idx in range(window.workflow_list.topLevelItemCount()):
+        total += window.workflow_list.topLevelItem(top_idx).childCount()
+    return total
+
+
+def _workflow_tree_ids(window):
+    ids = set()
+    for top_idx in range(window.workflow_list.topLevelItemCount()):
+        parent = window.workflow_list.topLevelItem(top_idx)
+        for child_idx in range(parent.childCount()):
+            ids.add(parent.child(child_idx).data(0, Qt.UserRole))
+    return ids

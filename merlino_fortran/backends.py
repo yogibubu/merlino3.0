@@ -62,6 +62,11 @@ SOURCE_BACKENDS: dict[str, SourceBackendSpec] = {
         source_dir="fortran/vpt2_vci",
         primary_source="vci_core.f",
     ),
+    "semiexp": SourceBackendSpec(
+        name="semiexp",
+        source_dir="fortran/semiexp",
+        primary_source="semiexp_core.f",
+    ),
 }
 
 

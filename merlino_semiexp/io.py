@@ -16,6 +16,21 @@ CSV_FIELDS = (
     "delta_C_MHz",
     "correction_source",
     "substitutions",
+    "sigma_A_MHz",
+    "sigma_B_MHz",
+    "sigma_C_MHz",
+)
+
+REQUIRED_CSV_FIELDS = (
+    "label",
+    "A_MHz",
+    "B_MHz",
+    "C_MHz",
+    "delta_A_MHz",
+    "delta_B_MHz",
+    "delta_C_MHz",
+    "correction_source",
+    "substitutions",
 )
 
 
@@ -43,10 +58,11 @@ def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:
     observations: list[IsotopologueObservation] = []
     with Path(path).open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        missing = set(CSV_FIELDS).difference(reader.fieldnames or ())
+        missing = set(REQUIRED_CSV_FIELDS).difference(reader.fieldnames or ())
         if missing:
             raise ValueError(f"Missing semiexp CSV columns: {', '.join(sorted(missing))}")
         for row in reader:
+            weights = _weights_from_sigmas(row)
             observations.append(
                 IsotopologueObservation(
                     label=str(row["label"]).strip(),
@@ -62,6 +78,7 @@ def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:
                         source=str(row["correction_source"] or "unspecified"),
                     ),
                     substitutions=parse_substitutions(str(row["substitutions"] or "")),
+                    weights=weights,
                 )
             )
     return tuple(observations)
@@ -85,6 +102,9 @@ def write_observations_csv(path: Path, observations: tuple[IsotopologueObservati
                     "delta_C_MHz": f"{obs.correction.delta_C_MHz:.12g}",
                     "correction_source": obs.correction.source,
                     "substitutions": format_substitutions(obs.substitutions),
+                    "sigma_A_MHz": _sigma_text(obs.weights.A_MHz) if obs.weights else "",
+                    "sigma_B_MHz": _sigma_text(obs.weights.B_MHz) if obs.weights else "",
+                    "sigma_C_MHz": _sigma_text(obs.weights.C_MHz) if obs.weights else "",
                 }
             )
     return target
@@ -106,3 +126,22 @@ def corrected_constants_rows(
             }
         )
     return rows
+
+
+def _weights_from_sigmas(row: dict[str, str]) -> RotationalConstants | None:
+    keys = ("sigma_A_MHz", "sigma_B_MHz", "sigma_C_MHz")
+    raw = tuple(str(row.get(key, "") or "").strip() for key in keys)
+    if not any(raw):
+        return None
+    if not all(raw):
+        raise ValueError("Semiexp sigma columns must be all present or all empty")
+    sigmas = tuple(float(item) for item in raw)
+    if any(sigma <= 0.0 for sigma in sigmas):
+        raise ValueError("Semiexp sigma columns must be positive when provided")
+    return RotationalConstants(*(1.0 / (sigma * sigma) for sigma in sigmas))
+
+
+def _sigma_text(weight: float) -> str:
+    if weight <= 0.0:
+        return ""
+    return f"{(1.0 / weight) ** 0.5:.12g}"

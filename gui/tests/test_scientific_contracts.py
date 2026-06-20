@@ -5,6 +5,8 @@ import numpy as np
 
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
+from merlino_fit.survibfit.pipeline import b_matrix_analytic
+from merlino_fit.survibfit.primitives import Primitive
 from merlino_semiexp import (
     CorrectedRotationalConstants,
     IsotopologueObservation,
@@ -89,6 +91,7 @@ def test_semiexperimental_observations_csv_roundtrip(tmp_path):
             label="parent",
             constants=RotationalConstants(1000.0, 800.0, 600.0),
             correction=VibrationalCorrection(1.0, 2.0, 3.0, source="gaussian"),
+            weights=RotationalConstants(100.0, 25.0, 4.0),
         ),
         IsotopologueObservation(
             label="13C1",
@@ -103,6 +106,8 @@ def test_semiexperimental_observations_csv_roundtrip(tmp_path):
     rows = corrected_constants_rows(loaded)
 
     assert loaded[1].substitutions == {1: 13}
+    assert loaded[0].weights is not None
+    assert loaded[0].weights.as_tuple() == pytest.approx((100.0, 25.0, 4.0))
     assert rows[0]["A_e_MHz"] == 999.0
     assert rows[1]["C_e_MHz"] == 587.5
 
@@ -111,6 +116,14 @@ def test_semiexperimental_substitution_parser():
     assert parse_substitutions("2:13;5:18") == {2: 13, 5: 18}
     with pytest.raises(ValueError):
         parse_substitutions("0:13")
+
+
+def test_analytic_b_matrix_for_bond_primitive():
+    coords = np.array([[0.0, 0.0, 0.0], [1.2, 0.0, 0.0]], dtype=float)
+    b = b_matrix_analytic([Primitive("bond", (0, 1))], coords)
+
+    assert b.shape == (1, 6)
+    assert b[0] == pytest.approx([-1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
 
 
 def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
@@ -152,10 +165,17 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert result.rms_MHz < initial_rms
     assert result.b_matrix.shape[0] == len(result.gic_labels)
     assert result.b_matrix.shape[1] == 3 * len(atoms)
+    assert result.hessian.shape == result.covariance.shape
+    assert result.correlation.shape == result.covariance.shape
+    assert result.stationary_point in {"minimum", "flat_or_rank_deficient"}
     assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_residuals.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_covariance.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_correlation.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_hessian.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
 
 

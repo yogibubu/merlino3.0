@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class WorkflowSpec:
     workflow_id: str
     title: str
+    category: str
     service: str
     description: str
     inputs: tuple[str, ...]
@@ -20,6 +21,7 @@ def default_workflows() -> list[WorkflowSpec]:
         WorkflowSpec(
             workflow_id="molecule",
             title="Molecule",
+            category="Structure",
             service="merlino_geometry",
             description="Structure input, isotopes, topology, rings and symmetry.",
             inputs=("XYZ/xyzin/SMILES from Python side", "isotope selections"),
@@ -29,6 +31,7 @@ def default_workflows() -> list[WorkflowSpec]:
         WorkflowSpec(
             workflow_id="gic",
             title="GIC / Gaussian Input",
+            category="Coordinates",
             service="merlino_gic + merlino_fortran",
             description="GIC construction, GICForge execution and Gaussian GIC input.",
             inputs=("cartesian XYZ", "GIC options", "Gaussian route/resources"),
@@ -38,6 +41,7 @@ def default_workflows() -> list[WorkflowSpec]:
         WorkflowSpec(
             workflow_id="dvr",
             title="DVR",
+            category="Dynamics",
             service="merlino_dvr + merlino_fortran",
             description="Gaussian scan/path output to DVR levels and wavefunctions.",
             inputs=("Gaussian log or grid CSV", "solver/boundary settings"),
@@ -47,6 +51,7 @@ def default_workflows() -> list[WorkflowSpec]:
         WorkflowSpec(
             workflow_id="vpt2_vci",
             title="GF / VPT2-VCI",
+            category="Vibrations",
             service="merlino_vpt2_vci",
             description="Wilson GF/PED and VPT2/VCI on canonical Merlino Hessian/QFF inputs.",
             inputs=("canonical Hessian/QFF", "optional Gaussian FCHK adapter", "basis cutoffs", "root/convergence settings"),
@@ -56,14 +61,16 @@ def default_workflows() -> list[WorkflowSpec]:
         WorkflowSpec(
             workflow_id="semiexp_geometry",
             title="Semiexperimental Geometry",
+            category="Structure",
             service="merlino_semiexp",
             description="Equilibrium geometry from isotopologue rotational constants and QM vibrational corrections.",
-            inputs=("experimental rotational constants", "isotopologues", "QM vibrational corrections"),
-            outputs=("fitted structure", "residuals", "covariance/correlation", "manifest"),
+            inputs=("parent XYZ", "isotopologue B0 constants", "QM vibrational corrections", "experimental uncertainties"),
+            outputs=("fitted structure", "residuals", "covariance/correlation", "least-squares Hessian", "minimum check", "manifest"),
         ),
         WorkflowSpec(
             workflow_id="jobs_reports",
             title="Jobs / Reports",
+            category="Project",
             service="merlino_core",
             description="Manifest browser, logs, reproducibility metadata and output collection.",
             inputs=("workflow manifests", "backend logs"),
