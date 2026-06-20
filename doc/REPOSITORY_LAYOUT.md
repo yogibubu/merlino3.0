@@ -1,6 +1,6 @@
 # Repository Layout
 
-This file is the operational map for Merlino 3.0.
+This file is the operational map for the Merlino repository.
 
 ## Root Policy
 
@@ -44,6 +44,6 @@ constructs, while still failing on real compilation/link errors.
 
 `fortran/gicforge/compile_MAC` is the canonical GICForge build command. It updates:
 
-- `fortran/gicforge/gicforge`
+- `fortran/gicforge/build/gicforge`
 - `bin/gicforge.x`
 - `bin/prova.x`

@@ -5,6 +5,7 @@ FC="${FC:-gfortran}"
 SDK_LIB="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
 BUILD_DIR="build"
 LOG="$BUILD_DIR/gicforge_build.log"
+TARGET="$BUILD_DIR/gicforge"
 
 mkdir -p "$BUILD_DIR"
 rm -f "$LOG"
@@ -16,9 +17,10 @@ rm -f "$LOG"
   dina25.f entors.f coord.f mkprim.f mkcyc.f mksalc.f \
   gicprune.f ../symmetry/gic_type_symmetry.f \
   pcsgeo.f symang.f tools1.f tools2.f symm.f \
-  -o gicforge \
+  -o "$TARGET" \
   >"$LOG" 2>&1
 
-cp gicforge ../../bin/gicforge.x
-cp gicforge ../../bin/prova.x
-echo "Built fortran/gicforge/gicforge, bin/gicforge.x, and compatibility alias bin/prova.x"
+mkdir -p ../../bin
+cp "$TARGET" ../../bin/gicforge.x
+cp "$TARGET" ../../bin/prova.x
+echo "Built fortran/gicforge/build/gicforge, bin/gicforge.x, and compatibility alias bin/prova.x"

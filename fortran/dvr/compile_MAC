@@ -5,6 +5,7 @@ FC="${FC:-gfortran}"
 SDK_LIB="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
 BUILD_DIR="build"
 LOG="$BUILD_DIR/dvr_build.log"
+TARGET="$BUILD_DIR/path_dvr"
 
 mkdir -p "$BUILD_DIR"
 rm -f "$LOG"
@@ -14,9 +15,9 @@ rm -f "$LOG"
   -w \
   -L"$SDK_LIB" \
   path_dvr.f dvr_hqrii.f \
-  -o path_dvr \
+  -o "$TARGET" \
   >"$LOG" 2>&1
 
 mkdir -p ../../bin
-cp path_dvr ../../bin/path_dvr.x
-echo "Built fortran/dvr/path_dvr and bin/path_dvr.x"
+cp "$TARGET" ../../bin/path_dvr.x
+echo "Built fortran/dvr/build/path_dvr and bin/path_dvr.x"

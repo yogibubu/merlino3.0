@@ -22,6 +22,12 @@ venv/
 *.err
 build/
 fortran/*/build/
+fortran/dvr/path_dvr
+fortran/gicforge/gicforge
+fortran/gicforge/msr.e
+fortran/gicforge/symm
+fortran/qcent/qcent.x
+fortran/symmetry/symm
 *_freeze_*.tar.gz
 *_freeze_*.sha256
 archives/freezes/

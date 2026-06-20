@@ -6,7 +6,6 @@ historical module.
 ## Active GICForge Backend
 
 - Source: `fortran/gicforge/`
-- Main executable in source tree: `fortran/gicforge/gicforge`
 - Runtime executable used by launchers: `bin/gicforge.x`
 - Compatibility runtime alias: `bin/prova.x`
 - Build command:
@@ -21,7 +20,9 @@ fixed-form legacy Fortran. This suppresses compiler deprecation noise such as
 shared DO labels, arithmetic IF, and Hollerith constants while preserving
 failure on actual compile/link errors.
 
-Build logs are written to `fortran/gicforge/build/gicforge_build.log`, which is
+The source-tree build output is `fortran/gicforge/build/gicforge`; runtime
+copies are written to `bin/gicforge.x` and `bin/prova.x`. Build logs are written
+to `fortran/gicforge/build/gicforge_build.log`. The whole `build/` directory is
 ignored by git.
 
 GICForge receives only Cartesian XYZ input from Merlino, builds redundant and

@@ -59,7 +59,7 @@ cd fortran/gicforge
 
 The build creates:
 
-- `fortran/gicforge/gicforge`
+- `fortran/gicforge/build/gicforge`
 - `bin/gicforge.x`
 - `bin/prova.x` as a compatibility alias
 

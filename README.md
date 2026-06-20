@@ -62,8 +62,8 @@ cd fortran/gicforge
 ```
 
 The Fortran compile script uses legacy-compatible flags and writes build logs
-under `fortran/gicforge/build/`; it updates `fortran/gicforge/gicforge`,
-`bin/gicforge.x`, and the compatibility alias `bin/prova.x`.
+under `fortran/gicforge/build/`; it updates `bin/gicforge.x` and the
+compatibility alias `bin/prova.x`.
 
 For the Fortran DVR backend:
 

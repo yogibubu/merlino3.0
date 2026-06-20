@@ -20,7 +20,7 @@
 - `geometry/elements.py` and `merlino_fit/topology/elements.py` (currently identical, domain-level split).
 - `merlino_fit/topology/readme_topology` and `topology/readme_topology` (compatibility pointers to `doc/topology_doc.txt`).
 - Binary/data duplicates:
-  - `bin/gicforge.x`, compatibility alias `bin/prova.x`, and `fortran/gicforge/gicforge`
+  - `bin/gicforge.x` and compatibility alias `bin/prova.x`
   - `fortran/read_xyzin.f` and `fortran/symmetry/read_xyzin.f`
   - `fortran/symmetry/xyzin` and `fortran/symmetry/xyzin2`
   - `geometry/fchkin` (sample FCHK kept as canonical; root duplicate removed)
