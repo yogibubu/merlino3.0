@@ -50,7 +50,7 @@ def test_vpt2_vci_inventory_records_active_backend_status():
     assert inventory.harmonic_internal_source.name == "gf.f"
     assert inventory.gdv_vci_driver_source is None or inventory.gdv_vci_driver_source.name == "l717.F"
     assert inventory.gdv_davidson_source is None or inventory.gdv_davidson_source.name == "utilnz.F"
-    assert inventory.active_fortran_sources == ()
+    assert {path.name for path in inventory.active_fortran_sources} == {"gf_core.f", "vci_core.f"}
     assert inventory.davidson_backend is None
     notes = " ".join(inventory.notes)
     assert "GF" in notes

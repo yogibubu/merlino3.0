@@ -10,8 +10,9 @@ can evolve independently.
 
 The planned scientific additions are:
 
-- VPT2/VCI from Gaussian quartic force fields, reusing the existing Fortran code
-  and adding Davidson diagonalization for large VCI spaces.
+- VPT2/VCI from Gaussian quartic force fields, using existing Fortran as a
+  reference while building independent Python and Fortran77 kernels with
+  Davidson diagonalization for large VCI spaces.
 - Semiexperimental equilibrium geometries from least-squares fits of
   isotopologue rotational constants with QM vibrational corrections.
 
@@ -39,7 +40,8 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
   and does not generate Gaussian paths.
 - `fortran/`: active Fortran backends. GICForge lives under
   `fortran/gicforge/`; the DVR kernel lives under `fortran/dvr/`; harmonic
-  internal-coordinate GF routines live under `fortran/harmonic_internal/`.
+  internal-coordinate GF routines live under `fortran/harmonic_internal/`; new
+  VPT2/VCI kernels live under `fortran/vpt2_vci/`.
 - `bin/`: runnable binaries used by launchers, such as `gicforge.x`.
 - `projects/`: local project/library data ignored by git.
 - `working/`: runtime working directory ignored by git.

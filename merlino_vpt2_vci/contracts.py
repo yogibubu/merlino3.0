@@ -77,7 +77,7 @@ def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
         "Harmonic internal-coordinate GF analysis is available through gf.f.",
         "GDV l717.F contains the current VPT2/VCI driver decks.",
         "GDV utilnz.F contains NHDiag, the current Davidson/subspace diagonalization source.",
-        "The Merlino4 standalone anharmonic VPT2/VCI backend still has to be extracted.",
+        "Merlino4 has independent Python and Fortran77 GF/VCI cores; Gaussian QFF tensor promotion is still being expanded.",
     ]
     return VPT2VCIInventory(
         harmonic_internal_source=harmonic_internal if harmonic_internal.exists() else None,

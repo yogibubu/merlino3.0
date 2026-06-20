@@ -44,6 +44,10 @@ def test_fortran_source_backend_resolution():
         resolve_source_backend("harmonic_internal", root=root)
         == root / "fortran" / "harmonic_internal" / "gf.f"
     )
+    assert (
+        resolve_source_backend("vpt2_vci", root=root)
+        == root / "fortran" / "vpt2_vci" / "vci_core.f"
+    )
 
 
 def test_harmonic_internal_source_compiles_to_object():
@@ -58,6 +62,21 @@ def test_harmonic_internal_source_compiles_to_object():
         text=True,
     )
     assert (root / "fortran" / "harmonic_internal" / "build" / "gf.o").exists()
+
+
+def test_vpt2_vci_source_compiles_to_objects():
+    if shutil.which("gfortran") is None:
+        pytest.skip("gfortran is not available")
+    root = repo_root(Path(__file__))
+    subprocess.run(
+        [str(root / "fortran" / "vpt2_vci" / "compile_check")],
+        cwd=root / "fortran" / "vpt2_vci",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert (root / "fortran" / "vpt2_vci" / "build" / "gf_core.o").exists()
+    assert (root / "fortran" / "vpt2_vci" / "build" / "vci_core.o").exists()
 
 
 def test_project_state_is_created_and_reloaded(tmp_path):
