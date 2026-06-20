@@ -51,11 +51,23 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     }
     window.select_workflow("semiexp_geometry")
     assert window.backend_selector.isEnabled()
+    assert not window.semiexp_panel.isHidden()
     assert window.backend_selector.findText("python") >= 0
     assert window.backend_selector.findText("fortran77") >= 0
     window.backend_selector.setCurrentText("fortran77")
     assert window.selected_backends["semiexp_geometry"] == "fortran77"
     assert "selected: fortran77" in window.detail_view.toPlainText()
+    window.semiexp_xyz.setText(str(tmp_path / "parent.xyz"))
+    window.semiexp_observations.setText(str(tmp_path / "isotopologues.toml"))
+    window.semiexp_outdir.setText(str(tmp_path / "semiexp"))
+    window.semiexp_fixed.setText("GIC001")
+    window.semiexp_qm.setText("GIC002:1.0:0.1:qm")
+    window.semiexp_classes.setText("CH:shared:bond(1,2)|bond(1,3);XYH:fixed:angle")
+    args = window.semiexp_command_args()
+    assert "--backend" in args
+    assert "fortran77" in args
+    assert args.count("--parameter-class") == 2
+    assert window.semiexp_run_button.isEnabled()
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):

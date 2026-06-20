@@ -11,6 +11,8 @@ Provided routines:
   coordinates and isotope masses.
 - `M4SENormalEq`: weighted least-squares normal equations, covariance and
   Gauss-Newton Hessian.
+- `M4SEClassNormalEq`: the same normal-equation kernel after compressing
+  shared parameter classes and blocking fixed classes.
 
 Compile check:
 

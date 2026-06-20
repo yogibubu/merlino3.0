@@ -13,6 +13,7 @@ from merlino_semiexp import (
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     ElectronicCorrection,
     IsotopologueObservation,
+    ParameterClassConstraint,
     QMParameterPredicate,
     RotationalConstants,
     SemiexperimentalFitRequest,
@@ -362,6 +363,90 @@ def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
 
     assert result.parameters[0].active is False
     assert any(parameter.active for parameter in result.parameters)
+
+
+def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            parameter_classes=(
+                ParameterClassConstraint("OH_stretches", ("bond(1,2)", "bond(1,3)"), "shared"),
+                ParameterClassConstraint("HOH_bend", ("angle(2,1,3)",), "fixed"),
+            ),
+        ),
+        max_iter=1,
+        outdir=tmp_path / "semiexp_classes",
+    )
+
+    shared = [parameter for parameter in result.parameters if parameter.parameter_class == "OH_stretches"]
+    fixed = [parameter for parameter in result.parameters if parameter.parameter_class == "HOH_bend"]
+
+    assert shared
+    assert all(parameter.active for parameter in shared)
+    assert fixed and all(not parameter.active for parameter in fixed)
+    assert result.jacobian.shape[1] == 1
+    params_text = (tmp_path / "semiexp_classes" / "semiexp_parameters.csv").read_text(encoding="utf-8")
+    assert "parameter_class" in params_text
+    assert "OH_stretches" in params_text
+
+
+def test_semiexperimental_kraitchman_comparison_for_single_substitution(tmp_path):
+    atoms = ["O", "H", "H"]
+    coords = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [0.0000, 0.0000, 0.9572],
+            [0.9266, 0.0000, -0.2396],
+        ],
+        dtype=float,
+    )
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(["3", "water", *[f"{atom} {x:.8f} {y:.8f} {z:.8f}" for atom, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    observations = (
+        IsotopologueObservation("parent", RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords)))),
+        IsotopologueObservation(
+            "D1",
+            RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords, [None, 2, None]))),
+            substitutions={2: 2},
+        ),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, observations),
+        max_iter=1,
+        outdir=tmp_path / "semiexp_krai",
+    )
+
+    assert len(result.kraitchman) == 3
+    assert {row.coordinate for row in result.kraitchman} == {"a", "b", "c"}
+    assert all(row.isotopologue == "D1" for row in result.kraitchman)
+    assert (tmp_path / "semiexp_krai" / "semiexp_kraitchman.csv").exists()
 
 
 def _structure(atoms, coords, isotopes=None):

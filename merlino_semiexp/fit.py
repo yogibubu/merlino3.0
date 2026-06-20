@@ -8,9 +8,11 @@ from io import StringIO
 import numpy as np
 
 from geometry.inertia import principal_moments
+from geometry.inertia import center_of_mass, inertia_tensor
 from geometry.physical_constants import Phy, get_physical_constants
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
+from geometry.isotopes_table import get_default_isotope, get_isotope
 from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
@@ -19,7 +21,7 @@ from merlino_fit.survibfit.primitives import eval_primitives
 from merlino_fit.survibfit.transforms import build_u
 from merlino_vpt2_vci.internal_gf import gic_labels_from_u, primitive_label
 
-from .contracts import IsotopologueObservation, QMParameterPredicate, SemiexperimentalFitRequest
+from .contracts import IsotopologueObservation, ParameterClassConstraint, QMParameterPredicate, SemiexperimentalFitRequest
 
 
 ROTATIONAL_COMPONENTS = ("A", "B", "C")
@@ -37,6 +39,7 @@ class SemiexperimentalParameter:
     value: float
     sigma: float
     active: bool
+    parameter_class: str = ""
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,18 @@ class SemiexperimentalResidual:
     observed_equilibrium_MHz: float
     calculated_MHz: float
     residual_MHz: float
+
+
+@dataclass(frozen=True)
+class KraitchmanComparison:
+    isotopologue: str
+    atom_index: int
+    atom: str
+    isotope_mass_number: int
+    coordinate: str
+    kraitchman_abs_angstrom: float
+    fitted_abs_angstrom: float
+    difference_angstrom: float
 
 
 @dataclass(frozen=True)
@@ -81,6 +96,7 @@ class SemiexperimentalFitResult:
     final_coordinates_angstrom: np.ndarray
     parameters: tuple[SemiexperimentalParameter, ...]
     residuals: tuple[SemiexperimentalResidual, ...]
+    kraitchman: tuple[KraitchmanComparison, ...]
     covariance: np.ndarray
     correlation: np.ndarray
     jacobian: np.ndarray
@@ -130,7 +146,7 @@ def fit_semiexperimental_geometry(
     previous_objective = None
     for iteration in range(1, max_iter + 1):
         prims, u_matrix, labels = _gic_model(coords, z_numbers)
-        active_mask = _active_mask(labels, request.fixed_parameters)
+        active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
         q = _gic_values(prims, u_matrix, coords)
         calc = _measurement_vector(atoms, coords, request, q, labels, measurement_model)
         obs = measurement_model.observed
@@ -139,7 +155,7 @@ def fit_semiexperimental_geometry(
         residual = obs - calc
         weighted_residual = residual * sqrt_weights
         current_objective = objective(weighted_residual)
-        jac = _jacobian_constants_wrt_gics(
+        jac_gic = _jacobian_constants_wrt_gics(
             atoms,
             coords,
             request,
@@ -150,6 +166,8 @@ def fit_semiexperimental_geometry(
             measurement_model,
             step=step,
         )
+        transform, _reduced_names, _class_by_gic = _parameter_class_transform(labels, active_mask, request.parameter_classes)
+        jac = jac_gic @ transform
         if np.sqrt(np.mean(residual * residual)) < tolerance_MHz:
             convergence_reason = "rms_tolerance"
             break
@@ -158,8 +176,9 @@ def fit_semiexperimental_geometry(
         if float(np.linalg.norm(gradient, ord=np.inf)) < gradient_tolerance:
             convergence_reason = "gradient_tolerance"
             break
-        dq_active = damped_normal_step(jac_weighted, weighted_residual, current_damping)
-        dq_active = limit_step(dq_active, max_step)
+        dq_reduced = damped_normal_step(jac_weighted, weighted_residual, current_damping)
+        dq_reduced = limit_step(dq_reduced, max_step)
+        dq_active = transform @ dq_reduced
         dq = np.zeros_like(q)
         dq[np.where(active_mask)[0]] = dq_active
         candidate, candidate_objective = _line_search_update(
@@ -189,16 +208,18 @@ def fit_semiexperimental_geometry(
         iteration = max_iter
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers)
-    active_mask = _active_mask(labels, request.fixed_parameters)
+    active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
     q_final = _gic_values(prims, u_matrix, coords)
     bq = u_matrix.T @ b_matrix_analytic(prims, coords)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
     calc = _measurement_vector(atoms, coords, request, q_final, labels, measurement_model)
     obs = measurement_model.observed
     residual = obs - calc
-    jac = _jacobian_constants_wrt_gics(
+    jac_gic = _jacobian_constants_wrt_gics(
         atoms, coords, request, prims, u_matrix, active_mask, labels, measurement_model, step=step
     )
+    transform, reduced_names, class_by_gic = _parameter_class_transform(labels, active_mask, request.parameter_classes)
+    jac = jac_gic @ transform
     sqrt_weights = np.sqrt(measurement_model.weights)
     weighted_jac = jac * sqrt_weights[:, None]
     weighted_residual = residual * sqrt_weights
@@ -219,8 +240,9 @@ def fit_semiexperimental_geometry(
         planar=measurement_model.planar,
     )
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
-    parameters = _parameters(labels, q_final, active_mask, sigmas_active)
+    parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
+    kraitchman_rows = _kraitchman_comparison(atoms, coords, request.observations)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
     manifest = None
     if outdir is not None:
@@ -231,6 +253,8 @@ def fit_semiexperimental_geometry(
             coords,
             parameters,
             residual_rows,
+            kraitchman_rows,
+            effective_parameter_names=reduced_names,
             covariance=covariance,
             correlation=correlation,
             hessian=hessian,
@@ -244,6 +268,7 @@ def fit_semiexperimental_geometry(
         final_coordinates_angstrom=coords,
         parameters=parameters,
         residuals=residual_rows,
+        kraitchman=kraitchman_rows,
         covariance=covariance,
         correlation=correlation,
         jacobian=jac,
@@ -266,6 +291,8 @@ def write_semiexperimental_outputs(
     coords: np.ndarray,
     parameters: tuple[SemiexperimentalParameter, ...],
     residuals: tuple[SemiexperimentalResidual, ...],
+    kraitchman: tuple[KraitchmanComparison, ...] = (),
+    effective_parameter_names: tuple[str, ...] = (),
     covariance: np.ndarray | None = None,
     correlation: np.ndarray | None = None,
     hessian: np.ndarray | None = None,
@@ -277,15 +304,17 @@ def write_semiexperimental_outputs(
     xyz = outdir / "semiexp_geometry.xyz"
     params = outdir / "semiexp_parameters.csv"
     residual_csv = outdir / "semiexp_residuals.csv"
+    kraitchman_csv = outdir / "semiexp_kraitchman.csv"
     covariance_csv = outdir / "semiexp_covariance.csv"
     correlation_csv = outdir / "semiexp_correlation.csv"
     hessian_csv = outdir / "semiexp_hessian.csv"
     hessian_eigs_csv = outdir / "semiexp_hessian_eigenvalues.csv"
     diagnostics_csv = outdir / "semiexp_diagnostics.csv"
-    active_names = tuple(p.name for p in parameters if p.active)
+    active_names = effective_parameter_names or _effective_parameter_names(parameters)
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
     residual_csv.write_text(residuals_csv(residuals), encoding="utf-8")
+    kraitchman_csv.write_text(kraitchman_csv_rows(kraitchman), encoding="utf-8")
     covariance_csv.write_text(_matrix_csv(active_names, covariance), encoding="utf-8")
     correlation_csv.write_text(_matrix_csv(active_names, correlation), encoding="utf-8")
     hessian_csv.write_text(_matrix_csv(active_names, hessian), encoding="utf-8")
@@ -300,6 +329,7 @@ def write_semiexperimental_outputs(
             "geometry": xyz,
             "parameters": params,
             "residuals": residual_csv,
+            "kraitchman": kraitchman_csv,
             "covariance": covariance_csv,
             "correlation": correlation_csv,
             "hessian": hessian_csv,
@@ -308,6 +338,10 @@ def write_semiexperimental_outputs(
         },
         parameters={
             "fixed_parameters": request.fixed_parameters,
+            "parameter_classes": tuple(
+                {"name": item.name, "patterns": item.patterns, "mode": item.mode}
+                for item in request.parameter_classes
+            ),
             "stationary_point": stationary_point,
             "convergence_reason": diagnostics.convergence_reason if diagnostics else "not_reported",
         },
@@ -319,10 +353,23 @@ def write_semiexperimental_outputs(
 def parameters_csv(parameters: tuple[SemiexperimentalParameter, ...]) -> str:
     stream = StringIO()
     writer = csv.writer(stream)
-    writer.writerow(["name", "value", "sigma", "active"])
+    writer.writerow(["name", "value", "sigma", "active", "parameter_class"])
     for p in parameters:
-        writer.writerow([p.name, f"{p.value:.12g}", f"{p.sigma:.12g}", int(p.active)])
+        writer.writerow([p.name, f"{p.value:.12g}", f"{p.sigma:.12g}", int(p.active), p.parameter_class])
     return stream.getvalue()
+
+
+def _effective_parameter_names(parameters: tuple[SemiexperimentalParameter, ...]) -> tuple[str, ...]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for parameter in parameters:
+        if not parameter.active:
+            continue
+        name = parameter.parameter_class or parameter.name
+        if name not in seen:
+            names.append(name)
+            seen.add(name)
+    return tuple(names)
 
 
 def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
@@ -336,6 +383,33 @@ def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
             f"{r.observed_equilibrium_MHz:.12g}",
             f"{r.calculated_MHz:.12g}",
             f"{r.residual_MHz:.12g}",
+        ])
+    return stream.getvalue()
+
+
+def kraitchman_csv_rows(rows: tuple[KraitchmanComparison, ...]) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow([
+        "isotopologue",
+        "atom_index",
+        "atom",
+        "isotope_A",
+        "axis",
+        "kraitchman_abs_A",
+        "fitted_abs_A",
+        "difference_A",
+    ])
+    for row in rows:
+        writer.writerow([
+            row.isotopologue,
+            row.atom_index,
+            row.atom,
+            row.isotope_mass_number,
+            row.coordinate,
+            f"{row.kraitchman_abs_angstrom:.12g}",
+            f"{row.fitted_abs_angstrom:.12g}",
+            f"{row.difference_angstrom:.12g}",
         ])
     return stream.getvalue()
 
@@ -387,15 +461,62 @@ def _gic_values(prims: object, u_matrix: np.ndarray, coords: np.ndarray) -> np.n
     return u_matrix.T @ eval_primitives(prims, coords)
 
 
-def _active_mask(labels: tuple[str, ...], fixed: tuple[str, ...]) -> np.ndarray:
-    if not fixed:
-        return np.ones(len(labels), dtype=bool)
+def _active_mask(
+    labels: tuple[str, ...],
+    fixed: tuple[str, ...],
+    parameter_classes: tuple[ParameterClassConstraint, ...] = (),
+) -> np.ndarray:
     mask = []
     fixed_l = tuple(item.lower() for item in fixed)
+    fixed_classes = tuple(item for item in parameter_classes if item.mode == "fixed")
     for label in labels:
         low = label.lower()
-        mask.append(not any(item and item in low for item in fixed_l))
+        explicit_fixed = any(item and item in low for item in fixed_l)
+        class_fixed = any(_class_matches(item, label) for item in fixed_classes)
+        mask.append(not explicit_fixed and not class_fixed)
     return np.array(mask, dtype=bool)
+
+
+def _parameter_class_transform(
+    labels: tuple[str, ...],
+    active_mask: np.ndarray,
+    parameter_classes: tuple[ParameterClassConstraint, ...],
+) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
+    active_indices = np.where(active_mask)[0]
+    if not len(active_indices):
+        return np.zeros((0, 0), dtype=float), (), tuple("" for _ in labels)
+    columns: list[np.ndarray] = []
+    names: list[str] = []
+    class_by_gic = [
+        next((item.name for item in parameter_classes if _class_matches(item, label)), "")
+        for label in labels
+    ]
+    shared_classes = tuple(item for item in parameter_classes if item.mode == "shared")
+    assigned = np.zeros(len(active_indices), dtype=bool)
+    for parameter_class in shared_classes:
+        local = [pos for pos, idx in enumerate(active_indices) if _class_matches(parameter_class, labels[idx])]
+        if not local:
+            continue
+        col = np.zeros(len(active_indices), dtype=float)
+        for pos in local:
+            col[pos] = 1.0
+            assigned[pos] = True
+            class_by_gic[active_indices[pos]] = parameter_class.name
+        columns.append(col)
+        names.append(parameter_class.name)
+    for pos, idx in enumerate(active_indices):
+        if assigned[pos]:
+            continue
+        col = np.zeros(len(active_indices), dtype=float)
+        col[pos] = 1.0
+        columns.append(col)
+        names.append(labels[idx])
+    return np.column_stack(columns), tuple(names), tuple(class_by_gic)
+
+
+def _class_matches(parameter_class: ParameterClassConstraint, label: str) -> bool:
+    low = label.lower()
+    return any(pattern.lower() in low for pattern in parameter_class.patterns)
 
 
 def _jacobian_constants_wrt_gics(
@@ -726,16 +847,85 @@ def _parameters(
     values: np.ndarray,
     active_mask: np.ndarray,
     sigmas_active: np.ndarray,
+    transform: np.ndarray | None = None,
+    class_by_gic: tuple[str, ...] = (),
 ) -> tuple[SemiexperimentalParameter, ...]:
     params = []
-    active_counter = 0
+    active_positions = {idx: pos for pos, idx in enumerate(np.where(active_mask)[0])}
     for idx, label in enumerate(labels):
         active = bool(active_mask[idx])
-        sigma = float(sigmas_active[active_counter]) if active and active_counter < len(sigmas_active) else 0.0
+        parameter_class = class_by_gic[idx] if idx < len(class_by_gic) else ""
+        sigma = 0.0
         if active:
-            active_counter += 1
-        params.append(SemiexperimentalParameter(label, float(values[idx]), sigma, active))
+            pos = active_positions[idx]
+            if transform is not None and transform.size:
+                cols = np.where(np.abs(transform[pos, :]) > 0.0)[0]
+                if cols.size and cols[0] < len(sigmas_active):
+                    sigma = float(abs(transform[pos, cols[0]]) * sigmas_active[cols[0]])
+            elif pos < len(sigmas_active):
+                sigma = float(sigmas_active[pos])
+        params.append(SemiexperimentalParameter(label, float(values[idx]), sigma, active, parameter_class))
     return tuple(params)
+
+
+def _kraitchman_comparison(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    observations: tuple[IsotopologueObservation, ...],
+) -> tuple[KraitchmanComparison, ...]:
+    parent = next((obs for obs in observations if not obs.substitutions), None)
+    if parent is None:
+        return ()
+    parent_structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in coords])
+    parent_moments = np.array(_constants_to_moments(parent.corrected.as_tuple()), dtype=float)
+    parent_total_mass = float(sum(parent_structure.mass_isotope))
+    eigvals, eigvecs = np.linalg.eigh(inertia_tensor(parent_structure, isotopic=True))
+    order = np.argsort(eigvals)
+    eigvecs = eigvecs[:, order]
+    centered = np.asarray(coords, dtype=float) - center_of_mass(parent_structure, isotopic=True)
+    fitted_axis_coords = centered @ eigvecs
+    rows: list[KraitchmanComparison] = []
+    for obs in observations:
+        if len(obs.substitutions) != 1:
+            continue
+        atom_index, isotope_a = next(iter(obs.substitutions.items()))
+        atom_pos = atom_index - 1
+        if atom_pos < 0 or atom_pos >= len(atoms):
+            continue
+        z_number = _atomic_number(atoms[atom_pos])
+        default_iso = get_default_isotope(z_number)
+        substituted_iso = get_isotope(z_number, int(isotope_a))
+        if default_iso is None or substituted_iso is None:
+            continue
+        delta_mass = float(substituted_iso.mass - default_iso.mass)
+        if delta_mass <= 0.0:
+            continue
+        mu = delta_mass * parent_total_mass / (parent_total_mass + delta_mass)
+        if mu <= 0.0:
+            continue
+        moments = np.array(_constants_to_moments(obs.corrected.as_tuple()), dtype=float)
+        delta = moments - parent_moments
+        kraitchman_squared = (
+            (delta[1] + delta[2] - delta[0]) / (2.0 * mu),
+            (delta[0] + delta[2] - delta[1]) / (2.0 * mu),
+            (delta[0] + delta[1] - delta[2]) / (2.0 * mu),
+        )
+        for axis, value, fitted in zip(("a", "b", "c"), kraitchman_squared, fitted_axis_coords[atom_pos]):
+            kraitchman_abs = float(np.sqrt(max(value, 0.0)))
+            fitted_abs = float(abs(fitted))
+            rows.append(
+                KraitchmanComparison(
+                    isotopologue=obs.label,
+                    atom_index=atom_index,
+                    atom=atoms[atom_pos],
+                    isotope_mass_number=int(isotope_a),
+                    coordinate=axis,
+                    kraitchman_abs_angstrom=kraitchman_abs,
+                    fitted_abs_angstrom=fitted_abs,
+                    difference_angstrom=kraitchman_abs - fitted_abs,
+                )
+            )
+    return tuple(rows)
 
 
 def _covariance(jac: np.ndarray, residual: np.ndarray) -> np.ndarray:

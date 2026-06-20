@@ -15,7 +15,7 @@ The planned scientific additions are:
   Davidson diagonalization for large VCI spaces.
 - Standard semiexperimental equilibrium geometries from Cartesian/GIC
   least-squares fits of isotopologue rotational data with QM vibrational
-  corrections, avoiding fragile Z-matrix parameterizations.
+  corrections, avoiding fragile hand-built internal-coordinate templates.
 
 See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 
@@ -125,4 +125,5 @@ by new workflows.
 
 See `doc/SEMIEXPERIMENTAL_GEOMETRY.md` for the Merlino standard
 semiexperimental geometry solver, including rationale, recommended defaults,
-QM predicates and quality checks.
+GUI execution, parameter classes, QM predicates, Kraitchman diagnostics and
+quality checks.

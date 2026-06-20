@@ -93,6 +93,27 @@ class QMParameterPredicate:
 
 
 @dataclass(frozen=True)
+class ParameterClassConstraint:
+    """Constraint applied to a class of generated GIC parameters.
+
+    `shared` means all matched GICs receive one common least-squares
+    correction. `fixed` keeps the whole class blocked.
+    """
+
+    name: str
+    patterns: tuple[str, ...]
+    mode: str = "shared"
+
+    def validate(self) -> None:
+        if not self.name.strip():
+            raise ValueError("Parameter class name cannot be empty")
+        if self.mode not in {"shared", "fixed"}:
+            raise ValueError("Parameter class mode must be shared or fixed")
+        if not self.patterns or any(not pattern.strip() for pattern in self.patterns):
+            raise ValueError("Parameter class patterns cannot be empty")
+
+
+@dataclass(frozen=True)
 class SemiexperimentalFitRequest:
     initial_geometry: Path
     observations: tuple[IsotopologueObservation, ...]
@@ -100,6 +121,7 @@ class SemiexperimentalFitRequest:
     observable: str = DEFAULT_SEMIEXP_OBSERVABLE
     rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
     qm_predicates: tuple[QMParameterPredicate, ...] = ()
+    parameter_classes: tuple[ParameterClassConstraint, ...] = ()
 
     def validate(self) -> None:
         if not self.observations:
@@ -116,3 +138,5 @@ class SemiexperimentalFitRequest:
                 raise ValueError("QM predicate label pattern cannot be empty")
             if predicate.sigma <= 0.0:
                 raise ValueError("QM predicate sigma must be positive")
+        for parameter_class in self.parameter_classes:
+            parameter_class.validate()

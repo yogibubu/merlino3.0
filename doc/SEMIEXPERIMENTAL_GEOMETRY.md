@@ -1,8 +1,8 @@
 # Semiexperimental Equilibrium Geometries
 
 This is the Merlino4 standard solver for semiexperimental equilibrium
-geometries. It deliberately avoids the traditional Z-matrix parameterization
-used by many older programs: the input geometry is Cartesian, the optimized
+geometries. It deliberately avoids hand-built structural parameterizations:
+the input geometry is Cartesian, the optimized
 parameters are non-redundant Merlino GICs, and the final result is a Cartesian
 equilibrium structure with propagated errors for the fitted internal
 parameters.
@@ -10,9 +10,9 @@ parameters.
 ## Why This Is The Standard Solver
 
 Classical semiexperimental geometry programs usually require a hand-built
-Z-matrix. That is fragile because the result depends on coordinate ordering,
-dummy atoms, manually chosen dependent coordinates and molecule-specific
-parameter choices. The Merlino solver instead uses:
+internal-coordinate template. That is fragile because the result depends on
+coordinate ordering, dummy atoms, manually chosen dependent coordinates and
+molecule-specific parameter choices. The Merlino solver instead uses:
 
 - Cartesian parent geometry as the only structural input.
 - Automatic topology and non-redundant GIC generation.
@@ -23,8 +23,8 @@ parameter choices. The Merlino solver instead uses:
 - Manifested outputs and diagnostics suitable for regression checks.
 
 This makes the workflow more general for rings, fused systems, bridge atoms,
-planar molecules and cases where a conventional Z-matrix would be ambiguous or
-ill-conditioned.
+planar molecules and cases where a conventional hand-built coordinate template
+would be ambiguous or ill-conditioned.
 
 ## Recommended Defaults
 
@@ -159,6 +159,24 @@ experimental uncertainties. When present, Merlino uses inverse-variance weights
 `1/sigma^2`. If the fit target is moments, these uncertainties are propagated
 through `I = K/B`.
 
+## GUI Workflow
+
+The Merlino4 dashboard exposes the semiexperimental solver from the
+`Semiexperimental Geometry` workflow. The panel lets the user select:
+
+- parent Cartesian XYZ file;
+- TOML/JSON/CSV isotopologue observations;
+- output directory;
+- Python or Fortran77 backend request;
+- moment or rotational-constant target;
+- rotational-constant component policy;
+- fixed GIC patterns;
+- QM predicate observations;
+- shared or fixed parameter classes.
+
+The GUI builds the same command used by the CLI and runs it asynchronously, so
+the interface remains responsive during the least-squares fit.
+
 ## Fit Model
 
 1. Read the parent XYZ geometry.
@@ -198,7 +216,7 @@ pseudo-observation with weight `1/sigma^2`. Predicates are soft constraints:
 they stabilize underdetermined fits without hiding disagreement between
 experiment and the QM estimate.
 
-## Fixed Parameters
+## Fixed Parameters And Parameter Classes
 
 Parameters can be frozen with:
 
@@ -209,6 +227,48 @@ python -m merlino semiexp ... --fixed "GIC001,angle"
 Each token is matched as a case-insensitive substring of the generated GIC
 labels. Fixed parameters are reported but excluded from the least-squares
 normal equations.
+
+Classes of geometric parameters can also be corrected together or blocked
+together:
+
+```bash
+python -m merlino semiexp ... \
+  --parameter-class "CH:shared:bond(1,2)|bond(1,3)" \
+  --parameter-class "XYH:fixed:angle"
+```
+
+The format is:
+
+```text
+name:shared|fixed:pattern[|pattern...]
+```
+
+`shared` compresses all matched active GICs to one least-squares variable and
+applies the same correction to the whole class. This is useful for CH stretches
+or chemically equivalent XH distances when the corresponding deuterated
+isotopologues are missing. `fixed` blocks the complete class, which is useful
+for XYH or XH2 angle families that should be retained from the starting/QM
+model. Class matching is type-safe in practice because patterns are matched on
+explicit generated GIC labels; users should include enough label context
+(`bond`, `angle`, atom indices or family-specific substrings) to avoid mixing
+different coordinate types.
+
+The covariance and Hessian are computed for the effective least-squares
+variables. The reported parameter table expands the resulting one-sigma error
+back to each member of a shared class and records the class name.
+
+## Kraitchman Comparison
+
+For isotopologues with exactly one substitution, Merlino writes
+`semiexp_kraitchman.csv`. The file compares absolute substitution coordinates
+from the Kraitchman equations with the absolute coordinates of the fitted
+structure in the parent principal-axis frame.
+
+This comparison is diagnostic, not a replacement for the semiexperimental fit:
+Kraitchman coordinates lose signs, are most informative for single substitutions
+and do not exploit the full correlated least-squares model. They are useful for
+spotting inconsistent assignments, problematic vibrational corrections or
+outlier isotopologues before accepting the final fit.
 
 ## Planar Molecules
 
@@ -236,6 +296,8 @@ The output directory contains:
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
   selected observable. Units are MHz for rotational constants, amu Angstrom^2
   for moments of inertia and native GIC units for QM predicates.
+- `semiexp_kraitchman.csv`: diagnostic comparison with Kraitchman substitution
+  coordinates for single-substitution isotopologues.
 - `semiexp_covariance.csv`: propagated covariance matrix for active parameters.
 - `semiexp_correlation.csv`: correlation matrix for active parameters.
 - `semiexp_hessian.csv`: Gauss-Newton least-squares Hessian.

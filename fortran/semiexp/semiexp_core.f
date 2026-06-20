@@ -27,6 +27,61 @@ C     Analytic Wilson B row for a bond distance in Angstrom.
       Return
       End
 
+      Subroutine M4SEClassNormalEq(NObs,NPar,NClass,ClassMap,J,Res,W,
+     $                             Damp,DQ,Cov,Hess,Info)
+C     Weighted least-squares with parameter classes.
+C     ClassMap(I)=0 freezes parameter I. Positive values identify shared
+C     active classes; all parameters in the same class receive one step.
+      Integer NObs,NPar,NClass,ClassMap(NPar),Info
+      Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp
+      Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar)
+      Double Precision JR(500,100),DQR(100),CovR(100,100),HessR(100,100)
+      Integer I,K,L,C1,C2
+      Info=0
+      If(NObs.gt.500.or.NPar.gt.100.or.NClass.gt.100) Then
+         Info=2
+         Return
+      End If
+      Do 20 I=1,NPar
+         DQ(I)=0.0D0
+         Do 10 K=1,NPar
+            Cov(I,K)=0.0D0
+            Hess(I,K)=0.0D0
+10       Continue
+20    Continue
+      Do 40 K=1,NObs
+         Do 30 C1=1,NClass
+            JR(K,C1)=0.0D0
+30       Continue
+40    Continue
+      Do 70 I=1,NPar
+         C1=ClassMap(I)
+         If(C1.gt.0.and.C1.le.NClass) Then
+            Do 50 K=1,NObs
+               JR(K,C1)=JR(K,C1)+J(K,I)
+50          Continue
+         Else If(C1.lt.0.or.C1.gt.NClass) Then
+            Info=3
+            Return
+         End If
+70    Continue
+      Call M4SENormalEq(NObs,NClass,JR,Res,W,Damp,DQR,CovR,HessR,
+     $                  Info)
+      If(Info.ne.0) Return
+      Do 100 I=1,NPar
+         C1=ClassMap(I)
+         If(C1.gt.0) DQ(I)=DQR(C1)
+         Do 90 L=1,NPar
+            C2=ClassMap(L)
+            If(C1.gt.0.and.C2.gt.0) Then
+               Cov(I,L)=CovR(C1,C2)
+               Hess(I,L)=HessR(C1,C2)
+            End If
+90       Continue
+100   Continue
+      Return
+      End
+
       Subroutine M4SEAngleB(NAtom,IAt,JAt,KAt,XYZ,BRow,Info)
 C     Analytic Wilson B row for angle I-J-K in radians.
       Integer NAtom,IAt,JAt,KAt,Info

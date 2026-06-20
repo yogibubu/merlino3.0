@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QProcess, Qt
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QPushButton,
@@ -37,6 +43,7 @@ class DashboardWindow(QMainWindow):
         self.selected_backends = {
             workflow.workflow_id: workflow.default_backend for workflow in self.workflows
         }
+        self._semiexp_process: QProcess | None = None
 
         self.setWindowTitle("Merlino 4.0")
         self.resize(1080, 720)
@@ -97,6 +104,10 @@ class DashboardWindow(QMainWindow):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
 
+        self.semiexp_panel = self._build_semiexp_panel()
+        layout.addWidget(self.semiexp_panel)
+        self.semiexp_panel.hide()
+
         for category, workflows in _group_workflows(self.workflows).items():
             parent = QTreeWidgetItem([category, ""])
             parent.setFlags(parent.flags() & ~Qt.ItemIsSelectable)
@@ -138,6 +149,9 @@ class DashboardWindow(QMainWindow):
         self._sync_backend_selector(workflow)
         backend = self.selected_backends.get(workflow.workflow_id, workflow.default_backend)
         self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
+        self.semiexp_panel.setVisible(workflow.workflow_id == "semiexp_geometry")
+        if workflow.workflow_id == "semiexp_geometry":
+            self._update_semiexp_preview()
 
     def _sync_backend_selector(self, workflow: WorkflowSpec) -> None:
         self.backend_selector.blockSignals(True)
@@ -159,6 +173,117 @@ class DashboardWindow(QMainWindow):
         self.selected_backends[str(workflow_id)] = backend
         workflow = next(item for item in self.workflows if item.workflow_id == workflow_id)
         self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
+        if workflow.workflow_id == "semiexp_geometry":
+            self._update_semiexp_preview()
+
+    def _build_semiexp_panel(self) -> QGroupBox:
+        panel = QGroupBox("Semiexperimental Geometry Run")
+        layout = QVBoxLayout(panel)
+        form = QFormLayout()
+        layout.addLayout(form)
+
+        self.semiexp_xyz = _path_row(self, form, "Parent XYZ:", "Select parent XYZ", "*.xyz")
+        self.semiexp_observations = _path_row(self, form, "Isotopologues:", "Select isotopologue observations", "*.toml *.json *.csv")
+        self.semiexp_outdir = _directory_row(self, form, "Output directory:")
+
+        self.semiexp_observable = QComboBox()
+        self.semiexp_observable.addItems(["moments", "rotational_constants", "auto"])
+        self.semiexp_observable.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        form.addRow("Fit target:", self.semiexp_observable)
+
+        self.semiexp_components = QComboBox()
+        self.semiexp_components.addItems(["auto", "ABC", "AB", "AC", "BC"])
+        self.semiexp_components.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        form.addRow("Rotational components:", self.semiexp_components)
+
+        self.semiexp_fixed = QLineEdit()
+        self.semiexp_fixed.setPlaceholderText("e.g. GIC001, angle(2,1,3)")
+        self.semiexp_fixed.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        form.addRow("Fixed GIC patterns:", self.semiexp_fixed)
+
+        self.semiexp_qm = QLineEdit()
+        self.semiexp_qm.setPlaceholderText("pattern:value:sigma[:source]; repeat with semicolons")
+        self.semiexp_qm.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        form.addRow("QM predicates:", self.semiexp_qm)
+
+        self.semiexp_classes = QLineEdit()
+        self.semiexp_classes.setPlaceholderText("CH:shared:bond(1,2)|bond(1,3); XYH:fixed:angle")
+        self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        form.addRow("Parameter classes:", self.semiexp_classes)
+
+        self.semiexp_command = QTextEdit()
+        self.semiexp_command.setReadOnly(True)
+        self.semiexp_command.setMaximumHeight(90)
+        layout.addWidget(QLabel("Command preview:"))
+        layout.addWidget(self.semiexp_command)
+
+        buttons = QHBoxLayout()
+        self.semiexp_run_button = QPushButton("Run Semiexperimental Fit")
+        self.semiexp_run_button.clicked.connect(self.run_semiexp_fit)
+        buttons.addWidget(self.semiexp_run_button)
+        layout.addLayout(buttons)
+        return panel
+
+    def semiexp_command_args(self) -> list[str]:
+        args = [
+            "semiexp",
+            "--xyz",
+            self.semiexp_xyz.text().strip(),
+            "--observations",
+            self.semiexp_observations.text().strip(),
+            "--outdir",
+            self.semiexp_outdir.text().strip(),
+            "--backend",
+            self.selected_backends.get("semiexp_geometry", "python"),
+            "--observable",
+            self.semiexp_observable.currentText(),
+            "--rotational-components",
+            self.semiexp_components.currentText(),
+        ]
+        if self.semiexp_fixed.text().strip():
+            args.extend(["--fixed", self.semiexp_fixed.text().strip()])
+        for predicate in _split_semiexp_items(self.semiexp_qm.text()):
+            args.extend(["--qm-predicate", predicate])
+        for parameter_class in _split_semiexp_items(self.semiexp_classes.text()):
+            args.extend(["--parameter-class", parameter_class])
+        return args
+
+    def _update_semiexp_preview(self) -> None:
+        if not hasattr(self, "semiexp_command"):
+            return
+        args = self.semiexp_command_args()
+        complete = all(args[idx] for idx in (2, 4, 6))
+        command = "python -m merlino " + " ".join(shlex.quote(item) for item in args)
+        if not complete:
+            command += "\n\nSelect parent XYZ, isotopologue observations and output directory before running."
+        self.semiexp_command.setPlainText(command)
+        self.semiexp_run_button.setEnabled(complete)
+
+    def run_semiexp_fit(self) -> None:
+        args = self.semiexp_command_args()
+        if not all(args[idx] for idx in (2, 4, 6)):
+            self._update_semiexp_preview()
+            return
+        self._semiexp_process = QProcess(self)
+        self._semiexp_process.setWorkingDirectory(str(self.workdir))
+        self._semiexp_process.setProgram("python")
+        self._semiexp_process.setArguments(["-m", "merlino", *args])
+        self._semiexp_process.readyReadStandardOutput.connect(self._append_semiexp_output)
+        self._semiexp_process.readyReadStandardError.connect(self._append_semiexp_output)
+        self._semiexp_process.finished.connect(lambda code, status: self._append_semiexp_text(f"\nfinished: {code}\n"))
+        self._append_semiexp_text("\nrunning...\n")
+        self._semiexp_process.start()
+
+    def _append_semiexp_output(self) -> None:
+        if self._semiexp_process is None:
+            return
+        text = bytes(self._semiexp_process.readAllStandardOutput()).decode(errors="replace")
+        text += bytes(self._semiexp_process.readAllStandardError()).decode(errors="replace")
+        self._append_semiexp_text(text)
+
+    def _append_semiexp_text(self, text: str) -> None:
+        self.semiexp_command.moveCursor(QTextCursor.MoveOperation.End)
+        self.semiexp_command.insertPlainText(text)
 
 
 def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None) -> str:
@@ -195,3 +320,43 @@ def _group_workflows(workflows: list[WorkflowSpec]) -> dict[str, list[WorkflowSp
     for workflow in workflows:
         grouped.setdefault(workflow.category, []).append(workflow)
     return grouped
+
+
+def _path_row(parent: QWidget, form: QFormLayout, label: str, title: str, name_filter: str) -> QLineEdit:
+    row = QHBoxLayout()
+    edit = QLineEdit()
+    edit.textChanged.connect(lambda _text: parent._update_semiexp_preview())
+    button = QPushButton("Browse")
+    button.clicked.connect(lambda: _select_file(parent, edit, title, name_filter))
+    row.addWidget(edit, stretch=1)
+    row.addWidget(button)
+    form.addRow(label, row)
+    return edit
+
+
+def _directory_row(parent: QWidget, form: QFormLayout, label: str) -> QLineEdit:
+    row = QHBoxLayout()
+    edit = QLineEdit()
+    edit.textChanged.connect(lambda _text: parent._update_semiexp_preview())
+    button = QPushButton("Browse")
+    button.clicked.connect(lambda: _select_directory(parent, edit))
+    row.addWidget(edit, stretch=1)
+    row.addWidget(button)
+    form.addRow(label, row)
+    return edit
+
+
+def _select_file(parent: QWidget, edit: QLineEdit, title: str, name_filter: str) -> None:
+    path, _selected_filter = QFileDialog.getOpenFileName(parent, title, str(parent.workdir), name_filter)
+    if path:
+        edit.setText(path)
+
+
+def _select_directory(parent: QWidget, edit: QLineEdit) -> None:
+    path = QFileDialog.getExistingDirectory(parent, "Select output directory", str(parent.workdir))
+    if path:
+        edit.setText(path)
+
+
+def _split_semiexp_items(text: str) -> list[str]:
+    return [item.strip() for item in text.split(";") if item.strip()]

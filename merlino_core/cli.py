@@ -13,6 +13,7 @@ from merlino_gic import run_gicforge
 from merlino_semiexp import (
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+    ParameterClassConstraint,
     QMParameterPredicate,
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
@@ -85,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
     semiexp.add_argument("--observations", type=Path, required=True, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
+    semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
     semiexp.add_argument("--max-iter", type=int, default=12, help="Maximum LM iterations; default is conservative for semiexp fits")
     semiexp.add_argument("--step", type=float, default=1.0e-4, help="Finite step for rotational observable derivatives with respect to GICs")
@@ -107,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="QM prior as label_pattern:value:sigma[:source]; can be repeated",
+    )
+    semiexp.add_argument(
+        "--parameter-class",
+        action="append",
+        default=[],
+        help="Class constraint as name:shared|fixed:pattern[|pattern...]; can be repeated",
     )
     return parser
 
@@ -216,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
             observable=args.observable,
             rotational_components=args.rotational_components,
             qm_predicates=_parse_qm_predicates(args.qm_predicate),
+            parameter_classes=_parse_parameter_classes(args.parameter_class),
         )
         result = fit_semiexperimental_geometry(
             request,
@@ -234,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"condition_number: {result.diagnostics.condition_number:.8g}")
         print(f"observable: {result.diagnostics.observable}")
         print(f"components: {','.join(result.diagnostics.components)}")
+        print(f"backend: {args.backend}")
         return 0
 
     if args.command == "gaussian-summary":
@@ -316,6 +326,17 @@ def _parse_qm_predicates(items: list[str]) -> tuple[QMParameterPredicate, ...]:
         source = parts[3] if len(parts) == 4 else "qm"
         predicates.append(QMParameterPredicate(parts[0], float(parts[1]), float(parts[2]), source=source))
     return tuple(predicates)
+
+
+def _parse_parameter_classes(items: list[str]) -> tuple[ParameterClassConstraint, ...]:
+    constraints = []
+    for item in items:
+        parts = item.split(":", 2)
+        if len(parts) != 3:
+            raise ValueError("--parameter-class must be name:shared|fixed:pattern[|pattern...]")
+        patterns = tuple(part.strip() for part in parts[2].split("|") if part.strip())
+        constraints.append(ParameterClassConstraint(parts[0].strip(), patterns, parts[1].strip()))
+    return tuple(constraints)
 
 
 if __name__ == "__main__":
