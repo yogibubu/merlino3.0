@@ -102,6 +102,9 @@ The CLI mirrors GUI-capable services without requiring Qt:
 ```bash
 python -m merlino init my_project
 python -m merlino gf --fchk calc.fchk --out gf_report.txt
-python -m merlino vci --qff field.qff --max-quanta 3 --roots 6
+python -m merlino vci --qff field.qff --max-quanta 3 --roots 6 --csv-dir csv
+python -m merlino gic --workdir working
+python -m merlino gaussian-summary calc.log
+python -m merlino backends
 python -m merlino dvr-args --repo-root . --log scan.log --outdir out --figdir fig
 ```

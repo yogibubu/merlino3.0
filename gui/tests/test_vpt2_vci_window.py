@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -50,6 +51,14 @@ def test_vpt2_vci_window_runs_gf_on_gaussian_fchk(tmp_path, qtbot):
     assert "2169.878" in text
     assert "GIC001" in text
     assert "PED (%)" in text
+    manifest = json.loads((tmp_path / "gf_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "merlino.run.v1"
+    assert manifest["workflow"] == "gf"
+
+    csv_dir = tmp_path / "gf_csv"
+    written = window.export_csvs(csv_dir, show_message=False)
+    assert (csv_dir / "gf_frequencies.csv").exists()
+    assert "ped.csv" in written
 
 
 @pytest.mark.usefixtures("qtbot")
@@ -84,6 +93,14 @@ def test_vpt2_vci_window_runs_comparison_from_indexed_qff(tmp_path, qtbot):
     assert "Modes used in input force field: 2" in text
     assert "VCI basis size" in text
     assert "1000." in text
+    manifest = json.loads((tmp_path / "vpt2_vci_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "merlino.run.v1"
+    assert manifest["workflow"] == "vpt2_vci"
+
+    csv_dir = tmp_path / "vci_csv"
+    written = window.export_csvs(csv_dir, show_message=False)
+    assert (csv_dir / "vpt2_vci_comparison.csv").exists()
+    assert "comparison.csv" in written
 
 
 @pytest.mark.usefixtures("qtbot")

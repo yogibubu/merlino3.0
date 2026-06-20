@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import csv
+from io import StringIO
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +25,9 @@ class VPT2VCIReport:
     force_field: QuarticForceField
     comparison: VPT2VCIComparison
     text: str
+
+
+Report = GFReport | VPT2VCIReport
 
 
 def run_gf_report_from_fchk(fchk_path: Path) -> GFReport:
@@ -132,3 +137,92 @@ def format_vpt2_vci_report(qff: QuarticForceField, comparison: VPT2VCIComparison
                 + ", ".join(pieces)
             )
     return "\n".join(lines)
+
+
+def gf_csv_tables(report: GFReport) -> dict[str, str]:
+    """Return CSV tables for GF frequencies, GIC labels and PED."""
+    freq_rows = [["mode", "frequency_cm-1"]]
+    freq_rows.extend([[idx, f"{freq:.10g}"] for idx, freq in enumerate(report.result.frequencies_cm, start=1)])
+
+    label_rows = [["gic", "label"]]
+    label_rows.extend([[f"GIC{idx:03d}", label] for idx, label in enumerate(report.result.gic_labels, start=1)])
+
+    ped_rows = [["gic", *[f"mode_{idx}" for idx in range(1, len(report.result.frequencies_cm) + 1)]]]
+    for idx, row in enumerate(report.result.ped.values, start=1):
+        ped_rows.append([f"GIC{idx:03d}", *[f"{value:.10g}" for value in row]])
+
+    return {
+        "frequencies.csv": _csv_text(freq_rows),
+        "gic_labels.csv": _csv_text(label_rows),
+        "ped.csv": _csv_text(ped_rows),
+    }
+
+
+def vpt2_vci_csv_tables(report: VPT2VCIReport) -> dict[str, str]:
+    """Return CSV tables for VPT2/VCI comparison and dominant contributions."""
+    qff = report.force_field
+    comparison = report.comparison
+    freq_rows = [["mode", "harmonic_frequency_cm-1"]]
+    freq_rows.extend([[idx, f"{freq:.10g}"] for idx, freq in enumerate(qff.harmonic_frequencies_cm, start=1)])
+
+    n = min(
+        len(comparison.vpt2.energies_cm),
+        len(comparison.vci.energies_cm),
+        len(comparison.energy_differences_cm),
+    )
+    comparison_rows = [[
+        "root",
+        "vpt2_abs_cm-1",
+        "vci_abs_cm-1",
+        "delta_abs_cm-1",
+        "vpt2_exc_cm-1",
+        "vci_exc_cm-1",
+        "delta_exc_cm-1",
+    ]]
+    for idx in range(n):
+        comparison_rows.append([
+            idx + 1,
+            f"{comparison.vpt2.energies_cm[idx]:.10g}",
+            f"{comparison.vci.energies_cm[idx]:.10g}",
+            f"{comparison.energy_differences_cm[idx]:.10g}",
+            f"{comparison.vpt2.excitation_energies_cm[idx]:.10g}",
+            f"{comparison.vci.excitation_energies_cm[idx]:.10g}",
+            f"{comparison.excitation_differences_cm[idx]:.10g}",
+        ])
+
+    contribution_rows = [["root", "mode", "expected_quanta"]]
+    for root, contribution in enumerate(comparison.vci.state_contributions[:n], start=1):
+        for mode, quanta in enumerate(contribution.mode_quanta, start=1):
+            contribution_rows.append([root, mode, f"{quanta:.10g}"])
+
+    return {
+        "frequencies.csv": _csv_text(freq_rows),
+        "comparison.csv": _csv_text(comparison_rows),
+        "mode_contributions.csv": _csv_text(contribution_rows),
+    }
+
+
+def write_csv_tables(report: Report, outdir: Path, *, prefix: str = "") -> dict[str, Path]:
+    """Write structured CSV outputs for a GF or VPT2/VCI report."""
+    target_dir = Path(outdir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if isinstance(report, GFReport):
+        tables = gf_csv_tables(report)
+        default_prefix = "gf"
+    else:
+        tables = vpt2_vci_csv_tables(report)
+        default_prefix = "vpt2_vci"
+    stem = prefix or default_prefix
+    written: dict[str, Path] = {}
+    for name, text in tables.items():
+        path = target_dir / f"{stem}_{name}"
+        path.write_text(text, encoding="utf-8")
+        written[name] = path
+    return written
+
+
+def _csv_text(rows: list[list[object]]) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerows(rows)
+    return stream.getvalue()

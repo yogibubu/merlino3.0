@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from merlino_core import build_run_manifest
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -22,6 +23,7 @@ from merlino_vpt2_vci import (
     load_force_field,
     run_gf_report_from_fchk,
     run_vpt2_vci_report,
+    write_csv_tables,
 )
 
 
@@ -32,6 +34,7 @@ class VPT2VCIWindow(QMainWindow):
         super().__init__(parent)
         self.workdir = Path(workdir)
         self.repo_root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[1]
+        self.last_report = None
 
         self.setWindowTitle("Merlino GF / VPT2-VCI")
         self.resize(980, 780)
@@ -156,6 +159,9 @@ class VPT2VCIWindow(QMainWindow):
         export_button = QPushButton("Export Report")
         export_button.clicked.connect(self.export_report)
         actions.addWidget(export_button)
+        export_csv_button = QPushButton("Export CSVs")
+        export_csv_button.clicked.connect(self.export_csvs)
+        actions.addWidget(export_csv_button)
         save_preset_button = QPushButton("Save Preset")
         save_preset_button.clicked.connect(self.save_preset)
         actions.addWidget(save_preset_button)
@@ -174,7 +180,9 @@ class VPT2VCIWindow(QMainWindow):
         try:
             fchk_path = self._required_existing_path(self.fchk_edit.text(), "FCHK")
             report = run_gf_report_from_fchk(fchk_path)
+            self.last_report = report
             self.output_text.setPlainText(report.text)
+            self._write_gf_manifest(fchk_path)
         except Exception as exc:
             self._fail("GF / PED failed", exc, show_message)
 
@@ -184,7 +192,9 @@ class VPT2VCIWindow(QMainWindow):
             max_quanta = self._parse_int(self.max_quanta_edit.text(), "Max total quanta", minimum=0)
             roots = self._parse_int(self.roots_edit.text(), "Roots", minimum=1)
             report = run_vpt2_vci_report(qff, max_quanta=max_quanta, roots=roots, options=self._vci_options())
+            self.last_report = report
             self.output_text.setPlainText(report.text)
+            self._write_vpt2_vci_manifest(max_quanta=max_quanta, roots=roots)
         except Exception as exc:
             self._fail("VPT2 / VCI failed", exc, show_message)
 
@@ -228,6 +238,61 @@ class VPT2VCIWindow(QMainWindow):
         if show_message:
             QMessageBox.information(self, "GF / VPT2-VCI", f"Report written: {path}")
         return path
+
+    def export_csvs(self, outdir: Path | None = None, *, show_message: bool = True) -> dict[str, Path]:
+        if self.last_report is None:
+            if show_message:
+                QMessageBox.warning(self, "GF / VPT2-VCI", "No completed GF/VPT2-VCI result to export.")
+            return {}
+        if outdir is None:
+            selected = QFileDialog.getExistingDirectory(
+                self,
+                "Export GF / VPT2-VCI CSV tables",
+                str(self.workdir),
+            )
+            if not selected:
+                return {}
+            outdir = Path(selected)
+        written = write_csv_tables(self.last_report, Path(outdir))
+        if show_message:
+            QMessageBox.information(self, "GF / VPT2-VCI", f"CSV tables written: {Path(outdir)}")
+        return written
+
+    def _write_gf_manifest(self, fchk_path: Path) -> Path:
+        return build_run_manifest(
+            workflow="gf",
+            status="completed",
+            run_dir=self.workdir,
+            inputs={"fchk": fchk_path},
+            backend={"adapter": "gaussian-fchk", "solver": "python", "gui": "advanced.vpt2_vci_window"},
+        ).write(self.workdir / "gf_manifest.json")
+
+    def _write_vpt2_vci_manifest(self, *, max_quanta: int, roots: int) -> Path:
+        inputs = {}
+        qff_path = self._optional_existing_path(self.qff_edit.text())
+        fchk_path = self._optional_existing_path(self.fchk_edit.text())
+        if qff_path is not None:
+            inputs["qff"] = qff_path
+        if fchk_path is not None:
+            inputs["fchk"] = fchk_path
+        return build_run_manifest(
+            workflow="vpt2_vci",
+            status="completed",
+            run_dir=self.workdir,
+            inputs=inputs,
+            parameters={
+                "max_quanta": max_quanta,
+                "roots": roots,
+                "active_modes": self._parse_active_modes(),
+                "frequency_min_cm": self._parse_optional_float(self.freq_min_edit.text(), "Freq min cm-1"),
+                "frequency_max_cm": self._parse_optional_float(self.freq_max_edit.text(), "Freq max cm-1"),
+                "basis_energy_cutoff_cm": self._parse_optional_float(self.basis_cutoff_edit.text(), "Basis cutoff cm-1"),
+                "force_constant_threshold_cm": self._parse_optional_float(
+                    self.force_threshold_edit.text(), "Force threshold cm-1", default=0.0
+                ),
+            },
+            backend={"solver": "python", "gui": "advanced.vpt2_vci_window"},
+        ).write(self.workdir / "vpt2_vci_manifest.json")
 
     def save_preset(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
         if path is None:

@@ -70,6 +70,7 @@ def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
         encoding="utf-8",
     )
     report = tmp_path / "vci_report.txt"
+    csv_dir = tmp_path / "vci_csv"
     run_dir = tmp_path / "vci_run"
     assert merlino_cli([
         "vci",
@@ -83,9 +84,12 @@ def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
         str(report),
         "--run-dir",
         str(run_dir),
+        "--csv-dir",
+        str(csv_dir),
     ]) == 0
     assert "VPT2/VCI comparison" in report.read_text(encoding="utf-8")
     assert (run_dir / "vpt2_vci_manifest.json").exists()
+    assert (csv_dir / "vpt2_vci_comparison.csv").exists()
 
     log = tmp_path / "scan.log"
     log.write_text("Normal termination of Gaussian 16\n", encoding="utf-8")
@@ -105,3 +109,35 @@ def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
         "scan",
     ]) == 0
     assert (outdir / "scan_manifest.json").exists()
+
+
+def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):
+    executable = tmp_path / "fake_gicforge.sh"
+    executable.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -e",
+                "printf 'legacy report\\n' > provout",
+                "printf 'gaussian input\\n' > gauin",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    workdir = tmp_path / "gic"
+    workdir.mkdir()
+    (workdir / "provin").write_text("input\n", encoding="utf-8")
+
+    assert merlino_cli(["gic", "--workdir", str(workdir), "--executable", str(executable)]) == 0
+    assert (workdir / "gicforge_manifest.json").exists()
+    assert (workdir / "gicforge.out").exists()
+
+    log = tmp_path / "gaussian.log"
+    log.write_text(
+        "SCF Done:  E(RHF) = -1.000000 A.U.\nNormal termination of Gaussian 16\n",
+        encoding="utf-8",
+    )
+    assert merlino_cli(["gaussian-summary", str(log)]) == 0
+    assert merlino_cli(["backends"]) == 0

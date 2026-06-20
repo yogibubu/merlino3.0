@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 import sys
 
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
-from merlino_vpt2_vci import VCIOptions, load_force_field, run_gf_report_from_fchk, run_vpt2_vci_report
+from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
+from merlino_gaussian import summarize_gaussian_log
+from merlino_gic import run_gicforge
+from merlino_vpt2_vci import VCIOptions, load_force_field, run_gf_report_from_fchk, run_vpt2_vci_report, write_csv_tables
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     gf.add_argument("--fchk", type=Path, required=True)
     gf.add_argument("--out", type=Path)
     gf.add_argument("--run-dir", type=Path)
+    gf.add_argument("--csv-dir", type=Path)
 
     vci = sub.add_parser("vci", help="Run VPT2/VCI from canonical QFF and optional FCHK frequencies")
     vci.add_argument("--qff", type=Path)
@@ -34,6 +39,16 @@ def build_parser() -> argparse.ArgumentParser:
     vci.add_argument("--active-modes", default="")
     vci.add_argument("--out", type=Path)
     vci.add_argument("--run-dir", type=Path)
+    vci.add_argument("--csv-dir", type=Path)
+
+    gic = sub.add_parser("gic", help="Run GICForge in a work directory")
+    gic.add_argument("--workdir", type=Path, required=True)
+    gic.add_argument("--executable", type=Path)
+
+    summary = sub.add_parser("gaussian-summary", help="Summarize a Gaussian log/out file")
+    summary.add_argument("log", type=Path)
+
+    sub.add_parser("backends", help="Show configured backend availability")
 
     dvr = sub.add_parser("dvr-args", help="Build DVR command args and manifest without executing")
     dvr.add_argument("--repo-root", type=Path, required=True)
@@ -68,13 +83,16 @@ def main(argv: list[str] | None = None) -> int:
         out = args.out or Path("gf_ped_report.txt")
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(report.text + "\n", encoding="utf-8")
+        outputs = {"report": out}
+        if args.csv_dir is not None:
+            outputs.update({f"csv_{name}": path for name, path in write_csv_tables(report, args.csv_dir).items()})
         run_dir = args.run_dir or out.parent
         build_run_manifest(
             workflow="gf",
             status="completed",
             run_dir=run_dir,
             inputs={"fchk": args.fchk},
-            outputs={"report": out},
+            outputs=outputs,
             backend={"adapter": "gaussian-fchk", "solver": "python"},
         ).write(Path(run_dir) / "gf_manifest.json")
         print(out)
@@ -92,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
         out = args.out or Path("vpt2_vci_report.txt")
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(report.text + "\n", encoding="utf-8")
+        outputs = {"report": out}
+        if args.csv_dir is not None:
+            outputs.update({f"csv_{name}": path for name, path in write_csv_tables(report, args.csv_dir).items()})
         run_dir = args.run_dir or out.parent
         inputs = {}
         if args.fchk is not None:
@@ -103,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
             status="completed",
             run_dir=run_dir,
             inputs=inputs,
-            outputs={"report": out},
+            outputs=outputs,
             parameters={"max_quanta": args.max_quanta, "roots": args.roots, "active_modes": active_modes},
             backend={"solver": "python"},
         ).write(Path(run_dir) / "vpt2_vci_manifest.json")
@@ -128,6 +149,47 @@ def main(argv: list[str] | None = None) -> int:
         manifest = write_dvr_manifest(request, dvr_args)
         print(" ".join(dvr_args))
         print(f"manifest: {manifest}")
+        return 0
+
+    if args.command == "gic":
+        result = run_gicforge(args.workdir, executable=args.executable)
+        print(f"manifest: {result.manifest}")
+        for name, path in sorted(result.files.items()):
+            print(f"{name}: {path}")
+        return 0
+
+    if args.command == "gaussian-summary":
+        summary = summarize_gaussian_log(args.log)
+        print(f"path: {summary.path}")
+        print(f"normal_termination: {summary.normal_termination}")
+        print(f"scf_count: {len(summary.scf_energies_hartree)}")
+        if summary.scf_energies_hartree:
+            print(f"last_scf_hartree: {summary.scf_energies_hartree[-1]}")
+        print(f"standard_orientation_count: {summary.standard_orientation_count}")
+        print(f"input_orientation_count: {summary.input_orientation_count}")
+        print(f"scan_marker_count: {summary.scan_marker_count}")
+        print(f"puckering_marker_count: {summary.puckering_marker_count}")
+        return 0
+
+    if args.command == "backends":
+        for name in sorted(BACKENDS):
+            try:
+                path = resolve_backend(name)
+                status = "available"
+            except Exception as exc:
+                path = exc
+                status = "missing"
+            print(f"{name}: {status} ({path})")
+        for name in sorted(SOURCE_BACKENDS):
+            try:
+                path = resolve_source_backend(name)
+                status = "available"
+            except Exception as exc:
+                path = exc
+                status = "missing"
+            print(f"{name}: {status} ({path})")
+        gaussian = shutil.which(load_config().gaussian_executable)
+        print(f"gaussian: {'available' if gaussian else 'missing'} ({gaussian or load_config().gaussian_executable})")
         return 0
 
     return 2

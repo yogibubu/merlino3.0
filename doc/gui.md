@@ -344,12 +344,17 @@ The window has two independent actions:
   current FCHK adapter, applies mode/cutoff/pruning settings, and reports a
   VPT2/VCI energy comparison plus dominant VCI contributions.
 - `Export Report` writes the current text report to disk.
+- `Export CSVs` writes structured frequency, PED and VPT2/VCI comparison
+  tables for the latest completed run.
 - `Save Preset` and `Load Preset` store/reload paths and VCI basis/pruning
   settings as JSON.
 
 The GUI does not contain scientific algorithms. It only validates paths and
 dispatches report export/preset actions; the numerical work and report
 formatting remain in `merlino_vpt2_vci`.
+
+Each successful GF or VPT2/VCI GUI run writes a `merlino.run.v1` manifest in
+the current work directory.
 
 GUI testing policy
 
