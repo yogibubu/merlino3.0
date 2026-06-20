@@ -31,8 +31,10 @@ from .vci import (
     QuarticForceField,
     VCIResult,
     build_vci_hamiltonian,
+    force_field_from_anharmonic_input,
     generate_vibrational_basis,
     solve_vci,
+    solve_vci_from_anharmonic_input,
     zero_anharmonic_force_field,
 )
 from .workflow import VPT2VCIRun, run_python_vci_from_gaussian_fchk
@@ -55,6 +57,7 @@ __all__ = [
     "anharmonic_input_from_gaussian_fchk",
     "build_vci_hamiltonian",
     "davidson_lowest",
+    "force_field_from_anharmonic_input",
     "generate_vibrational_basis",
     "gf_from_cartesian_hessian_and_merlino_gics",
     "gf_from_gaussian_fchk_with_merlino_gics",
@@ -69,6 +72,7 @@ __all__ = [
     "primitive_label",
     "run_python_vci_from_gaussian_fchk",
     "solve_vci",
+    "solve_vci_from_anharmonic_input",
     "solve_wilson_gf",
     "zero_anharmonic_force_field",
 ]

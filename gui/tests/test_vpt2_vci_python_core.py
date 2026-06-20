@@ -4,6 +4,7 @@ import numpy as np
 
 from merlino_vpt2_vci import (
     QuarticForceField,
+    AnharmonicInput,
     davidson_lowest,
     generate_vibrational_basis,
     gf_from_gaussian_fchk_with_merlino_gics,
@@ -14,6 +15,7 @@ from merlino_vpt2_vci import (
     read_indexed_qff_text,
     run_python_vci_from_gaussian_fchk,
     solve_vci,
+    solve_vci_from_anharmonic_input,
     solve_wilson_gf,
     zero_anharmonic_force_field,
 )
@@ -116,6 +118,33 @@ def test_vci_davidson_path_matches_dense_path():
     assert iterative.davidson is not None
     assert iterative.davidson.converged
     assert np.allclose(iterative.energies_cm, dense.energies_cm, atol=1.0e-7)
+
+
+def test_canonical_anharmonic_input_runs_vci_and_shifts_levels():
+    harmonic = solve_vci_from_anharmonic_input(
+        AnharmonicInput(
+            harmonic_frequencies_cm=np.array([1000.0, 1500.0]),
+            anharmonic_frequencies_cm=np.array([]),
+            cubic_cm={},
+            quartic_cm={},
+        ),
+        max_quanta=2,
+        n_roots=4,
+    )
+    anharmonic = solve_vci_from_anharmonic_input(
+        AnharmonicInput(
+            harmonic_frequencies_cm=np.array([1000.0, 1500.0]),
+            anharmonic_frequencies_cm=np.array([]),
+            cubic_cm={(0, 0, 1): -25.0},
+            quartic_cm={(0, 0, 0, 0): 8.0, (0, 0, 1, 1): -3.0},
+        ),
+        max_quanta=2,
+        n_roots=4,
+    )
+
+    assert np.allclose(harmonic.excitation_energies_cm[:4], [0.0, 1000.0, 1500.0, 2000.0])
+    assert not np.allclose(anharmonic.excitation_energies_cm, harmonic.excitation_energies_cm)
+    assert np.all(anharmonic.excitation_energies_cm[1:] > 0.0)
 
 
 def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():

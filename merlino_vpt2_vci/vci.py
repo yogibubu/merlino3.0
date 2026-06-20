@@ -6,6 +6,7 @@ from itertools import combinations_with_replacement, product
 import numpy as np
 
 from .davidson import DavidsonResult, davidson_lowest
+from .models import AnharmonicInput
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,10 @@ class VCIResult:
     energies_cm: np.ndarray
     eigenvectors: np.ndarray
     davidson: DavidsonResult | None = None
+
+    @property
+    def excitation_energies_cm(self) -> np.ndarray:
+        return self.energies_cm - self.energies_cm[0]
 
 
 def generate_vibrational_basis(n_modes: int, max_quanta: int) -> tuple[tuple[int, ...], ...]:
@@ -135,6 +140,36 @@ def solve_vci(
 
 def zero_anharmonic_force_field(frequencies_cm: np.ndarray) -> QuarticForceField:
     return QuarticForceField(np.asarray(frequencies_cm, dtype=float), {}, {})
+
+
+def force_field_from_anharmonic_input(input_data: AnharmonicInput) -> QuarticForceField:
+    """Convert canonical Merlino anharmonic input to the VCI force-field model."""
+    input_data.validate()
+    frequencies = (
+        input_data.anharmonic_frequencies_cm
+        if input_data.anharmonic_frequencies_cm.size
+        else input_data.harmonic_frequencies_cm
+    )
+    return QuarticForceField(
+        harmonic_frequencies_cm=np.asarray(frequencies, dtype=float),
+        cubic_cm=dict(input_data.cubic_cm),
+        quartic_cm=dict(input_data.quartic_cm),
+    )
+
+
+def solve_vci_from_anharmonic_input(
+    input_data: AnharmonicInput,
+    max_quanta: int,
+    n_roots: int | None = None,
+    **kwargs: object,
+) -> VCIResult:
+    """Run VCI from canonical Merlino anharmonic input."""
+    return solve_vci(
+        force_field_from_anharmonic_input(input_data),
+        max_quanta=max_quanta,
+        n_roots=n_roots,
+        **kwargs,
+    )
 
 
 def empty_symmetric_terms(n_modes: int, order: int) -> dict[tuple[int, ...], float]:
