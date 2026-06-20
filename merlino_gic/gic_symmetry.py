@@ -45,7 +45,13 @@ def write_gic_symmetry_files(workdir: Path) -> None:
     op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
     sym_gics = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented)
     _write_gicsym(run_dir / "gicsym", sym_gics)
-    _write_gic_symmetry_diagnostics(run_dir / "gic_symmetry_diagnostics.json", sym_gics, op_data, len(coords))
+    _write_gic_symmetry_diagnostics(
+        run_dir / "gic_symmetry_diagnostics.json",
+        sym_gics,
+        op_data,
+        len(coords),
+        _class_counts(u_matrix, prims),
+    )
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
 
 
@@ -157,15 +163,20 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
     vib_projector = _vibrational_projector(coords)
     cart_ops = [_cartesian_operation(rotation, mapping, len(coords)) for _label, rotation, mapping, _prim_op in op_data]
     projection_blocks = _projection_blocks(atoms, coords, prims)
+    class_targets = _class_counts(u_matrix, prims)
     adapted = []
     used_names: dict[str, int] = {}
     selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
+    selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
     selected_global: list[np.ndarray] = []
     for irrep, chars in irreps:
         target = targets.get(irrep, 0)
         if target <= 0:
             continue
-        for col in _source_column_order(irrep, u_matrix, prims):
+        for col in _source_column_order(irrep, u_matrix, prims, selected_classes, class_targets):
+            kind = _dominant_kind(u_matrix[:, col], prims)
+            if selected_classes.get(kind, 0) >= class_targets.get(kind, 0):
+                continue
             source_row = source_rows[col]
             projected_row_raw = _project_cartesian_row(source_row, chars, cart_ops)
             projected_row = projected_row_raw @ vib_projector
@@ -197,7 +208,7 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
             coeff /= coeff_norm
             selected_rows[irrep].append(residual / row_norm)
             selected_global.append(global_residual / np.linalg.norm(global_residual))
-            kind = _dominant_kind(u_matrix[:, col], prims)
+            selected_classes[kind] = selected_classes.get(kind, 0) + 1
             adapted.append((_next_name(irrep, kind, used_names), irrep, source, coeff))
             if len(selected_rows[irrep]) == target:
                 break
@@ -208,22 +219,38 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
     counts = {irrep: len(rows) for irrep, rows in selected_rows.items()}
     if counts != targets:
         raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
+    if selected_classes != class_targets:
+        raise RuntimeError(f"GIC class count mismatch: {selected_classes}; expected {class_targets}")
     return adapted
 
 
-def _source_column_order(irrep: str, u_matrix: np.ndarray, prims: list[Primitive]) -> list[int]:
+def _class_counts(u_matrix: np.ndarray, prims: list[Primitive]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for col in range(u_matrix.shape[1]):
+        kind = _dominant_kind(u_matrix[:, col], prims)
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
+def _source_column_order(
+    irrep: str,
+    u_matrix: np.ndarray,
+    prims: list[Primitive],
+    selected_classes: dict[str, int],
+    class_targets: dict[str, int],
+) -> list[int]:
     if irrep in {"A1", "A", "Ag", "A'"}:
         return list(range(u_matrix.shape[1]))
-    priority = {
-        "dihedral": 0,
-        "out_of_plane": 0,
-        "angle": 1,
-        "linear_bend": 2,
-        "bond": 3,
-    }
+    class_order = {"bond": 0, "angle": 1, "linear_bend": 2, "dihedral": 3, "out_of_plane": 4}
+
+    def key(col: int) -> tuple[int, int, int]:
+        kind = _dominant_kind(u_matrix[:, col], prims)
+        remaining = class_targets.get(kind, 0) - selected_classes.get(kind, 0)
+        return (-remaining, class_order.get(kind, 9), col)
+
     return sorted(
         range(u_matrix.shape[1]),
-        key=lambda col: (priority.get(_dominant_kind(u_matrix[:, col], prims), 9), col),
+        key=key,
     )
 
 
@@ -472,19 +499,24 @@ def _write_gicsym(path: Path, sym_gics) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int) -> None:
+def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int, class_targets: dict[str, int]) -> None:
     irreps = _irrep_characters([item[0] for item in op_data])
     targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
     counts: dict[str, int] = {}
+    class_counts: dict[str, int] = {}
     sources: dict[str, int] = {}
-    for _name, irrep, source, _column in sym_gics:
+    for name, irrep, source, _column in sym_gics:
         counts[irrep] = counts.get(irrep, 0) + 1
+        class_name = _class_from_name(name)
+        class_counts[class_name] = class_counts.get(class_name, 0) + 1
         sources[source] = sources.get(source, 0) + 1
     payload = {
         "schema": "merlino.gic_symmetry.v1",
         "operation_order": [item[0] for item in op_data],
         "targets": targets,
         "counts": counts,
+        "class_targets": class_targets,
+        "class_counts": class_counts,
         "sources": sources,
         "strict_clean": all(not source.startswith(("global_", "unresolved")) for source in sources),
         "tolerances": {
@@ -496,6 +528,20 @@ def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int) 
         },
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _class_from_name(name: str) -> str:
+    if "Str" in name:
+        return "bond"
+    if "Ang" in name:
+        return "angle"
+    if "Lin" in name:
+        return "linear_bend"
+    if "Tor" in name:
+        return "dihedral"
+    if "Oop" in name:
+        return "out_of_plane"
+    return "gic"
 
 
 def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[Primitive]) -> None:

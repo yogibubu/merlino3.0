@@ -156,11 +156,16 @@ representation:
 Gamma_vib = Gamma_3N - Gamma_trans - Gamma_rot
 ```
 
-For a non-linear molecule the sum of those counts must be `3N-6`. If the
-counts cannot be reached, the run fails. For Gaussian optimization,
-`gauin.symm` always writes the totally symmetric coordinates first, then a
-blank separator, then all other coordinates; the semiexperimental fit and
-geometry optimization use only the GICForge-assigned totally symmetric block.
+For a non-linear molecule the sum of those counts must be `3N-6`. The
+symmetry post-check also preserves the final GICForge coordinate-class counts:
+the number of stretches, bends, linear bends, torsions and out-of-plane
+coordinates in `gauin.symm` must match the non-symmetrized GICForge basis.
+This prevents one class, for example stretches, from filling the rank that
+belongs to torsions. If either the irrep counts or the coordinate-class counts
+cannot be reached, the run fails. For Gaussian optimization, `gauin.symm`
+always writes the totally symmetric coordinates first, then a blank separator,
+then all other coordinates; the semiexperimental fit and geometry optimization
+use only the GICForge-assigned totally symmetric block.
 
 The post-check is intentionally reproducible:
 
@@ -187,7 +192,8 @@ cannot generate the theoretical irrep counts, GICForge fails and the backend
 must be fixed before the workflow proceeds.
 
 `gic_symmetry_diagnostics.json` contains `strict_clean`, the irrep targets,
-the obtained counts and the source-block counts. `strict_clean=true` means no
-unsupported/global reconstruction was used; it does not require every
-coordinate to be a one-step primitive permutation, because type-local Cartesian
-projection is the deterministic way to validate the B-row symmetry.
+the obtained irrep counts, the coordinate-class targets, the obtained
+coordinate-class counts and the source-block counts. `strict_clean=true` means
+no unsupported/global reconstruction was used; it does not require every
+coordinate to be a one-step primitive permutation, because type-local
+Cartesian projection is the deterministic way to validate the B-row symmetry.
