@@ -186,6 +186,7 @@ The same panel also provides operational helpers:
 - a GIC preview showing the generated non-redundant labels before the fit;
 - automatic suggestions for shared/fixed parameter classes;
 - direct opening of the generated `semiexp_report.html`.
+- guided workflow state from manifests and expected output files.
 
 ## Fit Model
 
@@ -335,6 +336,11 @@ The output directory contains:
 The parameter values use native Merlino GIC units: stretches in Angstrom and
 angular coordinates in radians.
 
+The manifest records more than file paths: backend role, Fortran77 kernel
+source, GIC generation policy, isotopologue count, predicate count, active and
+effective parameter counts, rank, condition number, weighted RMS, reduced
+chi-square, parameter classes and ring-coordinate convention.
+
 ## Benchmarks
 
 Benchmark runs are represented by `SemiexperimentalBenchmarkCase` objects and
@@ -343,6 +349,25 @@ records RMS, iteration count, rank, condition number, stationary-point
 classification, number of fitted parameters and available Kraitchman rows. This
 is the recommended format for MSR-style validation sets and ring/fused-ring
 stress tests.
+
+## Fortran77 Role And Merlino3 Regression
+
+The semiexperimental production workflow is Python-orchestrated. The Fortran77
+semiexp source is a validated numerical-kernel layer for analytic B rows,
+rotational constants and least-squares normal equations, including compressed
+parameter classes. It is deliberately not a second metadata/input/reporting
+implementation.
+
+GIC regression against the frozen Merlino3 baseline is handled by:
+
+```bash
+python scripts/compare_gic_merlino3.py --fixture path/to/gic_fixture --out gic_regression.json
+```
+
+The fixture must contain `provin`. The script runs Merlino3 and Merlino4
+GICForge executables when available, normalizes selected text outputs and
+reports exact matches/mismatches. Without `--strict`, missing local baselines
+are reported as skipped rather than failing routine CI.
 
 ## Quality Checks
 

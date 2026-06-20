@@ -344,8 +344,37 @@ def write_semiexperimental_outputs(
             ),
             "stationary_point": stationary_point,
             "convergence_reason": diagnostics.convergence_reason if diagnostics else "not_reported",
+            "observable": diagnostics.observable if diagnostics else request.observable,
+            "rotational_components": diagnostics.components if diagnostics else request.rotational_components,
+            "isotopologues": tuple(obs.label for obs in request.observations),
+            "n_isotopologues": len(request.observations),
+            "n_qm_predicates": len(request.qm_predicates),
+            "n_gic_parameters": len(parameters),
+            "n_effective_parameters": len(active_names),
+            "n_active_gic_parameters": sum(1 for item in parameters if item.active),
+            "n_kraitchman_rows": len(kraitchman),
+            "rank": diagnostics.rank if diagnostics else None,
+            "condition_number": diagnostics.condition_number if diagnostics else None,
+            "weighted_rms": diagnostics.weighted_rms if diagnostics else None,
+            "reduced_chi_square": diagnostics.reduced_chi_square if diagnostics else None,
+            "coordinate_generation": {
+                "primitive_source": "automatic topology",
+                "reduction": "non-redundant GIC transform",
+                "symmetry": "automatic point-group based, homogeneous coordinate blocks",
+                "ring_coordinates": "endocyclic dihedral and valence-angle combinations",
+            },
         },
-        backend={"solver": "python", "coordinate_model": "merlino-gic", "b_matrix": "analytic"},
+        backend={
+            "solver": "python-orchestrated",
+            "coordinate_model": "merlino-gic",
+            "b_matrix": "analytic",
+            "fortran77_role": "validated numerical kernels only",
+            "fortran77_source": "fortran/semiexp/semiexp_core.f",
+        },
+        messages=[
+            "Semiexperimental workflow is orchestrated in Python.",
+            "Fortran77 semiexp code is kept as an independent validated numerical-kernel layer.",
+        ],
     )
     return manifest.write(outdir / "semiexp_manifest.json")
 

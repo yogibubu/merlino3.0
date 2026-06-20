@@ -4,6 +4,7 @@ import argparse
 import shutil
 from pathlib import Path
 import sys
+import json
 
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
@@ -235,9 +236,10 @@ def main(argv: list[str] | None = None) -> int:
             max_step=args.max_step,
             outdir=args.outdir,
         )
-        write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
+        report_path = write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
+        _append_manifest_output(args.outdir / "semiexp_manifest.json", "html_report", report_path)
         print(f"manifest: {result.manifest}")
-        print(f"report: {args.outdir / 'semiexp_report.html'}")
+        print(f"report: {report_path}")
         print(f"rms_MHz: {result.rms_MHz:.8g}")
         print(f"iterations: {result.iterations}")
         print(f"stationary_point: {result.stationary_point}")
@@ -340,6 +342,18 @@ def _parse_parameter_classes(items: list[str]) -> tuple[ParameterClassConstraint
         patterns = tuple(part.strip() for part in parts[2].split("|") if part.strip())
         constraints.append(ParameterClassConstraint(parts[0].strip(), patterns, parts[1].strip()))
     return tuple(constraints)
+
+
+def _append_manifest_output(manifest_path: Path, name: str, path: Path) -> None:
+    if not manifest_path.exists():
+        return
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data.setdefault("outputs", {})[name] = str(path)
+    if path.is_file():
+        from merlino_core import sha256_file
+
+        data.setdefault("output_sha256", {})[name] = sha256_file(path)
+    manifest_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

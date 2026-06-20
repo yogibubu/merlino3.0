@@ -127,4 +127,5 @@ See `doc/SEMIEXPERIMENTAL_GEOMETRY.md` for the Merlino standard
 semiexperimental geometry solver, including rationale, recommended defaults,
 GUI execution, isotopologue table editing, GIC preview, automatic parameter
 class suggestions, QM predicates, Kraitchman diagnostics, HTML reports,
-benchmark tables and quality checks.
+benchmark tables, enriched manifests, Merlino3 GIC regression checks and
+quality checks.

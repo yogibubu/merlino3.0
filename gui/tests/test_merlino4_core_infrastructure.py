@@ -14,6 +14,7 @@ from merlino_core.numerics import damped_normal_step, limit_step, objective, ran
 from merlino_gaussian import summarize_gaussian_log
 from merlino_semiexp import RotationalConstants
 from merlino_gui import discover_manifests
+from scripts.compare_gic_merlino3 import compare_gic_outputs
 
 
 def test_workspace_config_and_manifest_contracts(tmp_path):
@@ -210,6 +211,12 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_hessian.csv").exists()
     assert (outdir / "semiexp_diagnostics.csv").exists()
     assert (outdir / "semiexp_manifest.json").exists()
+    assert (outdir / "semiexp_report.html").exists()
+    manifest = json.loads((outdir / "semiexp_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["backend"]["fortran77_role"] == "validated numerical kernels only"
+    assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
+    assert manifest["parameters"]["coordinate_generation"]["reduction"] == "non-redundant GIC transform"
+    assert manifest["parameters"]["n_gic_parameters"] >= 1
 
 
 def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):
@@ -255,3 +262,28 @@ def test_manifest_discovery(tmp_path):
 
     assert entries[0].path == path
     assert entries[0].workflow == "demo"
+
+
+def test_gic_regression_script_compares_fake_merlino3_and_4(tmp_path):
+    m3 = tmp_path / "merlino3"
+    m4 = tmp_path / "merlino4"
+    for root in (m3, m4):
+        bindir = root / "bin"
+        bindir.mkdir(parents=True)
+        exe = bindir / "gicforge.x"
+        exe.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf 'same gaussian input\\n' > gauin\n"
+            "printf 'same report\\n' > provout\n"
+            "printf 'same report\\n' > gicforge.out\n",
+            encoding="utf-8",
+        )
+        exe.chmod(0o755)
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "provin").write_text("input\n", encoding="utf-8")
+
+    report = compare_gic_outputs(m3, m4, fixture)
+
+    assert report["status"] == "passed"
+    assert report["compared"]["gauin"] is True

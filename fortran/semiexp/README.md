@@ -2,6 +2,10 @@
 
 `semiexp_core.f` contains independent Fortran77 numerical kernels used to keep
 the semiexperimental geometry workflow reproducible outside the Python solver.
+The production workflow is Python-orchestrated because input handling,
+automatic GIC generation, symmetry, isotopologue metadata, reporting and GUI
+state are managed more robustly there. This Fortran77 layer is intentionally a
+validated kernel layer, not a second full workflow implementation.
 
 Provided routines:
 

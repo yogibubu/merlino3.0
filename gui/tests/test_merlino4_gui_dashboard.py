@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 
 from merlino_gui import DashboardWindow, default_workflows
 from merlino_gui.app import build_parser
-from merlino_gui.dashboard import workflow_detail_text
+from merlino_gui.dashboard import workflow_detail_text, workflow_state_lines
 
 
 def test_default_workflows_include_new_scientific_areas():
@@ -28,6 +28,32 @@ def test_workflow_detail_text_lists_contract_fields():
     assert "Outputs:" in text
     assert workflow.service in text
     assert "Backend:" in text
+
+
+def test_workflow_state_reports_manifest_outputs(tmp_path):
+    run = tmp_path / "semiexp"
+    run.mkdir()
+    report = run / "semiexp_report.html"
+    report.write_text("<html></html>\n", encoding="utf-8")
+    manifest = run / "semiexp_manifest.json"
+    manifest.write_text(
+        """
+{
+  "workflow": "semiexperimental_geometry",
+  "status": "completed",
+  "run_dir": "%s",
+  "outputs": {"html_report": "%s"}
+}
+"""
+        % (run, report),
+        encoding="utf-8",
+    )
+    workflow = {item.workflow_id: item for item in default_workflows()}["semiexp_geometry"]
+
+    lines = workflow_state_lines(workflow, tmp_path)
+
+    assert any("latest manifest: completed" in line for line in lines)
+    assert any("outputs present: html_report" in line for line in lines)
 
 
 @pytest.mark.usefixtures("qtbot")

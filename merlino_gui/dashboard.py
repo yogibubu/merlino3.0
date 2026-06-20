@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import shlex
 
@@ -152,7 +153,7 @@ class DashboardWindow(QMainWindow):
         workflow = next(item for item in self.workflows if item.workflow_id == workflow_id)
         self._sync_backend_selector(workflow)
         backend = self.selected_backends.get(workflow.workflow_id, workflow.default_backend)
-        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
+        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend, workdir=self.workdir))
         self.semiexp_panel.setVisible(workflow.workflow_id == "semiexp_geometry")
         if workflow.workflow_id == "semiexp_geometry":
             self._update_semiexp_preview()
@@ -176,7 +177,7 @@ class DashboardWindow(QMainWindow):
             return
         self.selected_backends[str(workflow_id)] = backend
         workflow = next(item for item in self.workflows if item.workflow_id == workflow_id)
-        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
+        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend, workdir=self.workdir))
         if workflow.workflow_id == "semiexp_geometry":
             self._update_semiexp_preview()
 
@@ -417,7 +418,7 @@ class DashboardWindow(QMainWindow):
         return "\n".join(lines)
 
 
-def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None) -> str:
+def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None, workdir: Path | None = None) -> str:
     backend = selected_backend or workflow.default_backend
     lines = [
         workflow.title,
@@ -443,7 +444,62 @@ def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = 
         "Status:",
         f"  {workflow.status}",
     ]
+    if workdir is not None:
+        lines.extend(["", "Project State:", *[f"  - {item}" for item in workflow_state_lines(workflow, Path(workdir))]])
     return "\n".join(lines)
+
+
+def workflow_state_lines(workflow: WorkflowSpec, workdir: Path) -> list[str]:
+    manifests = _workflow_manifests(Path(workdir), workflow.workflow_id)
+    if manifests:
+        latest = manifests[-1]
+        status = latest.get("status", "unknown")
+        run_dir = latest.get("run_dir", "")
+        lines = [f"latest manifest: {status} {run_dir}"]
+        outputs = latest.get("outputs", {})
+        if outputs:
+            existing = [name for name, path in outputs.items() if Path(path).exists()]
+            missing = [name for name, path in outputs.items() if not Path(path).exists()]
+            lines.append(f"outputs present: {', '.join(existing) if existing else 'none'}")
+            if missing:
+                lines.append(f"outputs missing: {', '.join(missing)}")
+        return lines
+    expected = _expected_workflow_files(workflow.workflow_id, Path(workdir))
+    existing = [name for name, path in expected.items() if path.exists()]
+    if existing:
+        return [f"files present without manifest: {', '.join(existing)}"]
+    return ["not started in this workdir"]
+
+
+def _workflow_manifests(workdir: Path, workflow_id: str) -> list[dict]:
+    aliases = {
+        "semiexp_geometry": {"semiexperimental_geometry"},
+        "gic": {"gicforge"},
+        "vpt2_vci": {"vpt2_vci", "gf"},
+        "dvr": {"dvr"},
+    }
+    accepted = {workflow_id, *aliases.get(workflow_id, set())}
+    data = []
+    for path in sorted(workdir.rglob("*manifest*.json")):
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if manifest.get("workflow") in accepted:
+            data.append(manifest)
+    return data
+
+
+def _expected_workflow_files(workflow_id: str, workdir: Path) -> dict[str, Path]:
+    if workflow_id == "semiexp_geometry":
+        return {
+            "geometry": workdir / "semiexp_geometry.xyz",
+            "parameters": workdir / "semiexp_parameters.csv",
+            "report": workdir / "semiexp_report.html",
+        }
+    if workflow_id == "gic":
+        return {"gaussian_input": workdir / "gauin", "report": workdir / "gicforge.out"}
+    return {}
 
 
 def _group_workflows(workflows: list[WorkflowSpec]) -> dict[str, list[WorkflowSpec]]:
