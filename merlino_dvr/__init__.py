@@ -7,6 +7,7 @@ from .workflow import (
     build_path_analysis_args,
     is_fortran_solver,
     resolve_dvr_executable,
+    write_dvr_manifest,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "build_path_analysis_args",
     "is_fortran_solver",
     "resolve_dvr_executable",
+    "write_dvr_manifest",
 ]

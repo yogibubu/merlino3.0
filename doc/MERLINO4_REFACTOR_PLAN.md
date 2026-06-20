@@ -184,6 +184,11 @@ Each step should end with a small commit and a green validation run.
   orchestration.
 - Keep semiexperimental geometry fitting independent from any specific QM
   package by consuming normalized vibrational-correction tables.
+- New workflows must expose a non-Qt service or CLI path before GUI wiring.
+- Every workflow run should write a `merlino.run.v1` manifest with input/output
+  checksums, parameters and backend metadata.
+- Project workspaces should use `inputs/`, `runs/`, `outputs/`, `reports/`,
+  `cache/` and `logs/` rather than writing new files directly into `working/`.
 
 ## First Milestone
 

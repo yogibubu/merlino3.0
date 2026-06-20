@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 
+from merlino_core import build_run_manifest
 from merlino_fortran import resolve_backend
 
 
@@ -117,3 +118,29 @@ def build_fortran_shell_command(
 def _quote(value: str | Path) -> str:
     text = str(value)
     return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def write_dvr_manifest(request: DVRRequest, args: list[str], *, status: str = "prepared") -> Path:
+    """Write a standard Merlino run manifest for a DVR request."""
+    outputs = {
+        "grid_csv": request.grid_csv,
+        "summary": request.outdir / f"{request.normalized_prefix}_summary.txt",
+        "levels": request.outdir / f"{request.normalized_prefix}_levels.csv",
+    }
+    manifest = build_run_manifest(
+        workflow="dvr",
+        status=status,
+        run_dir=request.outdir,
+        inputs={"gaussian_log": request.log_path},
+        outputs={name: path for name, path in outputs.items() if path.exists()},
+        parameters={
+            "prefix": request.normalized_prefix,
+            "boundary": request.boundary,
+            "solver": request.solver,
+            "compute_rotconst": request.compute_rotconst,
+            "label_cremer_pople": request.label_cremer_pople,
+            "check_only": request.check_only,
+        },
+        backend={"python_executable": request.python_executable, "args": args},
+    )
+    return manifest.write(request.outdir / f"{request.normalized_prefix}_manifest.json")

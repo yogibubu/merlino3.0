@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from typing import Iterable
 
-from merlino_core import sha256_file, write_manifest
+from merlino_core import build_run_manifest, sha256_file, write_manifest
 from merlino_fortran import resolve_backend
 
 
@@ -102,14 +102,21 @@ def _write_gicforge_manifest(
         for name, path in sorted(files.items())
         if path.is_file()
     }
-    return write_manifest(
-        run_dir / "gicforge_manifest.json",
-        {
-            "workflow": "gicforge",
-            "executable": str(executable),
-            "logfile": str(logfile),
-            "inputs": input_checksums,
-            "outputs": {name: str(path) for name, path in sorted(files.items())},
-            "output_sha256": output_checksums,
-        },
-    )
+    legacy_manifest = {
+        "workflow": "gicforge",
+        "executable": str(executable),
+        "logfile": str(logfile),
+        "inputs": input_checksums,
+        "outputs": {name: str(path) for name, path in sorted(files.items())},
+        "output_sha256": output_checksums,
+    }
+    manifest = build_run_manifest(
+        workflow="gicforge",
+        status="completed",
+        run_dir=run_dir,
+        inputs={name: run_dir / name for name in ("provin", "xyzin") if (run_dir / name).exists()},
+        outputs=files,
+        backend={"name": "gicforge", "executable": str(executable), "logfile": str(logfile)},
+    ).to_dict()
+    manifest.update({"legacy": legacy_manifest})
+    return write_manifest(run_dir / "gicforge_manifest.json", manifest)

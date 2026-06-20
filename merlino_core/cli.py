@@ -1,0 +1,146 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+
+from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
+from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
+from merlino_vpt2_vci import VCIOptions, load_force_field, run_gf_report_from_fchk, run_vpt2_vci_report
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="merlino", description="Merlino4 workflow CLI")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    init = sub.add_parser("init", help="Create canonical workspace folders and merlino.toml")
+    init.add_argument("workdir", type=Path)
+    init.add_argument("--overwrite-config", action="store_true")
+
+    config = sub.add_parser("config", help="Show resolved configuration")
+    config.add_argument("--workdir", type=Path, default=Path("."))
+    config.add_argument("--config", type=Path)
+
+    gf = sub.add_parser("gf", help="Run GF/PED from an FCHK adapter")
+    gf.add_argument("--fchk", type=Path, required=True)
+    gf.add_argument("--out", type=Path)
+    gf.add_argument("--run-dir", type=Path)
+
+    vci = sub.add_parser("vci", help="Run VPT2/VCI from canonical QFF and optional FCHK frequencies")
+    vci.add_argument("--qff", type=Path)
+    vci.add_argument("--fchk", type=Path)
+    vci.add_argument("--max-quanta", type=int, default=2)
+    vci.add_argument("--roots", type=int, default=6)
+    vci.add_argument("--active-modes", default="")
+    vci.add_argument("--out", type=Path)
+    vci.add_argument("--run-dir", type=Path)
+
+    dvr = sub.add_parser("dvr-args", help="Build DVR command args and manifest without executing")
+    dvr.add_argument("--repo-root", type=Path, required=True)
+    dvr.add_argument("--log", type=Path, required=True)
+    dvr.add_argument("--outdir", type=Path, required=True)
+    dvr.add_argument("--figdir", type=Path, required=True)
+    dvr.add_argument("--prefix", default="puckering_dvr")
+    dvr.add_argument("--boundary", default="periodic")
+    dvr.add_argument("--solver", default="fourier")
+    dvr.add_argument("--no-rotconst", action="store_true")
+    dvr.add_argument("--label-cremer-pople", action="store_true")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.command == "init":
+        layout = ensure_workspace(args.workdir)
+        config_path = write_default_config(layout.root / "merlino.toml", overwrite=args.overwrite_config)
+        print(f"workspace: {layout.root}")
+        print(f"config: {config_path}")
+        return 0
+
+    if args.command == "config":
+        config = load_config(args.config, workdir=args.workdir)
+        for key, value in config.to_dict().items():
+            print(f"{key}: {value}")
+        return 0
+
+    if args.command == "gf":
+        report = run_gf_report_from_fchk(args.fchk)
+        out = args.out or Path("gf_ped_report.txt")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(report.text + "\n", encoding="utf-8")
+        run_dir = args.run_dir or out.parent
+        build_run_manifest(
+            workflow="gf",
+            status="completed",
+            run_dir=run_dir,
+            inputs={"fchk": args.fchk},
+            outputs={"report": out},
+            backend={"adapter": "gaussian-fchk", "solver": "python"},
+        ).write(Path(run_dir) / "gf_manifest.json")
+        print(out)
+        return 0
+
+    if args.command == "vci":
+        active_modes = _parse_active_modes(args.active_modes)
+        qff = load_force_field(fchk_path=args.fchk, qff_path=args.qff)
+        report = run_vpt2_vci_report(
+            qff,
+            max_quanta=args.max_quanta,
+            roots=args.roots,
+            options=VCIOptions(active_modes=active_modes),
+        )
+        out = args.out or Path("vpt2_vci_report.txt")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(report.text + "\n", encoding="utf-8")
+        run_dir = args.run_dir or out.parent
+        inputs = {}
+        if args.fchk is not None:
+            inputs["fchk"] = args.fchk
+        if args.qff is not None:
+            inputs["qff"] = args.qff
+        build_run_manifest(
+            workflow="vpt2_vci",
+            status="completed",
+            run_dir=run_dir,
+            inputs=inputs,
+            outputs={"report": out},
+            parameters={"max_quanta": args.max_quanta, "roots": args.roots, "active_modes": active_modes},
+            backend={"solver": "python"},
+        ).write(Path(run_dir) / "vpt2_vci_manifest.json")
+        print(out)
+        return 0
+
+    if args.command == "dvr-args":
+        request = DVRRequest(
+            repo_root=args.repo_root,
+            log_path=args.log,
+            outdir=args.outdir,
+            figdir=args.figdir,
+            prefix=args.prefix,
+            boundary=args.boundary,
+            solver=args.solver,
+            compute_rotconst=not args.no_rotconst,
+            label_cremer_pople=args.label_cremer_pople,
+        )
+        request.outdir.mkdir(parents=True, exist_ok=True)
+        request.figdir.mkdir(parents=True, exist_ok=True)
+        dvr_args = build_path_analysis_args(request)
+        manifest = write_dvr_manifest(request, dvr_args)
+        print(" ".join(dvr_args))
+        print(f"manifest: {manifest}")
+        return 0
+
+    return 2
+
+
+def _parse_active_modes(raw: str) -> tuple[int, ...] | None:
+    if not raw.strip():
+        return None
+    values = tuple(int(part.strip()) - 1 for part in raw.replace(";", ",").split(",") if part.strip())
+    if any(value < 0 for value in values):
+        raise ValueError("active modes are one-based")
+    return values
+
+
+if __name__ == "__main__":
+    sys.exit(main())

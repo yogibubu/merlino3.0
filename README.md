@@ -21,6 +21,8 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 ## Main Entry Points
 
 - `app.py`: GUI launcher.
+- `python -m merlino`: Merlino4 workflow CLI for workspace initialization,
+  GF/PED, VPT2/VCI and DVR command preparation.
 - `python -m merlino_gui.app`: experimental Merlino4 workflow dashboard.
 - `manager.py`, `cli_modules.py`, `cli_gaussian.py`: command-line entry points
   retained for compatibility.
@@ -84,3 +86,22 @@ cd fortran/vpt2_vci
 ```
 
 This compiles `gf_core.f`, `vci_core.f` and `davidson_core.f` to object files.
+
+## Merlino4 Runtime Contracts
+
+New code should use the shared infrastructure in `merlino_core`:
+
+- `MerlinoConfig` from `merlino.toml` for Gaussian/backend defaults.
+- `WorkspaceLayout` for `inputs/`, `runs/`, `outputs/`, `reports/`, `cache/`
+  and `logs/`.
+- `RunManifest` for workflow reproducibility metadata and file checksums.
+- Typed exceptions from `merlino_core.errors` for user-facing failures.
+
+The CLI mirrors GUI-capable services without requiring Qt:
+
+```bash
+python -m merlino init my_project
+python -m merlino gf --fchk calc.fchk --out gf_report.txt
+python -m merlino vci --qff field.qff --max-quanta 3 --roots 6
+python -m merlino dvr-args --repo-root . --log scan.log --outdir out --figdir fig
+```
