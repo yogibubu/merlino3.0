@@ -9,6 +9,10 @@ from merlino_semiexp import (
     RotationalConstants,
     SemiexperimentalFitRequest,
     VibrationalCorrection,
+    corrected_constants_rows,
+    parse_substitutions,
+    read_observations_csv,
+    write_observations_csv,
 )
 from merlino_vpt2_vci import DavidsonSettings, ForceFieldSource, VCIRequest, inventory_legacy_fortran
 
@@ -59,3 +63,33 @@ def test_semiexperimental_fit_request_validation(tmp_path):
     duplicate = SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs, obs))
     with pytest.raises(ValueError):
         duplicate.validate()
+
+
+def test_semiexperimental_observations_csv_roundtrip(tmp_path):
+    observations = (
+        IsotopologueObservation(
+            label="parent",
+            constants=RotationalConstants(1000.0, 800.0, 600.0),
+            correction=VibrationalCorrection(1.0, 2.0, 3.0, source="gaussian"),
+        ),
+        IsotopologueObservation(
+            label="13C1",
+            constants=RotationalConstants(990.0, 790.0, 590.0),
+            substitutions={1: 13},
+            correction=VibrationalCorrection(0.5, 1.5, 2.5, source="gaussian"),
+        ),
+    )
+
+    path = write_observations_csv(tmp_path / "observations.csv", observations)
+    loaded = read_observations_csv(path)
+    rows = corrected_constants_rows(loaded)
+
+    assert loaded[1].substitutions == {1: 13}
+    assert rows[0]["A_e_MHz"] == 999.0
+    assert rows[1]["C_e_MHz"] == 587.5
+
+
+def test_semiexperimental_substitution_parser():
+    assert parse_substitutions("2:13;5:18") == {2: 13, 5: 18}
+    with pytest.raises(ValueError):
+        parse_substitutions("0:13")
