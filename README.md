@@ -39,9 +39,8 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 - `puckering_dvr/`: vendored DVR backend. It consumes completed Gaussian outputs
   and does not generate Gaussian paths.
 - `fortran/`: active Fortran backends. GICForge lives under
-  `fortran/gicforge/`; the DVR kernel lives under `fortran/dvr/`; harmonic
-  internal-coordinate GF routines live under `fortran/harmonic_internal/`; new
-  VPT2/VCI kernels live under `fortran/vpt2_vci/`.
+  `fortran/gicforge/`; the DVR kernel lives under `fortran/dvr/`; independent
+  GF/VPT2/VCI/Davidson kernels live under `fortran/vpt2_vci/`.
 - `bin/`: runnable binaries used by launchers, such as `gicforge.x`.
 - `projects/`: local project/library data ignored by git.
 - `working/`: runtime working directory ignored by git.
@@ -77,12 +76,11 @@ cd fortran/dvr
 
 The DVR build writes `bin/path_dvr.x`.
 
-For the harmonic internal-coordinate GF source:
+For the independent GF/VPT2/VCI source kernels:
 
 ```bash
-cd fortran/harmonic_internal
+cd fortran/vpt2_vci
 ./compile_check
 ```
 
-This compiles `gf.f` to an object file; it is linked later by harmonic and
-anharmonic workflow drivers.
+This compiles `gf_core.f`, `vci_core.f` and `davidson_core.f` to object files.

@@ -55,36 +55,6 @@ Diagonalization is performed by `DVRHQRII` in `fortran/dvr/dvr_hqrii.f`, a
 renamed local copy of GICForge `HQRII1`. This avoids Jacobi diagonalization for
 large Hamiltonians.
 
-## Active Harmonic Internal-Coordinate Source
-
-- Source: `fortran/harmonic_internal/gf.f`
-- Compile check:
-
-```bash
-cd fortran/harmonic_internal
-./compile_check
-```
-
-`gf.f` is a source backend rather than a standalone executable. It provides
-`DNICGF` for building internal-coordinate F/G matrices and `DNICFq` for Wilson
-GF harmonic frequencies and internal-coordinate normal modes. It is the
-harmonic internal-coordinate layer that the later anharmonic VPT2/VCI workflow
-will build on.
-
-## GDV VPT2/VCI Reference Sources
-
-The active GDV reference sources are inventoried, not copied wholesale:
-
-- `gdv_j32p/gdv/l717.F`: VCI/VPT2 decks, including `VCIDrv`, `VCIGen`,
-  `VCIInt`, `VCIPT2` and `VCIVar`.
-- `gdv_j32p/gdv/dinautil.F`: anharmonic RWF and harmonic/internal-coordinate
-  support, including `AnhFIO`, `DNICGF`, `DNICFq` and `VPT2En`.
-- `gdv_j32p/gdv/utilnz.F`: large utility source containing `NHDiag`, the
-  Davidson/subspace diagonalization source to extract for large VCI spaces.
-
-See `doc/GDV_VPT2_VCI_SOURCE_MAP.md` before extracting standalone Merlino4
-Fortran kernels.
-
 ## Merlino4 VPT2/VCI Core
 
 `fortran/vpt2_vci/` now contains new Fortran77 source kernels written for
@@ -99,6 +69,8 @@ Python owns Gaussian/FCHK parsing, QFF tensor normalization and workflow
 orchestration. The Fortran kernels receive numerical arrays only; Davidson is
 implemented with a Merlino4 `matvec + diagonal` contract and is not copied from
 Gaussian/GDV.
+
+No historical Gaussian/GDV harmonic Fortran source is kept in Merlino4.
 
 The `fortran/` root is intentionally documentation-only. Generated compiler
 logs such as `error` files are not source and should not be committed.

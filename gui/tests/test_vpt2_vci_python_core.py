@@ -6,6 +6,7 @@ from merlino_vpt2_vci import (
     QuarticForceField,
     davidson_lowest,
     generate_vibrational_basis,
+    gf_from_gaussian_fchk_with_merlino_gics,
     lower_to_symmetric,
     read_gaussian_fchk_qff,
     read_indexed_qff_text,
@@ -45,6 +46,8 @@ def test_vci_quartic_term_shifts_oscillator_ground_state():
 def test_gaussian_fchk_qff_reader_uses_real_anharmonic_blocks():
     data = read_gaussian_fchk_qff(__import__("pathlib").Path("gui/tests/gaussian/h2o.fchk"))
 
+    assert data.atomic_numbers.tolist() == [1, 8, 1]
+    assert data.cartesian_coordinates_bohr.shape == (3, 3)
     assert data.masses_amu.shape == (3,)
     assert data.cartesian_hessian_lower.shape == (45,)
     assert np.allclose(data.anharmonic_frequencies_cm[:3], [2123.50470, 4016.61987, 4266.73074])
@@ -108,3 +111,17 @@ def test_vci_davidson_path_matches_dense_path():
     assert iterative.davidson is not None
     assert iterative.davidson.converged
     assert np.allclose(iterative.energies_cm, dense.energies_cm, atol=1.0e-7)
+
+
+def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
+    result = gf_from_gaussian_fchk_with_merlino_gics(__import__("pathlib").Path("gui/tests/gaussian/h2o.fchk"))
+
+    assert result.b_matrix.shape == (3, 9)
+    assert result.force_constants.shape == (3, 3)
+    assert result.g_matrix.shape == (3, 3)
+    assert result.ped.values.shape == (3, 3)
+    assert "bond(1,2)" in result.gic_labels[0]
+    assert "angle(1,2,3)" in result.gic_labels[2]
+    assert np.all(result.frequencies_cm > 0.0)
+    assert np.allclose(result.ped.values.sum(axis=0), np.full(3, 100.0))
+    assert np.allclose(result.frequencies_cm, [2169.878, 4141.256, 4392.363], atol=1.0e-3)

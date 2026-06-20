@@ -16,6 +16,8 @@ _HEADER_RE = re.compile(r"^(?P<label>.+?)\s+(?P<kind>[IRC])(?:\s+N=\s*(?P<count>
 class FCHKData:
     """Numerical blocks needed from a Gaussian formatted checkpoint."""
 
+    atomic_numbers: np.ndarray
+    cartesian_coordinates_bohr: np.ndarray
     masses_amu: np.ndarray
     cartesian_hessian_lower: np.ndarray
     harmonic_frequencies_cm: np.ndarray
@@ -69,6 +71,8 @@ def _first_array(blocks: dict[str, object], *labels: str) -> np.ndarray:
 def read_gaussian_fchk_qff(path: Path) -> FCHKData:
     """Read harmonic Hessian and Gaussian anharmonic arrays from an FCHK file."""
     blocks = _read_fchk_blocks(Path(path))
+    atomic_numbers = _first_array(blocks, "Atomic numbers").astype(int)
+    coords = _first_array(blocks, "Current cartesian coordinates").reshape((-1, 3))
     masses = _first_array(blocks, "Real atomic weights", "Atomic masses", "Vib-AtMass", "Anharmonic Vib-AtMass")
     hessian = _first_array(blocks, "Cartesian Force Constants")
     vib_e2 = _first_array(blocks, "Vib-E2") if "Vib-E2" in blocks else np.array((), dtype=float)
@@ -81,6 +85,8 @@ def read_gaussian_fchk_qff(path: Path) -> FCHKData:
     n_anh = int(blocks.get("Anharmonic Vib-NDim", harmonic.size))
     anharmonic = anh_e2[:n_anh] if anh_e2.size else np.array((), dtype=float)
     return FCHKData(
+        atomic_numbers=atomic_numbers,
+        cartesian_coordinates_bohr=coords,
         masses_amu=masses,
         cartesian_hessian_lower=hessian,
         harmonic_frequencies_cm=harmonic,

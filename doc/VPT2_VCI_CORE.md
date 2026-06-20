@@ -23,6 +23,8 @@ coordinates.
 
 - `merlino_vpt2_vci.gaussian_qff`: FCHK and normalized-QFF readers.
 - `merlino_vpt2_vci.harmonic`: independent Wilson-GF linear algebra.
+- `merlino_vpt2_vci.internal_gf`: Cartesian Hessian plus Merlino
+  non-redundant GIC/B matrix to GF frequencies and PED.
 - `merlino_vpt2_vci.vci`: product-basis VCI matrix elements and dense
   diagonalization for small spaces.
 - `merlino_vpt2_vci.davidson`: independent symmetric Davidson diagonalizer
@@ -38,8 +40,28 @@ coordinates.
 The Fortran code is fixed-form Fortran77 and receives arrays only. It is not a
 GDV wrapper.
 
+Historical Gaussian/GDV Fortran sources are not part of the active Merlino4
+tree.
+
+## GF/PED From Cartesian Hessian
+
+The tested harmonic path is:
+
+```text
+Gaussian FCHK Cartesian geometry/Hessian
+-> Merlino topology primitives
+-> Merlino non-redundant GIC transform U
+-> Bq = U^T B
+-> G = Bq M^-1 Bq^T
+-> F = A^T Hcart A, A = M^-1 Bq^T G^-1
+-> Wilson GF frequencies and PED
+```
+
+Gaussian is only the source of Cartesian numerical data in this test. The GICs,
+B matrix, GF transformation and PED are computed by Merlino.
+
 ## Next Numerical Step
 
 The dense VCI path is for small validation spaces. Large VCI spaces use the
-standalone Davidson contract. `utilnz.F:NHDiag` is historical context only and
-is not a dependency or copy source for Merlino4.
+standalone Davidson contract. Gaussian/GDV routines are not dependencies or
+copy sources for Merlino4.

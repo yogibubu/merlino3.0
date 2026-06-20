@@ -15,11 +15,9 @@ from merlino_semiexp import (
 )
 from merlino_core import repo_root
 from merlino_vpt2_vci import (
-    DEFAULT_GDV_SOURCE_ROOT,
     DavidsonSettings,
     ForceFieldSource,
     VCIRequest,
-    discover_gdv_vpt2_vci_sources,
     inventory_vpt2_vci_backends,
 )
 
@@ -46,10 +44,8 @@ def test_vci_request_validation(tmp_path):
 
 def test_vpt2_vci_inventory_records_active_backend_status():
     inventory = inventory_vpt2_vci_backends(repo_root(__file__))
-    assert inventory.harmonic_internal_source is not None
-    assert inventory.harmonic_internal_source.name == "gf.f"
-    assert inventory.gdv_vci_driver_source is None or inventory.gdv_vci_driver_source.name == "l717.F"
-    assert inventory.gdv_davidson_source is None or inventory.gdv_davidson_source.name == "utilnz.F"
+    assert inventory.harmonic_source is not None
+    assert inventory.harmonic_source.name == "gf_core.f"
     assert {path.name for path in inventory.active_fortran_sources} == {
         "davidson_core.f",
         "gf_core.f",
@@ -60,20 +56,6 @@ def test_vpt2_vci_inventory_records_active_backend_status():
     notes = " ".join(inventory.notes)
     assert "GF" in notes
     assert "Davidson" in notes
-
-
-def test_gdv_vpt2_vci_source_inventory_when_available():
-    if not DEFAULT_GDV_SOURCE_ROOT.exists():
-        pytest.skip("GDV source checkout is not available")
-    sources = discover_gdv_vpt2_vci_sources(DEFAULT_GDV_SOURCE_ROOT)
-    deck_names = {deck.name for deck in sources.decks}
-
-    assert sources.vci_driver is not None
-    assert sources.vci_driver.name == "l717.F"
-    assert sources.utility_support is not None
-    assert sources.utility_support.name == "utilnz.F"
-    assert {"VCIDrv", "VCIInt", "VCIVar", "VCIPT2", "NHDiag"} <= deck_names
-
 
 def test_semiexperimental_correction_subtracts_vibrational_delta():
     observed = RotationalConstants(1000.0, 800.0, 600.0)

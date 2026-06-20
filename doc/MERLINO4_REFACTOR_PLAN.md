@@ -19,7 +19,7 @@ DVR parsing/writing should have one source of truth.
 
 The planned new scientific capabilities are limited and explicit:
 
-- Harmonic internal-coordinate GF analysis from `fortran/harmonic_internal/gf.f`.
+- Harmonic GF analysis from independent Python code and `fortran/vpt2_vci/gf_core.f`.
 - VPT2/VCI from Gaussian quartic force fields, with a Davidson diagonalizer for
   large VCI spaces.
 - Semiexperimental equilibrium-geometry determination from least-squares fits of
@@ -160,12 +160,11 @@ Implementation rule:
 3. Consolidate geometry/topology/ring primitives in `merlino_geometry`.
 4. Move GIC generation and ring numbering into `merlino_gic`.
 5. Introduce `merlino_fortran` wrappers for `gicforge.x`, `path_dvr.x` and
-   source-only Fortran kernels such as `gf.f`.
+   source-only Fortran kernels such as `fortran/vpt2_vci/gf_core.f`.
 6. Move Gaussian parsing/writing into `merlino_gaussian`.
 7. Move DVR workflow orchestration into `merlino_dvr`.
 8. Inventory existing harmonic/anharmonic Fortran code and define normalized
-   input and output files. The current source map is
-   `doc/GDV_VPT2_VCI_SOURCE_MAP.md`.
+   input and output files.
 9. Add the semiexperimental geometry data model and least-squares interface.
 10. Rewire GUI controllers to call service interfaces.
 11. Remove compatibility wrappers only after tests cover the new imports.

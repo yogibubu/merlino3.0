@@ -57,11 +57,6 @@ BACKENDS: dict[str, BackendSpec] = {
 
 
 SOURCE_BACKENDS: dict[str, SourceBackendSpec] = {
-    "harmonic_internal": SourceBackendSpec(
-        name="harmonic_internal",
-        source_dir="fortran/harmonic_internal",
-        primary_source="gf.f",
-    ),
     "vpt2_vci": SourceBackendSpec(
         name="vpt2_vci",
         source_dir="fortran/vpt2_vci",

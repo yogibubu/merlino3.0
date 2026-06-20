@@ -6,6 +6,7 @@ import numpy as np
 
 
 CM_PER_HARTREE = 219474.6313705
+HESSIAN_EIGENVALUE_TO_CM = 5140.487143715055
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ def solve_wilson_gf(force_constants: np.ndarray, g_matrix: np.ndarray, *, scale_
     vec = vec[:, order]
     freqs = np.sign(eig) * np.sqrt(np.abs(eig))
     if scale_to_cm:
-        freqs = freqs * CM_PER_HARTREE
+        freqs = freqs * HESSIAN_EIGENVALUE_TO_CM
     return GFResult(eigenvalues=eig, frequencies_cm=freqs, normal_modes=vec)
 
 
