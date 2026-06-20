@@ -154,7 +154,7 @@ KWD_SPEC = {
             "SYMMALL": {
                 "type": "flag",
                 "default": False,
-                "description": "Full symmetry analysis",
+                "description": "Symmetrize GICs inside same-type blocks",
             },
             "LOOSE": {
                 "type": "flag",

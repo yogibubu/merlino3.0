@@ -12,7 +12,7 @@ DEBUG    : Preserve all intermediate files (no cleanup)
 
 #GAUSSIAN
  G16       : Make G16 Input (Need Deactivation of G26!!!)
- SYMMALL   : Symmetrize GNICs
+ SYMMALL   : Symmetrize same-type GNIC blocks
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan
  PCS0      : PCS0 Model (UFF)
@@ -28,4 +28,3 @@ DEBUG    : Preserve all intermediate files (no cleanup)
  HBOND     : Make H-Bonds
  BMAT      : Build B Matrix
  BDPCS3    : Make BDPCS3 Bond Lengths
-

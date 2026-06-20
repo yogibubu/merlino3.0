@@ -565,6 +565,8 @@ C Bond Lengths
       Do 40 Ir=1,NLen
        IFixB(Ir)=IFill        
    40 Continue
+      If(SyGNIC) call SymOneGICBlock(IOut,'Stretch',MxAtP,MxTrm,1,
+     $ NLen,NTermB,IAtomB,ITVB,IFixB,IAn,CoefB)
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,InvDst,NVar,
      $  Ini,IniP,NTermB,IAtomB,IPrimB,ITVB,IFixB,IAn,CoefB,ValTB,C,
      $  ImpDih,Clean)
@@ -579,6 +581,8 @@ C Valence Angles
       Do 50 Ir=1,NAng
        IFixA(Ir)=IFill
    50 Continue
+      If(SyGNIC) call SymOneGICBlock(IOut,'Bend',MxAtP,MxTrm,2,
+     $ NAng,NTermA,IAtomA,ITVA,IFixA,IAn,CoefA)
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,.False.,
      $ NVar,Ini,IniP,NTermA,IAtomA,IPrimA,ITVA,IFixA,IAn,CoefA,ValTA,C,
      $ ImpDih,Clean)
@@ -593,6 +597,8 @@ C Linear Valence Angles
       Do 60 Ir=1,NLAng
        IFixL(Ir)=IFill
    60 Continue
+      If(SyGNIC) call SymOneGICBlock(IOut,'Linear bend',MxAtP,MxTrm,3,
+     $ NLang,NTermL,IAtomL,ITVLA,IFixL,IAn,CoefL)
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,.False.,
      $ NVar,Ini,IniP,NTermL,IAtomL,IPrimL,ITVLA,IFixL,IAn,CoefL,ValTL,C,
      $ ImpDih,Clean)
@@ -607,6 +613,8 @@ C Dihedrals
       Do 70 Ir=1,NDih
        IFixD(Ir)=IFill
    70 Continue
+      If(SyGNIC) call SymOneGICBlock(IOut,'Torsion',MxAtP,MxTrm,4,
+     $ NDih,NTermD,IAtomD,ITVD,IFixD,IAn,CoefD)
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermD,IAtomD,IPrimD,ITVD,IFixD,IAn,CoefD,ValTD,C,
      $ ImpDih,Clean)
@@ -621,6 +629,8 @@ C Out of Plane
       Do 80 Ir=1,NOupl
        IFixO(Ir)=IFill
    80 Continue
+      If(SyGNIC) call SymOneGICBlock(IOut,'Out-of-plane',MxAtP,MxTrm,5,
+     $ NOupl,NTermO,IAtomO,ITVO,IFixO,IAn,CoefO)
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
