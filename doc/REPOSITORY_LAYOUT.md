@@ -17,8 +17,8 @@ the top-level README. New implementation files should not be added at root.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
   generation, and test suite.
 - `puckering_dvr/`: DVR analysis backend for completed Gaussian outputs.
-- `fortran/`: Fortran backends. Active GICForge is `fortran/gicforge`; other
-  subfolders are specialized or legacy numerical modules.
+- `fortran/`: Fortran backends. Active code lives in `fortran/gicforge` and
+  `fortran/dvr`; historical standalone utilities live under `fortran/legacy`.
 
 ## Generated And Local Files
 
@@ -47,3 +47,8 @@ constructs, while still failing on real compilation/link errors.
 - `fortran/gicforge/build/gicforge`
 - `bin/gicforge.x`
 - `bin/prova.x`
+
+`fortran/dvr/compile_MAC` is the canonical Fortran DVR build command. It updates:
+
+- `fortran/dvr/build/path_dvr`
+- `bin/path_dvr.x`

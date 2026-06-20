@@ -21,7 +21,9 @@
 - `merlino_fit/topology/readme_topology` and `topology/readme_topology` (compatibility pointers to `doc/topology_doc.txt`).
 - Binary/data duplicates:
   - `bin/gicforge.x` and compatibility alias `bin/prova.x`
-  - `fortran/read_xyzin.f` and `fortran/symmetry/read_xyzin.f`
+  - `fortran/legacy/readers/read_xyzin.f` and
+    `fortran/symmetry/read_xyzin.f` (standalone historical reader versus
+    symmetry reference reader)
   - `fortran/symmetry/xyzin` and `fortran/symmetry/xyzin2`
   - `geometry/fchkin` (sample FCHK kept as canonical; root duplicate removed)
 

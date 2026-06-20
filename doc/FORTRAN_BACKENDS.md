@@ -59,12 +59,12 @@ large Hamiltonians.
 ## Other Fortran Areas
 
 - `fortran/gnic/`: standalone/non-active GIC development code.
-- `fortran/legacy/`: historical vibrational utilities no longer compiled into
-  active backends.
+- `fortran/legacy/`: historical vibrational and reader utilities no longer
+  compiled into active backends.
 - `fortran/qcent/`: quadrupole/centering utility backend.
 - `fortran/quadrupolari/`: quadrupole conversion examples and utilities.
 - `fortran/symmetry/`: standalone symmetry experiments/reference code.
 - `fortran/volt/`: reference vibrational input/output material.
 
-Generated compiler logs such as `error` files are not source and should not be
-committed.
+The `fortran/` root is intentionally documentation-only. Generated compiler
+logs such as `error` files are not source and should not be committed.

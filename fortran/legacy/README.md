@@ -11,3 +11,5 @@ Gaussian input generation.
 - `vibrational/`: old one-dimensional fitting, VCI/DVR and rate utilities.
   DVR orchestration and Gaussian scan post-processing are now Python workflow
   responsibilities.
+- `readers/`: standalone readers and smoke-test utilities kept for reference.
+  They are not compiled by the active GICForge or DVR backends.
