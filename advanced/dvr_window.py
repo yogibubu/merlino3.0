@@ -148,7 +148,14 @@ class DVRWindow(QMainWindow):
 
         row_method.addWidget(QLabel("Solver:"))
         self.solver_combo = QComboBox()
-        self.solver_combo.addItems(["auto", "fourier", "gaussian", "sinc-dvr"])
+        self.solver_combo.addItems([
+            "auto",
+            "fourier",
+            "gaussian",
+            "sinc-dvr",
+            "fortran-sinc-dvr",
+            "fortran-gaussian",
+        ])
         self.solver_combo.setCurrentText("fourier")
         row_method.addWidget(self.solver_combo)
         settings_layout.addLayout(row_method)

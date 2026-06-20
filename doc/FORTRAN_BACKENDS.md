@@ -34,6 +34,27 @@ FITPOT/VCI/DVR, MSR/isotope or rate utilities. Historical vibrational material
 is kept under `fortran/legacy/`; old non-Cartesian input experiments are kept
 outside the active Fortran tree under `archives/legacy_fortran/`.
 
+## Active DVR Backend
+
+- Source: `fortran/dvr/`
+- Runtime executable used by launchers: `bin/path_dvr.x`
+- Build command:
+
+```bash
+cd fortran/dvr
+./compile_MAC
+```
+
+The Fortran77 DVR backend reads only `dvrin`. Python remains responsible for
+reading Gaussian output, constructing path/grid CSV files and launching the
+bridge script. The backend currently supports one-dimensional grid DVR,
+one-dimensional distributed Gaussian basis DVR and a two-dimensional product
+grid DVR.
+
+Diagonalization is performed by `DVRHQRII` in `fortran/dvr/dvr_hqrii.f`, a
+renamed local copy of GICForge `HQRII1`. This avoids Jacobi diagonalization for
+large Hamiltonians.
+
 ## Other Fortran Areas
 
 - `fortran/gnic/`: standalone/non-active GIC development code.

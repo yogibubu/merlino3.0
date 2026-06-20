@@ -19,6 +19,8 @@ class PuckeringDVRLauncher(QObject):
         self.repo_root = Path(repo_root)
         self.dvr_root = self.repo_root / "puckering_dvr"
         self.script = self.dvr_root / "scripts" / "mw_path_dvr.py"
+        self.fortran_bridge = self.dvr_root / "scripts" / "fortran_bridge" / "run_fortran_dvr.py"
+        self.fortran_exe = self.repo_root / "bin" / "path_dvr.x"
         self.process = QProcess(self)
 
     def start_path_analysis(
@@ -40,6 +42,7 @@ class PuckeringDVRLauncher(QObject):
             self.finished.emit(False, f"Path DVR backend not found: {self.script}")
             return
 
+        prefix = prefix or "puckering_dvr"
         args = self.build_path_analysis_args(
             log_path,
             outdir,
@@ -50,7 +53,10 @@ class PuckeringDVRLauncher(QObject):
             compute_rotconst=compute_rotconst,
             label_cremer_pople=label_cremer_pople,
         )
-        self._start_process(sys.executable, args)
+        if solver in {"fortran-sinc-dvr", "fortran-gaussian"}:
+            self._start_fortran_workflow(args, outdir, prefix, boundary, solver)
+        else:
+            self._start_process(sys.executable, args)
 
     def build_path_analysis_args(
         self,
@@ -64,6 +70,7 @@ class PuckeringDVRLauncher(QObject):
         label_cremer_pople: bool = True,
         check_only: bool = False,
     ) -> list[str]:
+        effective_solver = "sinc-dvr" if solver in {"fortran-sinc-dvr", "fortran-gaussian"} else solver
         args = [
             str(self.script),
             "--gaussian-log",
@@ -73,7 +80,7 @@ class PuckeringDVRLauncher(QObject):
             "--boundary",
             boundary,
             "--solver",
-            solver,
+            effective_solver,
             "--outdir",
             str(outdir),
             "--figdir",
@@ -88,6 +95,38 @@ class PuckeringDVRLauncher(QObject):
         if check_only:
             args.append("--check-only")
         return args
+
+    def _start_fortran_workflow(
+        self,
+        python_args: list[str],
+        outdir: Path,
+        prefix: str,
+        boundary: str,
+        solver: str,
+    ) -> None:
+        if not self.fortran_bridge.exists():
+            self.finished.emit(False, f"Fortran DVR bridge not found: {self.fortran_bridge}")
+            return
+        if not self.fortran_exe.exists():
+            self.finished.emit(False, f"Fortran DVR executable not found: {self.fortran_exe}")
+            return
+
+        shell = (
+            f"{self._quote(sys.executable)} {' '.join(self._quote(arg) for arg in python_args)}"
+            f" && {self._quote(sys.executable)} {self._quote(str(self.fortran_bridge))}"
+            f" --grid-csv {self._quote(str(Path(outdir) / f'{prefix}_grid.csv'))}"
+            f" --exe {self._quote(str(self.fortran_exe))}"
+            f" --outdir {self._quote(str(outdir))}"
+            f" --prefix {self._quote(prefix)}"
+            f" --boundary {self._quote(boundary)}"
+        )
+        if solver == "fortran-gaussian":
+            shell += " --mode gaussian"
+        self._start_process("/bin/sh", ["-lc", shell])
+
+    @staticmethod
+    def _quote(value: str) -> str:
+        return "'" + value.replace("'", "'\"'\"'") + "'"
 
     def _start_process(self, executable: str, args: list[str]):
         self.process.setWorkingDirectory(str(self.dvr_root))
