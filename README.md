@@ -20,6 +20,7 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 ## Main Entry Points
 
 - `app.py`: GUI launcher.
+- `python -m merlino_gui.app`: experimental Merlino4 workflow dashboard.
 - `manager.py`, `cli_modules.py`, `cli_gaussian.py`: command-line entry points
   retained for compatibility.
 - `freeze_check.sh`: regression check before a freeze or commit.

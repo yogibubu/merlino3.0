@@ -4,6 +4,7 @@ import pytest
 from PySide6.QtCore import Qt
 
 from merlino_gui import DashboardWindow, default_workflows
+from merlino_gui.app import build_parser
 from merlino_gui.dashboard import workflow_detail_text
 
 
@@ -38,3 +39,8 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     assert "dvr" in listed
     assert "vpt2_vci" in listed
     assert "semiexp_geometry" in listed
+
+
+def test_dashboard_launcher_parser_accepts_workdir(tmp_path):
+    args = build_parser().parse_args(["--workdir", str(tmp_path)])
+    assert args.workdir == tmp_path

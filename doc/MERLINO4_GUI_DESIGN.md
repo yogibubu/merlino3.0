@@ -46,3 +46,15 @@ paths.
    temporary files.
 5. Switch the main entry point only after GIC and DVR have service-backed GUI
    coverage.
+
+## Experimental Entry Point
+
+The new dashboard can be launched independently with:
+
+```bash
+python -m merlino_gui.app
+```
+
+It creates or reads `.merlino/project.json` under the selected working
+directory. This project-state file is the first step toward making GUI state
+explicit instead of implicit in individual windows.

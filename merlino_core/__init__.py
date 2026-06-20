@@ -6,5 +6,12 @@ stable helpers that older Merlino3 modules can adopt incrementally.
 
 from .manifest import sha256_file, write_manifest
 from .paths import repo_root
+from .project import ProjectState, ensure_project_state
 
-__all__ = ["repo_root", "sha256_file", "write_manifest"]
+__all__ = [
+    "ProjectState",
+    "ensure_project_state",
+    "repo_root",
+    "sha256_file",
+    "write_manifest",
+]
