@@ -18,7 +18,6 @@ from advanced.provin_writer import ProvinWriter
 from advanced.launchers.gicforge_launcher import GICForgeLauncher
 from advanced.launchers.msr_launcher import MSRLauncher
 from advanced.launchers.gaussian_launcher import GaussianLauncher
-from advanced.launchers.vpt2_launcher import VPT2Launcher
 from advanced.launchers.survibfit_launcher import SurvibfitLauncher
 from advanced.dvr_window import DVRWindow
 from advanced.vpt2_vci_window import VPT2VCIWindow
@@ -155,16 +154,11 @@ class AdvancedWindow(QMainWindow):
         self.run_msr_btn.clicked.connect(lambda: AdvancedWindow.run_msr(self))
         self.run_msr_btn.setEnabled(False)
 
-        self.run_vpt2_btn = QPushButton("Run VPT2 basic")
-        self.run_vpt2_btn.clicked.connect(lambda: AdvancedWindow.run_vpt2(self))
-        self.run_vpt2_btn.setEnabled(False)
-
         self.run_gaussian_btn = QPushButton("Run Gaussian")
         self.run_gaussian_btn.clicked.connect(lambda: AdvancedWindow.run_gaussian(self))
         self.run_gaussian_btn.setEnabled(False)
 
         methods_layout.addWidget(self.run_msr_btn)
-        methods_layout.addWidget(self.run_vpt2_btn)
         methods_layout.addWidget(self.run_gaussian_btn)
 
         layout.addLayout(methods_layout)
@@ -462,7 +456,6 @@ class AdvancedWindow(QMainWindow):
         self._ensure_gaussian_route_keywords_in_file(gauin_gjf)
 
         self.run_msr_btn.setEnabled("msrin" in result.files)
-        self.run_vpt2_btn.setEnabled("VPT2in" in result.files)
         self.run_gaussian_btn.setEnabled("gauin" in result.files)
 
         self._export_project_files()
@@ -745,10 +738,6 @@ class AdvancedWindow(QMainWindow):
     def run_msr(self):
         result = MSRLauncher(self.workdir).run()
         QMessageBox.information(self, "MSR", result.message)
-
-    def run_vpt2(self):
-        result = VPT2Launcher(self.workdir).run()
-        QMessageBox.information(self, "VPT2", result.message)
 
     # ==============================================================
     # Gaussian (ASYNC, BACKGROUND)
