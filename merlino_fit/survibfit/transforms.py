@@ -1028,20 +1028,12 @@ def _build_u_blocks_symmetry(
         ang = math.degrees(math.acos(float(np.clip(np.dot(v1, v2), -1.0, 1.0))))
         angle_bins[i] = angle_bin(ang)
 
-    # bonds: exclude ring bonds to allow ring breathing
-    bond_idx = [i for i, p in enumerate(prims) if p.kind == "bond" and _ring_index_for_atoms(ringset, p.atoms) is None]
+    # Stretchings are already the desired independent coordinates.  Bending,
+    # torsion and out-of-plane blocks below are the ones reduced from their
+    # redundant primitive sets.
+    bond_idx = [i for i, p in enumerate(prims) if p.kind == "bond"]
     if bond_idx:
-        groups = group_primitives([prims[i] for i in bond_idx], atom_class, Z, ringset=None, idx_map=bond_idx)
-        # remap indices within bond_idx
-        for sig, local in groups.items():
-            idxs = [bond_idx[i] for i in local]
-            U = _orthonormal_basis_sumdiff(len(idxs))
-            blocks.append(("bond", idxs, U))
-
-    # ring bonds (breathing + cyclic)
-    U_rb, idx_rb = _ring_cyclic_u(prims, ringset, "bond")
-    if idx_rb:
-        blocks.append(("ring_breathing", idx_rb, U_rb))
+        blocks.append(("bond", bond_idx, np.eye(len(bond_idx), dtype=float)))
 
     # fragment coords (identity)
     frag_idx = [i for i, p in enumerate(prims) if p.kind.startswith("frag_")]
@@ -1139,6 +1131,9 @@ def _build_u_blocks_symmetry(
                     Unew = Ub @ evecs[:, keep]
                 else:
                     Unew = np.zeros((Ub.shape[0], 0), dtype=float)
+
+            if label == "bond":
+                Unew = Ub
 
             if Unew.shape[1] > 0:
                 pruned.append((label, idxs, Unew))

@@ -63,6 +63,8 @@ class SemiexperimentalFitDiagnostics:
     damping: float
     accepted_steps: int
     rejected_steps: int
+    max_iterations: int
+    n_optimized_parameters: int
     observable: str
     components: tuple[str, ...]
     planar: bool
@@ -132,7 +134,7 @@ class SemiexperimentalFitResult:
 def fit_semiexperimental_geometry(
     request: SemiexperimentalFitRequest,
     *,
-    max_iter: int = 20,
+    max_iter: int | None = None,
     step: float = 1.0e-4,
     damping: float = 1.0e-8,
     max_step: float = 0.25,
@@ -154,8 +156,12 @@ def fit_semiexperimental_geometry(
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
-    active_mask = _active_mask(labels, request.fixed_parameters) & _gicforge_a1_mask(labels)
-    loop_max_iter = max_iter if np.any(active_mask) else 0
+    active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes) & _gicforge_a1_mask(labels)
+    initial_transform, _initial_names, _initial_classes = _parameter_class_transform(
+        labels, active_mask, request.parameter_classes
+    )
+    n_optimized_parameters = initial_transform.shape[1]
+    loop_max_iter = _resolve_max_iterations(max_iter, n_optimized_parameters) if n_optimized_parameters else 0
 
     current_damping = float(damping)
     accepted_steps = 0
@@ -257,6 +263,8 @@ def fit_semiexperimental_geometry(
         damping=current_damping,
         accepted_steps=accepted_steps,
         rejected_steps=rejected_steps,
+        max_iterations=loop_max_iter,
+        n_optimized_parameters=jac.shape[1],
         observable=measurement_model.observable,
         components=measurement_model.components,
         planar=measurement_model.planar,
@@ -357,8 +365,8 @@ def write_semiexperimental_outputs(
     manifest_inputs = {"initial_geometry": request.initial_geometry}
     coordinate_generation = {
         "primitive_source": "GICForge ReadAllGIC generated at each SE iteration",
-        "reduction": "non-redundant GIC transform",
-        "symmetry": "GICForge/symm.f same-type coordinate symmetrization with strict/quasi tolerance",
+        "reduction": "primitive stretches plus non-redundant non-stretch GIC transform",
+        "symmetry": "GICForge/symm.f point group with deterministic final GIC irrep assignment",
         "active_subspace": "GICForge-assigned A1 coordinates only",
         "ring_coordinates": "GICForge ring deformation and puckering coordinates",
         "gicforge_iterations": str(outdir / "gicforge_iterations"),
@@ -398,6 +406,7 @@ def write_semiexperimental_outputs(
             "n_gic_parameters": len(parameters),
             "n_effective_parameters": len(active_names),
             "n_active_gic_parameters": sum(1 for item in parameters if item.active),
+            "max_iterations": diagnostics.max_iterations if diagnostics else None,
             "n_kraitchman_rows": len(kraitchman),
             "kraitchman_seed_method": kraitchman_seed.method if kraitchman_seed else "not_available",
             "n_kraitchman_seed_atoms": len(kraitchman_seed.fitted_atom_indices) if kraitchman_seed else 0,
@@ -527,6 +536,14 @@ def _gic_model(
         atoms = tuple(atomic_symbol(int(z)) for z in z_numbers)
         backend = _make_gicforge_backend(atoms, outdir=None)
     return backend.model(coords)
+
+
+def _resolve_max_iterations(max_iter: int | None, n_optimized_parameters: int) -> int:
+    if n_optimized_parameters <= 0:
+        return 0
+    if max_iter is not None and max_iter > 0:
+        return int(max_iter)
+    return max(8, 2 * int(n_optimized_parameters))
 
 
 def _make_gicforge_backend(atoms: tuple[str, ...], outdir: Path | None) -> GICForgeSEBackend:
@@ -1099,6 +1116,8 @@ def _diagnostics(
     damping: float,
     accepted_steps: int,
     rejected_steps: int,
+    max_iterations: int,
+    n_optimized_parameters: int,
     observable: str,
     components: tuple[str, ...],
     planar: bool,
@@ -1116,6 +1135,8 @@ def _diagnostics(
         damping=float(damping),
         accepted_steps=accepted_steps,
         rejected_steps=rejected_steps,
+        max_iterations=int(max_iterations),
+        n_optimized_parameters=int(n_optimized_parameters),
         observable=observable,
         components=components,
         planar=planar,

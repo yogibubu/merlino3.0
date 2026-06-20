@@ -56,6 +56,9 @@ These defaults are intentional:
   updates from leaving the chemically valid topology basin.
 - `--damping 1e-8` is only the initial Levenberg-Marquardt damping. It is
   decreased after accepted steps and increased after rejected steps.
+- `--max-iter` defaults to an automatic cap proportional to the number of
+  effective optimized parameters: `max(8, 2*N)`. Passing a positive value keeps
+  an explicit user cap.
 
 Use `--observable rotational_constants` only when the scientific comparison
 must be made directly in MHz.
@@ -200,19 +203,22 @@ The same panel also provides operational helpers:
 2. Build topology and primitive internal coordinates.
 3. Build the primitive GIC set automatically, as in other black-box internal
    coordinate generators.
-4. Reduce the GIC set to a non-redundant transform and symmetrize it after
-   automatic point-group identification.
-5. For rings, use endocyclic dihedral combinations and analogous endocyclic
+4. Keep every stretching coordinate as its primitive bond `R(i,j)`. Reduce
+   bending, linear-bending, torsional, out-of-plane and ring candidate sets to
+   a non-redundant transform.
+5. Symmetrize and label the resulting coordinates after automatic point-group
+   identification.
+6. For rings, use endocyclic dihedral combinations and analogous endocyclic
    valence-angle combinations; Cremer-Pople variables are not used as GIC fit
    coordinates.
-6. Convert the selected observations to the fit target:
+7. Convert the selected observations to the fit target:
    moments of inertia by default, rotational constants on request.
-7. Add optional QM predicates as weighted pseudo-observations.
-8. Compute the Jacobian of observables with respect to active GICs.
-9. Solve weighted LM normal equations with adaptive damping and step limiting.
-10. Back-transform GIC steps to Cartesian displacements using the analytic B
+8. Add optional QM predicates as weighted pseudo-observations.
+9. Compute the Jacobian of observables with respect to active GICs.
+10. Solve weighted LM normal equations with adaptive damping and step limiting.
+11. Back-transform GIC steps to Cartesian displacements using the analytic B
    matrix and reject steps that do not improve the weighted objective.
-11. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
+12. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
    the final geometry.
 
 The Wilson B matrix is analytic for Merlino's standard primitives: bonds,
@@ -220,10 +226,11 @@ angles, linear bends, dihedrals and out-of-plane terms. Fragment coordinates
 retain their existing finite-difference fallback, but semiexperimental
 molecular GIC fits use connected molecular coordinates.
 
-The non-redundant and symmetrized GICs are built block-wise: stretches, valence
-angles, torsions, out-of-plane terms and ring-specific combinations are pruned
-and symmetrized within their own coordinate families. This prevents the
-least-squares variables from mixing physically different coordinate types.
+The non-redundant and symmetrized GICs are built block-wise. Stretches are
+direct primitive bond coordinates. Valence angles, linear bends, torsions,
+out-of-plane terms and ring-specific combinations are pruned and symmetrized
+within their own coordinate families. This prevents the least-squares variables
+from mixing physically different coordinate types.
 
 ## QM Predicates
 
@@ -352,7 +359,8 @@ The output directory contains:
   `transition_state_or_saddle`.
 - `semiexp_diagnostics.csv`: convergence reason, objective, weighted RMS,
   reduced chi square, Jacobian rank, condition number, accepted/rejected steps,
-  selected observable and selected components.
+  automatic/explicit iteration cap, selected observable and selected
+  components.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
 The parameter values use native Merlino GIC units: stretches in Angstrom and
@@ -360,8 +368,8 @@ angular coordinates in radians.
 
 The manifest records more than file paths: backend role, Fortran77 kernel
 source, GIC generation policy, isotopologue count, predicate count, active and
-effective parameter counts, rank, condition number, weighted RMS, reduced
-chi-square, parameter classes and ring-coordinate convention.
+effective parameter counts, iteration cap, rank, condition number, weighted
+RMS, reduced chi-square, parameter classes and ring-coordinate convention.
 
 ## Benchmarks
 

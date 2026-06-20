@@ -350,11 +350,11 @@ C Make cycles
      $  IAtmBR,IAtmAR,IAtmDR,NCyc,NatC,ICAt,IAtCyc,IBr,IAn,EAN)
       If(NCyc.gt.0.or.NExpCy.gt.0) write(IOut,'(I3,
      $  '' Rings Found Over'',I3,'' Expected'',/)') NCyc,NExpCy
-C Make bond GNICs: retain individual bonds except possibly for terminal 
-C Atoms (if DoSysy.eq.true.) and cycles
+C Make bond GNICs.  Stretchings are final primitive bond coordinates:
+C no local SALC or redundancy reduction is applied at this stage.
       NLen=0
       IPrBnd=0
-      Call MkGNCB(IOut,IPrBnd,DoSySt,InvDst,MxBnd,MxTrm,MxAtP,NAtoms,
+      Call MkGNCB(IOut,IPrBnd,.False.,InvDst,MxBnd,MxTrm,MxAtP,NAtoms,
      $  IAn,NBond,NLen,IBond,NTermB,IAtomB,ITVB,IAtCyc,CoefB,C)
 C     If(NCyc.gt.0.and.DoSySt) then
 C      IPrtCB=0
@@ -465,8 +465,8 @@ C Bond Lengths
       Do 40 Ir=1,NLen
        IFixB(Ir)=IFill        
    40 Continue
-      If(SyGNIC) call SymOneGICBlock(IOut,'Stretch',MxAtP,MxTrm,1,
-     $ NLen,NTermB,IAtomB,ITVB,IFixB,IAn,CoefB)
+C Stretchings remain primitive R(i,j) coordinates here.  Symmetry labels
+C are assigned later by the global GICForge symmetry pass.
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,InvDst,NVar,
      $  Ini,IniP,NTermB,IAtomB,IPrimB,ITVB,IFixB,IAn,CoefB,ValTB,C,
      $  ImpDih,Clean)
@@ -744,7 +744,8 @@ C      write(IOut,'(A80)') CLine
      $  ''  Natural Internal Coords.'')')
       If(Kwd(9))  write(IOut,'('' INVDIST   : Inv.Dist. for Stretching''
      $  )')
-      If(Kwd(10)) write(IOut,'('' SYMMSTR   : Symmetrize Stretching'')')
+      If(Kwd(10)) write(IOut,'('' SYMMSTR   : Legacy keyword ignored'',
+     $ '' for primitive stretchings'')')
       If(Kwd(11)) write(IOut,'('' ONEDIH    : 1 Dihedral per Bond'')')
       If(.not.Kwd(12)) write(IOut,'('' NONORM    : Not Normalize'',
      $  '' Dihedral GNICS'')')

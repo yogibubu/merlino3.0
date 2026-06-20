@@ -217,7 +217,7 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["backend"]["fortran77_role"] == "validated numerical kernels only"
     assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
     assert manifest["outputs"]["latex_tables"] == str(outdir / "semiexp_tables.tex")
-    assert manifest["parameters"]["coordinate_generation"]["reduction"] == "non-redundant GIC transform"
+    assert manifest["parameters"]["coordinate_generation"]["reduction"].startswith("primitive stretches")
     assert manifest["parameters"]["n_gic_parameters"] >= 1
 
 

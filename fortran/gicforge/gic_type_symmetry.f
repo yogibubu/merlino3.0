@@ -10,10 +10,11 @@ C   - never mixes stretches with bends, torsions, linear bends, or OOPs
 C   - acts only on generic one-term coordinates (ITPV = 0)
 C   - leaves specialized ring/puckering/butterfly coordinates untouched
 C
-C  The driver currently calls this for stretches, bends, linear bends and
-C  torsions. OOP signatures are implemented here for completeness, but the
-C  GICForge driver keeps OOP primitives unchanged until the Gaussian writer
-C  supports OOP linear-combination output.
+C  The driver currently calls this for bends, linear bends and torsions.
+C  Stretchings are kept as primitive R(i,j) coordinates.  OOP signatures
+C  are implemented here for completeness, but the GICForge driver keeps
+C  OOP primitives unchanged until the Gaussian writer supports OOP
+C  linear-combination output.
 C
 C  This mirrors the Python policy: group comparable primitives first, build
 C  sum/difference combinations inside each homogeneous block, then let the

@@ -8,7 +8,7 @@
  IMPDIH    : Use Improper Dihedrals in place of Out-of-plane Bends
  GNIC      : Make Generalized  Natural Internal Coords.
  INVDIST   : Inv.Dist. for Stretching
- SYMMSTR   : Symmetrize Stretching
+ SYMMSTR   : Legacy keyword ignored for primitive stretching coordinates
  ONEDIH    : 1 Dihedral per Bond
  CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian

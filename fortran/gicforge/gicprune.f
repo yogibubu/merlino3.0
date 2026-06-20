@@ -4,11 +4,10 @@ C  GICPRUNE
 C
 C  Final type-local redundancy pruning for GICForge.
 C
-C  The reduction is intentionally block-local: stretches, bends, linear bends,
-C  torsions, and out-of-plane coordinates are pruned independently.  This
-C  mirrors the Python Merlino policy where residual dependencies are removed
-C  inside homogeneous coordinate blocks, without mixing different coordinate
-C  types.
+C  The reduction is intentionally block-local: bends, linear bends,
+C  torsions, and out-of-plane coordinates are pruned independently.
+C  Stretchings are kept as primitive bond coordinates and are not
+C  pruned here.
 C
 C  Method: modified Gram-Schmidt over the B rows of one block.  A coordinate is
 C  retained if its B row increases the numerical rank of its own type block.
@@ -51,12 +50,8 @@ C=======================================================================
       Write(IOut,'(''   Method: modified Gram-Schmidt on B rows;'',
      $ '' coordinate types are not mixed.'')')
 
-      Label='Stretch'
-      IOff=0
-      Call PruneOneBlock(IOut,Label,NAtoms,NLen,IOff,BMat,Keep,Scr,
-     $ NKeep)
-      If(NKeep.lt.NLen) Call PackGICBlock(MxAtP,MxTrm,NLen,Keep,
-     $ NTermB,IAtomB,IPrimB,ITVB,IFixB,CoefB,ValTB)
+      Write(IOut,'(''   Stretch: kept all '',I5,
+     $ '' primitive coordinates.'')') NLen
 
       Label='Bend'
       IOff=NLen

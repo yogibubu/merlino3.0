@@ -91,7 +91,12 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
-    semiexp.add_argument("--max-iter", type=int, default=20, help="Maximum LM iterations; default is capped for semiexp fits")
+    semiexp.add_argument(
+        "--max-iter",
+        type=int,
+        default=None,
+        help="Maximum LM iterations; default is automatic: max(8, 2*N optimized parameters)",
+    )
     semiexp.add_argument("--step", type=float, default=1.0e-4, help="Finite step for rotational observable derivatives with respect to GICs")
     semiexp.add_argument("--damping", type=float, default=1.0e-8, help="Initial Levenberg-Marquardt damping")
     semiexp.add_argument("--max-step", type=float, default=0.25, help="Maximum active-GIC step norm per iteration")
