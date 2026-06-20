@@ -1,5 +1,36 @@
 # Final Cleanup Status (Merlino 3.0)
 
+## Final Stop Point
+- Final Merlino3.0 commit before starting Merlino4.0: `c704017`
+  (`feat(dvr): add fortran77 path solver`).
+- Final freeze archive:
+  `archives/freezes/merlino3.0_freeze_20260620_141658.tar.gz`.
+- Final freeze checksum:
+  `81222a3624298d0bd77e51a8b26a6010a5b754471dfd6591058e1d4766687a67`.
+- Final validation command: `./freeze_check.sh`.
+- Final validation result:
+  - GUI tests: 12 passed
+  - `merlino_fit` tests: 82 passed
+  - `puckering_dvr` tests: 1 passed
+
+Merlino3.0 is closed as a working baseline. New structural work should start in
+Merlino4.0 with a full refactor aimed at isolating the main functional areas so
+they can evolve independently.
+
+## Merlino4.0 Starting Direction
+- Split the current monolithic runtime into independent packages/modules for
+  GUI, geometry/topology, GIC/Gaussian generation, Fortran backends, DVR and
+  data libraries.
+- Define narrow interfaces between Python orchestration and Fortran executables:
+  file formats, command-line contracts, output manifests and error reporting.
+- Keep GICForge and the Fortran77 DVR as compiled backend tools; keep RDKit,
+  SMILES, Gaussian-log parsing, path construction and high-level workflows in
+  Python.
+- Add integration tests around the interfaces instead of testing only internal
+  implementation details.
+- Treat `working/`, `projects/` and `archives/freezes/` as local runtime/data
+  areas, not source layout examples for Merlino4.0.
+
 ## Environment and Commands
 - `merlino-set` points to `~/merlino3.0` and activates the first available
   Merlino environment: `~/.venvs/merlino`, repo-local `.venv`, or conda
@@ -51,11 +82,18 @@
   as `gic_*` columns and can be mapped to generalized Cremer-Pople components.
 - The intended sequence is:
   `merlino-set` -> `merlino-run` -> generate Gaussian -> run Gaussian -> DVR.
+- The Fortran77 DVR backend lives under `fortran/dvr/` and builds
+  `bin/path_dvr.x`.
+- The GUI exposes Python DVR solvers plus `fortran-sinc-dvr` and
+  `fortran-gaussian`.
+- The Fortran DVR diagonalizer is `DVRHQRII`, a renamed local copy of HQRII1;
+  Jacobi diagonalization is not used.
 
 ## Validation Snapshot
-- `merlino_fit/tests`: 60 passed
-- `gui/tests`: 8 passed
-- Combined via `merlino-test-all`: all green
+- Final `freeze_check.sh` snapshot on 2026-06-20:
+  - `gui/tests`: 12 passed
+  - `merlino_fit/tests`: 82 passed
+  - `puckering_dvr/tests`: 1 passed
 
 ## Residual Legacy (Intentional)
 - Historical docs kept with 2.1 naming for archive traceability:
