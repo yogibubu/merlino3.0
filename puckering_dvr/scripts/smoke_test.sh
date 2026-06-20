@@ -463,15 +463,6 @@ EOF
   --figdir "$TMP_DIR/figs_constant" \
   --prefix metric_constant
 
-"$PYTHON" scripts/mw_path_dvr.py \
-  --xyz examples/xyz/thf_optimized.xyz \
-  --prepare-gaussian \
-  --ring 1,2,3,4,5 \
-  --phi-start 0 --phi-end 10 --phi-step 10 \
-  --gjf-out "$TMP_DIR/thf_test.gjf" \
-  --manifest-out "$TMP_DIR/thf_test_manifest.csv" \
-  --chk-prefix thf_test > "$TMP_DIR/prepare_gaussian.txt"
-
 test -s "$TMP_DIR/out_geometry/metric_geometry_2d_levels.csv"
 test -s "$TMP_DIR/out_csv/metric_csv_2d_levels.csv"
 test -s "$TMP_DIR/out_constant/metric_constant_2d_levels.csv"
@@ -500,7 +491,5 @@ grep -q "symmetry_reference_point: first" "$TMP_DIR/out_periodic_sym/periodic_sy
 grep -q "single_morse_fit_rms_cm-1" "$TMP_DIR/out_single/single_1d_summary.txt"
 grep -q "core_model_used: asymmetric-parabola-gaussian" "$TMP_DIR/out_asym/asym_1d_summary.txt"
 grep -q "asym_pg_fit_rms_cm-1" "$TMP_DIR/out_asym/asym_1d_summary.txt"
-test -s "$TMP_DIR/thf_test.gjf"
-test -s "$TMP_DIR/thf_test_manifest.csv"
 
 echo "Smoke tests passed. Temporary outputs: $TMP_DIR"

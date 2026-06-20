@@ -1,8 +1,8 @@
 # Short Manual: `mw_path_dvr.py`
 
 This program treats one-dimensional large-amplitude motion along a Cartesian
-geometry path. For four- and five-membered rings it can also prepare Gaussian
-inputs for relaxed puckering-coordinate scans.
+geometry path read from Gaussian output. Gaussian input/path generation is not
+part of this DVR backend in Merlino 3.0; it is handled by Merlino/`merlino_fit`.
 
 Program file:
 
@@ -12,20 +12,12 @@ scripts/mw_path_dvr.py
 
 ## 1. Scope
 
-The program has two main modes.
-
-1. Gaussian input generation:
-   starting from an optimized geometry or an `xyz` file, the code builds the
-   linear combinations of the five endocyclic dihedral angles and writes a
-   multi-link Gaussian input with one target puckering phase per link.
-
-2. Gaussian log analysis:
-   after the scan has finished, the code reads optimized geometries and
-   energies from the Gaussian log, translates each structure to its center of
-   mass, reorients consecutive structures with a local mass-weighted Eckart
-   alignment, constructs the mass-weighted path coordinate, solves a
-   one-dimensional path Hamiltonian, and computes expectation values of scalar
-   properties such as rotational constants.
+The program analyzes completed Gaussian outputs. After the scan has finished,
+it reads optimized geometries and energies from the Gaussian log, translates
+each structure to its center of mass, reorients consecutive structures with a
+local mass-weighted Eckart alignment, constructs the mass-weighted path
+coordinate, solves a one-dimensional path Hamiltonian, and computes expectation
+values of scalar properties such as rotational constants.
 
 The dynamical coordinate is not the puckering phase itself. The coordinate used
 in the Hamiltonian is the cumulative mass-weighted Cartesian distance,
@@ -48,8 +40,8 @@ reorientation is the path increment accumulated. In this coordinate the reduced
 mass is one by construction.
 
 This is mandatory for all one-dimensional calculations. The Gaussian scan
-coordinate, an angle, a puckering phase, or a Cremer-Pople label may be used to
-generate and identify the relaxed structures, but it must not replace the
+coordinate, an angle, a puckering phase, or a Cremer-Pople label may identify
+the relaxed structures generated upstream by Merlino, but it must not replace the
 mass-weighted Cartesian path coordinate in the Hamiltonian. If the relaxed
 points are not equally spaced in Eckart-reoriented mass-weighted distance, the
 program must keep the nonuniform abscissa, interpolate `V(s)`, and solve the
@@ -98,159 +90,13 @@ out-of-plane atom, rotate the `--ring` list so that atom is first. For example,
 to make the original ring atom 3 the reference atom, pass a cyclic ordering with
 that atom first.
 
-## 3. Starting Labels
+## 3. Preparing Gaussian Input
 
-If an `xyz` file is used to prepare a Gaussian input, the default requested
-starting label is `E1`. A different nominal label can be selected with
-`--start-pucker-label`.
-
-Accepted label forms include:
-
-```text
-E1, E_1, ^1E, E^1
-T1, T_1, ^1T, T^1
-```
-
-For five-membered rings the labels are generalized to atoms 1-5. For
-four-membered rings the supported labels are `E1` and `^1E`; to use another
-out-of-plane atom, rotate `--ring` so that atom is first.
-
-The default mode is:
-
-```text
---start-pucker-mode gic
-```
-
-This is the recommended mode for Gaussian. The Cartesian coordinates are left
-unchanged. The program computes the current phase from the five endocyclic
-dihedrals and writes the generalized-internal-coordinate step needed to reach
-each requested target phase.
-
-An alternative mode is retained for programs that cannot impose functional
-generalized internal coordinates:
-
-```text
---start-pucker-mode cartesian
-```
-
-In this mode the code builds a Cartesian puckering guess. The puckering amplitude
-is taken from the input Cremer-Pople `q2`; if the input is planar, the default is
-0.35 Angstrom. It can be overridden with `--pucker-amplitude`.
-
-The manifest records `start_pucker_label`, `start_pucker_phi_deg`, and
-`start_pucker_mode`. In `cartesian` mode it also records
-`start_pucker_cartesian_phase_deg` and `start_pucker_q_angstrom`; in `gic` mode
-these fields are left blank.
-
-## 4. Preparing a Gaussian Scan
-
-General workflow:
-
-1. Optimize the molecule freely, or provide an `xyz` geometry.
-2. Provide the four or five ring atoms in cyclic Prelog order with `--ring`.
-3. Let the program compute the initial absolute torsional phase.
-4. Write a multi-link Gaussian input on an absolute phase grid.
-
-The default constraint mode is:
-
-```text
---constraint-mode functional-targets
-```
-
-This mode writes one Gaussian link per target phase. Each link uses the
-functional coordinate
-
-```text
-Phi = atan2(QS,QC)
-```
-
-and applies the angular step required to reach the absolute target phase. The
-small-amplitude radial puckering coordinate remains unconstrained and is
-optimized at each point.
-
-Example: generate the tetrahydrofuran scan from an optimized log:
-
-```bash
-cd puckering_dvr_package
-
-python3 scripts/mw_path_dvr.py \
-  --gaussian-log examples/gaussian_outputs/thf_opt.log \
-  --log-selection last \
-  --prepare-gaussian \
-  --ring 1,2,3,4,5 \
-  --phi-start 0 --phi-end 180 --phi-step 5 \
-  --gjf-out examples/gaussian_inputs/thf_phi_function_scan.gjf \
-  --manifest-out examples/gaussian_inputs/thf_phi_function_scan_manifest.csv \
-  --chk-prefix thf_phi_function_scan
-```
-
-Example: generate the same type of Gaussian input from an `xyz` file while
-keeping the Cartesian coordinates unchanged:
-
-```bash
-python3 scripts/mw_path_dvr.py \
-  --xyz examples/xyz/thf_optimized.xyz \
-  --prepare-gaussian \
-  --ring 1,2,3,4,5 \
-  --phi-start 0 --phi-end 180 --phi-step 5 \
-  --gjf-out examples/gaussian_inputs/thf_phi_function_scan.gjf \
-  --manifest-out examples/gaussian_inputs/thf_phi_function_scan_manifest.csv \
-  --chk-prefix thf_phi_function_scan
-```
-
-Example: request a nominal twist starting label:
-
-```text
---start-pucker-label T_1
-```
-
-For furanoses such as erythrose, do not assume tetrahydrofuran symmetry. A
-0-360 degree scan is the conservative test:
-
-```bash
-python3 scripts/mw_path_dvr.py \
-  --xyz examples/xyz/erythrose_alpha_E2_dpcs3.xyz \
-  --prepare-gaussian \
-  --ring 1,2,3,4,5 \
-  --start-pucker-label E2 \
-  --phi-start 0 --phi-end 360 --phi-step 10 \
-  --gjf-out examples/gaussian_inputs/erythrose_alpha_E2_dpcs3_phi_scan_10deg.gjf \
-  --manifest-out examples/gaussian_inputs/erythrose_alpha_E2_dpcs3_phi_scan_10deg_manifest.csv \
-  --chk-prefix erythrose_alpha_E2_dpcs3_phi
-```
-
-Example: generate a four-membered-ring puckering scan. The first atom in
-`--ring` is the atom displaced out of the plane of the other three atoms.
-
-```bash
-python3 scripts/mw_path_dvr.py \
-  --xyz examples/xyz/four_ring_example.xyz \
-  --prepare-gaussian \
-  --ring 1,2,3,4 \
-  --start-pucker-label E1 \
-  --phi-start -40 --phi-end 40 --phi-step 5 \
-  --gjf-out examples/gaussian_inputs/four_ring_scan.gjf \
-  --manifest-out examples/gaussian_inputs/four_ring_scan_manifest.csv \
-  --chk-prefix four_ring_scan
-```
-
-## 5. Gaussian Fallback Mode
-
-If a Gaussian version does not accept functional generalized internal
-coordinates, use the fallback mode:
-
-```text
---constraint-mode scan-to-zero
-```
-
-For each target phase `phi0`, the fallback imposes:
-
-```text
-C_phi0 = -sin(phi0) QC + cos(phi0) QS = 0
-```
-
-The radial coordinate remains unconstrained. The analysis step should still use
-`--log-selection last-per-link`.
+Prepare the scan in Merlino, not in this DVR backend. In the GUI use the
+Advanced puckering Gaussian workflow; from the command line use
+`merlino_fit pucker-gaussian`. Merlino writes the Gaussian `.gjf` and any scan
+manifest. After Gaussian has run, pass the resulting `.log` to
+`scripts/mw_path_dvr.py`.
 
 ## 6. Running Gaussian
 

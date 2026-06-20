@@ -13,7 +13,7 @@ without reconstructing decisions from the tetrose manuscript work.
 3. Extend the first Tkinter launcher into a fuller project interface:
    - save and reload calculation presets;
    - inspect generated CSV summaries and figures;
-   - expose convergence scans and Gaussian input generation;
+   - expose convergence scans;
    - validate incompatible options before launch.
 
 ## Methodological Extensions
@@ -31,8 +31,9 @@ without reconstructing decisions from the tetrose manuscript work.
    unreduced curvatures.
 4. Generalize the product-basis machinery from two dimensions to an arbitrary
    number of coordinates.
-5. Generate Gaussian inputs for two- and three-dimensional grids directly from
-   generalized internal coordinates.
+5. Keep Gaussian input/path generation in Merlino/`merlino_fit`; the DVR backend
+   should consume completed Gaussian outputs for levels, profiles, and
+   properties.
 6. Add native puckering-coordinate builders for six- and seven-membered rings.
    Six-membered rings motivate two-dimensional puckering Hamiltonians; seven-
    membered rings motivate the later three-dimensional version.

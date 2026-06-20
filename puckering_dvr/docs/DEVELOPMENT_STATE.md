@@ -1,6 +1,6 @@
 # Development State
 
-Last updated: 2026-06-15.
+Last updated: 2026-06-20.
 
 This repository is the standalone development area for the puckering/path
 Hamiltonian code. It is intentionally separated from the tetrose manuscript
@@ -18,8 +18,8 @@ python3 scripts/mw_path_dvr.py --help
 The code currently lives in one script to keep distribution simple. The most
 likely future split is:
 
-- Gaussian input/log parsing;
-- ring-puckering coordinate builders;
+- Gaussian log parsing;
+- ring-puckering diagnostic label builders;
 - one-dimensional solvers;
 - two-dimensional product-basis solvers;
 - command-line and graphical user interfaces.
@@ -31,8 +31,8 @@ use `scripts/mw_path_dvr.py` as the reference implementation.
 ## Implemented Features
 
 - Gaussian log reading for scan geometries, energies, and optional properties.
-- Gaussian input generation from Cartesian geometries and generalized internal
-  coordinates.
+- Gaussian log reading for any optimized scan/path; the scanned coordinate does
+  not have to be puckering.
 - Four-membered-ring puckering scans with one out-of-plane atom.
 - Five-membered-ring puckering scans using endocyclic-dihedral combinations.
 - Five-membered-ring labels such as `E1`, `E2`, `T12`, and related variants.
@@ -138,8 +138,8 @@ use `scripts/mw_path_dvr.py` as the reference implementation.
 - Stationary-point-only 1D fits require curvatures in the mass-weighted
   coordinate or an explicitly supplied reduced mass. For curvilinear paths, a
   sparse set of stationary structures does not by itself determine the path.
-- Two-dimensional and higher-dimensional Gaussian input generation is not yet
-  automated.
+- Gaussian input generation is intentionally handled by Merlino/`merlino_fit`,
+  not by this DVR backend.
 - Six- and seven-membered-ring puckering coordinates are not yet implemented.
 - The GUI is a first practical launcher, not yet a full project manager. It
   does not replace the command line for advanced or scripted production runs.
@@ -157,19 +157,9 @@ python3 scripts/mw_path_dvr.py --help
 ./scripts/smoke_test.sh
 ```
 
-Generate a Gaussian input:
-
-```bash
-python3 scripts/mw_path_dvr.py \
-  --xyz examples/xyz/erythrose_alpha_E2_dpcs3.xyz \
-  --prepare-gaussian \
-  --ring 1,2,3,4,5 \
-  --start-pucker-label E2 \
-  --phi-start 0 --phi-end 360 --phi-step 10 \
-  --gjf-out examples/gaussian_inputs/test_erythrose_alpha_E2_scan.gjf \
-  --manifest-out examples/gaussian_inputs/test_erythrose_alpha_E2_scan_manifest.csv \
-  --chk-prefix erythrose_alpha_E2_test
-```
+Generate Gaussian inputs with the Merlino GUI Advanced puckering workflow or
+with `merlino_fit pucker-gaussian`, then analyze the completed Gaussian log with
+this DVR backend.
 
 Run a two-dimensional convergence scan once a rectangular CSV grid is available:
 
@@ -206,8 +196,8 @@ python3 scripts/mw_path_dvr.py --help
 ./scripts/smoke_test.sh
 ```
 
-The smoke test covers command-line parsing, one-dimensional nonperiodic
-symmetry/tail/spline handling, two-dimensional geometry-derived metrics,
-two-dimensional CSV metrics, constant metrics, and Gaussian input generation.
-For any future code change, add a small reproducible command here or replace
-this section with a formal test runner.
+The smoke test covers command-line parsing, Gaussian-log path analysis,
+one-dimensional nonperiodic symmetry/tail/spline handling, two-dimensional
+geometry-derived metrics, two-dimensional CSV metrics, and constant metrics. For
+any future code change, add a small reproducible command here or replace this
+section with a formal test runner.
