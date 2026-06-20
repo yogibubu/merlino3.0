@@ -1,12 +1,12 @@
 # Final Cleanup Status (Merlino 3.0)
 
 ## Final Stop Point
-- Final Merlino3.0 commit before starting Merlino4.0: `c704017`
+- Final Merlino3.0 code baseline before starting Merlino4.0: `c704017`
   (`feat(dvr): add fortran77 path solver`).
-- Final freeze archive:
-  `archives/freezes/merlino3.0_freeze_20260620_141658.tar.gz`.
-- Final freeze checksum:
-  `81222a3624298d0bd77e51a8b26a6010a5b754471dfd6591058e1d4766687a67`.
+- Final closure documentation commit: see the latest `docs: close merlino3 final
+  baseline` commit in `git log`.
+- Final freeze archives are written under `archives/freezes/` by
+  `./freeze_pack.sh`.
 - Final validation command: `./freeze_check.sh`.
 - Final validation result:
   - GUI tests: 12 passed
