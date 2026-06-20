@@ -7,6 +7,8 @@ from merlino_vpt2_vci import (
     davidson_lowest,
     generate_vibrational_basis,
     gf_from_gaussian_fchk_with_merlino_gics,
+    gf_from_hessian_input_with_merlino_gics,
+    hessian_input_from_gaussian_fchk,
     lower_to_symmetric,
     read_gaussian_fchk_qff,
     read_indexed_qff_text,
@@ -52,6 +54,9 @@ def test_gaussian_fchk_qff_reader_uses_real_anharmonic_blocks():
     assert data.cartesian_hessian_lower.shape == (45,)
     assert np.allclose(data.anharmonic_frequencies_cm[:3], [2123.50470, 4016.61987, 4266.73074])
     assert lower_to_symmetric(data.cartesian_hessian_lower).shape == (9, 9)
+    hessian_input = data.to_hessian_input()
+    assert hessian_input.source == "gaussian-fchk"
+    assert hessian_input.cartesian_hessian.shape == (9, 9)
 
 
 def test_python_fchk_workflow_produces_vci_levels():
@@ -114,7 +119,10 @@ def test_vci_davidson_path_matches_dense_path():
 
 
 def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
-    result = gf_from_gaussian_fchk_with_merlino_gics(__import__("pathlib").Path("gui/tests/gaussian/h2o.fchk"))
+    path = __import__("pathlib").Path("gui/tests/gaussian/h2o.fchk")
+    canonical = hessian_input_from_gaussian_fchk(path)
+    result = gf_from_hessian_input_with_merlino_gics(canonical)
+    adapter_result = gf_from_gaussian_fchk_with_merlino_gics(path)
 
     assert result.b_matrix.shape == (3, 9)
     assert result.force_constants.shape == (3, 3)
@@ -125,3 +133,4 @@ def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
     assert np.all(result.frequencies_cm > 0.0)
     assert np.allclose(result.ped.values.sum(axis=0), np.full(3, 100.0))
     assert np.allclose(result.frequencies_cm, [2169.878, 4141.256, 4392.363], atol=1.0e-3)
+    assert np.allclose(adapter_result.frequencies_cm, result.frequencies_cm)

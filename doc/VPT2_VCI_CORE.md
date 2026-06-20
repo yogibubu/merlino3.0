@@ -1,10 +1,13 @@
 # VPT2/VCI Core
 
-Merlino4 separates Gaussian parsing from the numerical solvers.
+Merlino4 separates external file parsing from the numerical solvers.
 
 ## Inputs
 
-- Gaussian FCHK: masses, Cartesian Hessian and Gaussian anharmonic arrays.
+- `HessianInput`: canonical Merlino Cartesian geometry, masses and Hessian.
+- `AnharmonicInput`: canonical Merlino normal-coordinate anharmonic data.
+- Gaussian FCHK: supported only through an adapter that populates canonical
+  Merlino inputs.
 - Normalized QFF text: optional cubic/quartic normal-coordinate force constants.
 
 The normalized QFF format is intentionally simple:
@@ -21,7 +24,9 @@ coordinates.
 
 ## Python Backend
 
-- `merlino_vpt2_vci.gaussian_qff`: FCHK and normalized-QFF readers.
+- `merlino_vpt2_vci.models`: canonical Merlino input data models.
+- `merlino_vpt2_vci.gaussian_qff`: Gaussian FCHK adapter and normalized-QFF
+  reader.
 - `merlino_vpt2_vci.harmonic`: independent Wilson-GF linear algebra.
 - `merlino_vpt2_vci.internal_gf`: Cartesian Hessian plus Merlino
   non-redundant GIC/B matrix to GF frequencies and PED.
@@ -48,7 +53,8 @@ tree.
 The tested harmonic path is:
 
 ```text
-Gaussian FCHK Cartesian geometry/Hessian
+Gaussian FCHK adapter, or another future adapter
+-> Merlino HessianInput
 -> Merlino topology primitives
 -> Merlino non-redundant GIC transform U
 -> Bq = U^T B
@@ -57,8 +63,9 @@ Gaussian FCHK Cartesian geometry/Hessian
 -> Wilson GF frequencies and PED
 ```
 
-Gaussian is only the source of Cartesian numerical data in this test. The GICs,
-B matrix, GF transformation and PED are computed by Merlino.
+Gaussian is only the current source adapter in this test. The solver-facing
+input is `HessianInput`; the GICs, B matrix, GF transformation and PED are
+computed by Merlino.
 
 ## Next Numerical Step
 

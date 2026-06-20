@@ -64,9 +64,10 @@ Merlino4:
 - `vci_core.f`: small dense VCI helpers and product-basis generation.
 - `davidson_core.f`: Davidson support routines independent from Gaussian/GDV.
 
-These routines do not parse Gaussian files and do not build coordinates.
-Python owns Gaussian/FCHK parsing, QFF tensor normalization and workflow
-orchestration. The Fortran kernels receive numerical arrays only; Davidson is
+These routines do not parse external electronic-structure files and do not
+build coordinates. Python owns adapter parsing, canonical Merlino input
+normalization and workflow orchestration. The Fortran kernels receive numerical
+arrays only; Davidson is
 implemented with a Merlino4 `matvec + diagonal` contract and is not copied from
 Gaussian/GDV.
 

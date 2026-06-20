@@ -10,8 +10,8 @@ can evolve independently.
 
 The planned scientific additions are:
 
-- VPT2/VCI from Gaussian quartic force fields, using existing Fortran as a
-  reference while building independent Python and Fortran77 kernels with
+- VPT2/VCI from canonical Merlino Hessian/QFF inputs, with Gaussian currently
+  supported as an adapter and independent Python/Fortran77 kernels with
   Davidson diagonalization for large VCI spaces.
 - Semiexperimental equilibrium geometries from least-squares fits of
   isotopologue rotational constants with QM vibrational corrections.

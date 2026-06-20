@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .gaussian_qff import FCHKData, lower_to_symmetric, read_gaussian_fchk_qff, read_indexed_qff_text
+from .gaussian_qff import FCHKData, anharmonic_input_from_gaussian_fchk, hessian_input_from_gaussian_fchk, read_gaussian_fchk_qff, read_indexed_qff_text
 from .harmonic import GFResult, mass_weighted_cartesian_hessian, solve_wilson_gf
 from .vci import VCIResult, solve_vci, zero_anharmonic_force_field
 
@@ -31,10 +31,15 @@ def run_python_vci_from_gaussian_fchk(
     is run from the Gaussian frequencies.
     """
     data = read_gaussian_fchk_qff(Path(path))
-    hessian = lower_to_symmetric(data.cartesian_hessian_lower)
-    mw_hessian = mass_weighted_cartesian_hessian(hessian, data.masses_amu)
+    hessian_input = hessian_input_from_gaussian_fchk(Path(path))
+    anharmonic_input = anharmonic_input_from_gaussian_fchk(Path(path))
+    mw_hessian = mass_weighted_cartesian_hessian(hessian_input.cartesian_hessian, hessian_input.masses_amu)
     gf = solve_wilson_gf(mw_hessian, np.eye(mw_hessian.shape[0]))
-    frequencies = data.anharmonic_frequencies_cm if data.anharmonic_frequencies_cm.size else data.harmonic_frequencies_cm
+    frequencies = (
+        anharmonic_input.anharmonic_frequencies_cm
+        if anharmonic_input.anharmonic_frequencies_cm.size
+        else anharmonic_input.harmonic_frequencies_cm
+    )
     qff = read_indexed_qff_text(qff_path, frequencies) if qff_path is not None else zero_anharmonic_force_field(frequencies)
     vci = solve_vci(qff, max_quanta=max_quanta, n_roots=n_roots)
     return VPT2VCIRun(gaussian_data=data, gf=gf, vci=vci)

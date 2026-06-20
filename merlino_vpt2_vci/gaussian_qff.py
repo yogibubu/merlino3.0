@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .models import AnharmonicInput, HessianInput
 from .vci import QuarticForceField
 
 
@@ -14,7 +15,7 @@ _HEADER_RE = re.compile(r"^(?P<label>.+?)\s+(?P<kind>[IRC])(?:\s+N=\s*(?P<count>
 
 @dataclass(frozen=True)
 class FCHKData:
-    """Numerical blocks needed from a Gaussian formatted checkpoint."""
+    """Gaussian adapter output kept separate from canonical Merlino models."""
 
     atomic_numbers: np.ndarray
     cartesian_coordinates_bohr: np.ndarray
@@ -24,6 +25,30 @@ class FCHKData:
     anharmonic_frequencies_cm: np.ndarray
     anharmonic_e2: np.ndarray
     normal_modes: np.ndarray
+
+    def to_hessian_input(self) -> HessianInput:
+        hessian = lower_to_symmetric(self.cartesian_hessian_lower)
+        data = HessianInput(
+            atomic_numbers=self.atomic_numbers,
+            cartesian_coordinates_bohr=self.cartesian_coordinates_bohr,
+            masses_amu=self.masses_amu,
+            cartesian_hessian=hessian,
+            harmonic_frequencies_cm=self.harmonic_frequencies_cm,
+            source="gaussian-fchk",
+        )
+        data.validate()
+        return data
+
+    def to_anharmonic_input(self) -> AnharmonicInput:
+        data = AnharmonicInput(
+            harmonic_frequencies_cm=self.harmonic_frequencies_cm,
+            anharmonic_frequencies_cm=self.anharmonic_frequencies_cm,
+            cubic_cm={},
+            quartic_cm={},
+            source="gaussian-fchk",
+        )
+        data.validate()
+        return data
 
 
 def _read_fchk_blocks(path: Path) -> dict[str, np.ndarray | int | float | str]:
@@ -94,6 +119,16 @@ def read_gaussian_fchk_qff(path: Path) -> FCHKData:
         anharmonic_e2=anh_e2,
         normal_modes=modes,
     )
+
+
+def hessian_input_from_gaussian_fchk(path: Path) -> HessianInput:
+    """Gaussian FCHK adapter: return the canonical Merlino Hessian input."""
+    return read_gaussian_fchk_qff(path).to_hessian_input()
+
+
+def anharmonic_input_from_gaussian_fchk(path: Path) -> AnharmonicInput:
+    """Gaussian FCHK adapter: return the canonical Merlino anharmonic input."""
+    return read_gaussian_fchk_qff(path).to_anharmonic_input()
 
 
 def lower_to_symmetric(lower: np.ndarray) -> np.ndarray:

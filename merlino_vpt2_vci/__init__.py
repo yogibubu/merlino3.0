@@ -7,7 +7,14 @@ from .contracts import (
     VPT2VCIInventory,
     inventory_vpt2_vci_backends,
 )
-from .gaussian_qff import FCHKData, lower_to_symmetric, read_gaussian_fchk_qff, read_indexed_qff_text
+from .gaussian_qff import (
+    FCHKData,
+    anharmonic_input_from_gaussian_fchk,
+    hessian_input_from_gaussian_fchk,
+    lower_to_symmetric,
+    read_gaussian_fchk_qff,
+    read_indexed_qff_text,
+)
 from .davidson import DavidsonResult, davidson_lowest
 from .harmonic import GFResult, mass_weighted_cartesian_hessian, solve_wilson_gf
 from .internal_gf import (
@@ -15,9 +22,11 @@ from .internal_gf import (
     PEDTable,
     gf_from_cartesian_hessian_and_merlino_gics,
     gf_from_gaussian_fchk_with_merlino_gics,
+    gf_from_hessian_input_with_merlino_gics,
     gic_labels_from_u,
     primitive_label,
 )
+from .models import AnharmonicInput, HessianInput
 from .vci import (
     QuarticForceField,
     VCIResult,
@@ -31,22 +40,27 @@ from .workflow import VPT2VCIRun, run_python_vci_from_gaussian_fchk
 __all__ = [
     "DavidsonSettings",
     "DavidsonResult",
+    "AnharmonicInput",
     "FCHKData",
     "ForceFieldSource",
     "GFResult",
     "InternalGFResult",
+    "HessianInput",
     "PEDTable",
     "QuarticForceField",
     "VCIRequest",
     "VCIResult",
     "VPT2VCIInventory",
     "VPT2VCIRun",
+    "anharmonic_input_from_gaussian_fchk",
     "build_vci_hamiltonian",
     "davidson_lowest",
     "generate_vibrational_basis",
     "gf_from_cartesian_hessian_and_merlino_gics",
     "gf_from_gaussian_fchk_with_merlino_gics",
+    "gf_from_hessian_input_with_merlino_gics",
     "gic_labels_from_u",
+    "hessian_input_from_gaussian_fchk",
     "inventory_vpt2_vci_backends",
     "lower_to_symmetric",
     "mass_weighted_cartesian_hessian",

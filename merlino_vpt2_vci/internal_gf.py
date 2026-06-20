@@ -8,8 +8,9 @@ import numpy as np
 from merlino_fit.survibfit.pipeline import b_matrix, build_topology, primitives_from_topology
 from merlino_fit.survibfit.transforms import build_u
 
-from .gaussian_qff import lower_to_symmetric, read_gaussian_fchk_qff
+from .gaussian_qff import hessian_input_from_gaussian_fchk
 from .harmonic import solve_wilson_gf
+from .models import HessianInput
 
 
 @dataclass(frozen=True)
@@ -131,12 +132,17 @@ def gf_from_cartesian_hessian_and_merlino_gics(
     )
 
 
-def gf_from_gaussian_fchk_with_merlino_gics(path: Path) -> InternalGFResult:
-    """Read Cartesian data from FCHK and run GF with Merlino GICs."""
-    data = read_gaussian_fchk_qff(path)
+def gf_from_hessian_input_with_merlino_gics(input_data: HessianInput) -> InternalGFResult:
+    """Run GF/PED from the canonical Merlino harmonic input."""
+    input_data.validate()
     return gf_from_cartesian_hessian_and_merlino_gics(
-        lower_to_symmetric(data.cartesian_hessian_lower),
-        data.cartesian_coordinates_bohr,
-        data.atomic_numbers,
-        data.masses_amu,
+        input_data.cartesian_hessian,
+        input_data.cartesian_coordinates_bohr,
+        input_data.atomic_numbers,
+        input_data.masses_amu,
     )
+
+
+def gf_from_gaussian_fchk_with_merlino_gics(path: Path) -> InternalGFResult:
+    """Gaussian adapter: read FCHK, then run the canonical Merlino GF path."""
+    return gf_from_hessian_input_with_merlino_gics(hessian_input_from_gaussian_fchk(path))
