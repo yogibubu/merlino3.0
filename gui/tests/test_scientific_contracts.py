@@ -371,8 +371,7 @@ def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
     )
 
     assert result.parameters[0].active is False
-    assert not any(parameter.active for parameter in result.parameters)
-    assert result.diagnostics.convergence_reason == "no_active_totally_symmetric_parameters"
+    assert any(parameter.active for parameter in result.parameters)
 
 
 def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
@@ -416,7 +415,7 @@ def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
     assert shared
     assert all(parameter.active for parameter in shared)
     assert fixed and all(not parameter.active for parameter in fixed)
-    assert result.jacobian.shape[1] == 1
+    assert result.jacobian.shape[1] == 2
     params_text = (tmp_path / "semiexp_classes" / "semiexp_parameters.csv").read_text(encoding="utf-8")
     assert "parameter_class" in params_text
     assert "OH_stretches" in params_text
@@ -566,22 +565,38 @@ def test_semiexperimental_fit_always_uses_iterative_gicforge(tmp_path, monkeypat
         workdir = Path(workdir)
         xyzin_lines = (workdir / "xyzin").read_text(encoding="utf-8").splitlines()
         assert xyzin_lines[1] == ""
-        gauin = workdir / "gauin"
+        (workdir / "provout").write_text(" Point Group from symm.f: C2v\n", encoding="utf-8")
+        gauin = workdir / "gauin.symm"
+        lines = [
+            " A1Str0001=[ 0.7071*R(  1,  2)+0.7071*R(  1,  3)]",
+            " B2Str0001=[ 0.7071*R(  1,  2)-0.7071*R(  1,  3)]",
+            " A1Ang0001=[ 1.00000*A(  2,  1,  3)]",
+            " B1Lin0001 = L(  2,  1,  3,  0, -1)",
+            " A2Oop0001 = U(  2,  1,  3,  2)",
+        ]
         gauin.write_text(
             "\n".join(
+                lines
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (workdir / "gicsym").write_text(
+            "\n".join(
                 [
-                    " Stre0001=[ 0.7071*R(  1,  2)+0.7071*R(  1,  3)]",
-                    " Stre0002=[ 0.7071*R(  1,  2)-0.7071*R(  1,  3)]",
-                    " SymD0001 =[ 1.00000*A(  2,  1,  3)]",
-                    " LAng0001 = L(  2,  1,  3,  0, -1)",
-                    " OuPl0001 = U(  2,  1,  3,  2)",
+                    "name,irrep",
+                    "A1Str0001,A1",
+                    "B2Str0001,B2",
+                    "A1Ang0001,A1",
+                    "B1Lin0001,B1",
+                    "A2Oop0001,A2",
                 ]
             )
             + "\n",
             encoding="utf-8",
         )
         calls.append(workdir)
-        return SimpleNamespace(files={"gauin": gauin})
+        return SimpleNamespace(files={"gauin.symm": gauin, "gicsym": workdir / "gicsym"})
 
     monkeypatch.setattr("merlino_semiexp.fit.run_gicforge", fake_run_gicforge)
     observation = IsotopologueObservation(
@@ -600,12 +615,12 @@ def test_semiexperimental_fit_always_uses_iterative_gicforge(tmp_path, monkeypat
     assert all("GICForge" in parameter.name for parameter in result.parameters)
     assert any(parameter.active for parameter in result.parameters)
     assert any(not parameter.active for parameter in result.parameters)
-    assert any("LAng" in label for label in result.gic_labels)
-    assert any("OuPl" in label for label in result.gic_labels)
+    assert any("B1Lin" in label for label in result.gic_labels)
+    assert any("A2Oop" in label for label in result.gic_labels)
     assert result.b_matrix.shape[0] == 5
     assert manifest["backend"]["coordinate_model"] == "gicforge-iterative-readallgic"
     assert "GICForge ReadAllGIC" in manifest["parameters"]["coordinate_generation"]["primitive_source"]
-    assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "totally symmetric GICForge coordinates only"
+    assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "GICForge-assigned A1 coordinates only"
 
 
 def test_semiexperimental_validation_flags_bad_classes_and_isotopes(tmp_path):

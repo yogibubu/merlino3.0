@@ -22,8 +22,6 @@ from topology.elements import atomic_symbol
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
-from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
-from merlino_fit.survibfit.symmetry_global import primitive_permutation
 
 from .contracts import IsotopologueObservation, ParameterClassConstraint, QMParameterPredicate, SemiexperimentalFitRequest
 
@@ -99,6 +97,7 @@ class GICForgeSEBackend:
     root: Path
     counter: int = 0
     last_workdir: Path | None = None
+    point_group: str | None = None
 
     def model(self, coords: np.ndarray):
         self.counter += 1
@@ -106,7 +105,14 @@ class GICForgeSEBackend:
         workdir.mkdir(parents=True, exist_ok=True)
         _write_gicforge_se_inputs(workdir, self.atoms, coords)
         result = run_gicforge(workdir)
-        gauin = result.files.get("gauin")
+        point_group = _gicforge_point_group(workdir / "provout")
+        if self.point_group is None:
+            self.point_group = point_group
+        elif point_group != self.point_group:
+            raise ScientificValidationError(
+                f"GICForge point group changed from {self.point_group} to {point_group} in {workdir}"
+            )
+        gauin = result.files.get("gauin.symm") or result.files.get("gauin")
         if gauin is None:
             raise ScientificValidationError(f"GICForge did not produce gauin in {workdir}")
         self.last_workdir = workdir
@@ -156,12 +162,11 @@ def fit_semiexperimental_geometry(
     coords = np.asarray(coords0, dtype=float)
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _validate_observations(request.observations, len(atoms))
-    symmetry_permutations = _initial_symmetry_permutations(z_numbers, coords)
     gicforge_backend = _make_gicforge_backend(tuple(atoms), outdir)
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
-    active_mask = _active_mask(labels, request.fixed_parameters) & _totally_symmetric_mask(prims, u_matrix, symmetry_permutations)
+    active_mask = _active_mask(labels, request.fixed_parameters) & _gicforge_a1_mask(labels)
     loop_max_iter = max_iter if np.any(active_mask) else 0
 
     current_damping = float(damping)
@@ -173,7 +178,7 @@ def fit_semiexperimental_geometry(
     for iteration in range(1, loop_max_iter + 1):
         prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
         active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
-        active_mask &= _totally_symmetric_mask(prims, u_matrix, symmetry_permutations)
+        active_mask &= _gicforge_a1_mask(labels)
         q = _gic_values(prims, u_matrix, coords)
         calc = _measurement_vector(atoms, coords, request, q, labels, measurement_model)
         obs = measurement_model.observed
@@ -237,7 +242,7 @@ def fit_semiexperimental_geometry(
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
     active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
-    active_mask &= _totally_symmetric_mask(prims, u_matrix, symmetry_permutations)
+    active_mask &= _gicforge_a1_mask(labels)
     q_final = _gic_values(prims, u_matrix, coords)
     bq = u_matrix.T @ b_matrix_analytic(prims, coords)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
@@ -354,7 +359,7 @@ def write_semiexperimental_outputs(
         "primitive_source": "GICForge ReadAllGIC generated at each SE iteration",
         "reduction": "non-redundant GIC transform",
         "symmetry": "GICForge/symm.f same-type coordinate symmetrization with strict/quasi tolerance",
-        "active_subspace": "totally symmetric GICForge coordinates only",
+        "active_subspace": "GICForge-assigned A1 coordinates only",
         "ring_coordinates": "GICForge ring deformation and puckering coordinates",
         "gicforge_iterations": str(outdir / "gicforge_iterations"),
     }
@@ -541,7 +546,14 @@ def _write_gicforge_se_inputs(workdir: Path, atoms: tuple[str, ...], coords: np.
     (workdir / "xyzin").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _gicforge_point_group(provout: Path) -> str:
+    text = provout.read_text(encoding="utf-8", errors="replace") if provout.exists() else ""
+    match = re.search(r"Point Group from symm\.f:\s*([A-Za-z0-9]+)", text)
+    return match.group(1) if match else "UNKNOWN"
+
+
 def _gicforge_gic_model(gauin: Path):
+    irreps = _read_gicforge_irreps(Path(gauin).with_name("gicsym"))
     prims: list[Primitive] = []
     prim_index: dict[Primitive, int] = {}
     columns: list[np.ndarray] = []
@@ -561,7 +573,8 @@ def _gicforge_gic_model(gauin: Path):
                     columns[idx] = np.pad(existing, (0, 1))
             column[prim_index[primitive]] += coeff
         label_index = len(labels) + 1
-        labels.append(f"GIC{label_index:03d} GICForge {name} {expression} {_gicforge_aliases(terms)}")
+        irrep = irreps.get(name, "UNK")
+        labels.append(f"GIC{label_index:03d} GICForge {name} irrep={irrep} {expression} {_gicforge_aliases(terms)}")
         columns.append(column)
     if not columns:
         raise ScientificValidationError(f"No linear GICForge coordinates found in {gauin}")
@@ -574,8 +587,6 @@ def _parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]],
     if not stripped or "=" not in stripped:
         return None
     name = stripped.split("=", 1)[0].strip()
-    if not _is_gicforge_linear_name(name):
-        return None
     rhs = stripped.split("=", 1)[1].strip()
     terms: list[tuple[float, Primitive]] = []
     number = r"[+-]?\s*(?:\d+(?:\.\d*)?|\.\d+)(?:[EDed][+-]?\d+)?"
@@ -592,24 +603,17 @@ def _parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]],
     return name.replace("(Inactive)", "").strip(), terms, rhs
 
 
-def _is_gicforge_linear_name(name: str) -> bool:
-    clean = name.replace("(Inactive)", "").strip()
-    return clean.startswith(
-        (
-            "Stre",
-            "SymD",
-            "Rock",
-            "Scis",
-            "RDef",
-            "RPck",
-            "ImpD",
-            "Tors",
-            "LAng",
-            "LGIC",
-            "OuPl",
-            "UGNIC",
-        )
-    )
+def _read_gicforge_irreps(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    irreps: dict[str, str] = {}
+    for idx, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        if idx == 0 and raw.lower().startswith("name,"):
+            continue
+        parts = [part.strip() for part in raw.split(",")]
+        if len(parts) >= 2 and parts[0]:
+            irreps[parts[0]] = parts[1]
+    return irreps
 
 
 def _gicforge_primitive(kind: str, atoms_text: str) -> Primitive:
@@ -652,53 +656,12 @@ def _primitive_alias(primitive: Primitive) -> str:
     return f"{primitive.kind}({atoms})"
 
 
-def _initial_symmetry_permutations(z_numbers: np.ndarray, coords: np.ndarray) -> tuple[tuple[int, ...], ...]:
-    symbols = [atomic_symbol(int(z)) for z in z_numbers]
-    oriented = orient_coords(coords, weights=z_numbers)
-    _elements, _classes, permutations = symmetry_elements_from_geometry(
-        symbols,
-        oriented,
-        tol=1.0e-2,
-        max_n=6,
-        tol_H=1.0e-2,
-        ignore_isotopes=True,
-        auto_max_n=True,
-        inertia_tol=1.0e-3,
-    )
-    if not permutations:
-        return (tuple(range(len(z_numbers))),)
-    unique: list[tuple[int, ...]] = []
-    seen: set[tuple[int, ...]] = set()
-    for mapping in permutations:
-        mapped = tuple(int(item) for item in mapping)
-        if mapped not in seen:
-            seen.add(mapped)
-            unique.append(mapped)
-    return tuple(unique)
-
-
-def _totally_symmetric_mask(
-    prims: list[Primitive] | tuple[Primitive, ...],
-    u_matrix: np.ndarray,
-    symmetry_permutations: tuple[tuple[int, ...], ...],
-    tol: float = 1.0e-6,
-) -> np.ndarray:
-    if u_matrix.size == 0:
-        return np.zeros(0, dtype=bool)
-    if len(symmetry_permutations) <= 1:
-        return np.ones(u_matrix.shape[1], dtype=bool)
-    primitive_ops = [primitive_permutation(prims, mapping) for mapping in symmetry_permutations]
+def _gicforge_a1_mask(labels: tuple[str, ...]) -> np.ndarray:
     mask = []
-    for column in u_matrix.T:
-        is_a1 = True
-        for perm_idx, sign in primitive_ops:
-            transformed = np.zeros_like(column)
-            for src, dst in enumerate(perm_idx):
-                transformed[dst] += sign[src] * column[src]
-            if not np.allclose(transformed, column, atol=tol, rtol=tol):
-                is_a1 = False
-                break
-        mask.append(is_a1)
+    for label in labels:
+        match = re.search(r"\birrep=([A-Za-z0-9'\"+-]+)", label)
+        irrep = match.group(1) if match else ""
+        mask.append(irrep in {"A1", "A", "Ag", "A'"})
     return np.array(mask, dtype=bool)
 
 

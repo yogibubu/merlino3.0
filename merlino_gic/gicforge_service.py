@@ -7,9 +7,10 @@ from typing import Iterable
 
 from merlino_core import build_run_manifest, sha256_file, write_manifest
 from merlino_fortran import resolve_backend
+from .gic_symmetry import write_gic_symmetry_files
 
 
-GICFORGE_OUTPUTS = ("gicforge.out", "provout", "gauin", "msrin", "VPT2in", "bmat.out")
+GICFORGE_OUTPUTS = ("gicforge.out", "provout", "gauin", "gauin.symm", "gicsym", "msrin", "VPT2in", "bmat.out")
 
 
 class GICForgeError(RuntimeError):
@@ -52,6 +53,7 @@ def run_gicforge(
         raise GICForgeError(f"GICForge failed, see {logfile}") from exc
 
     _copy_legacy_report(run_dir)
+    write_gic_symmetry_files(run_dir)
     files = _collect_outputs(run_dir, output_names)
     manifest = _write_gicforge_manifest(run_dir, exe, logfile, files)
     return GICForgeResult(
