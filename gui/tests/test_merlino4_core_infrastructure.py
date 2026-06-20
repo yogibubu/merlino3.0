@@ -212,9 +212,11 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_diagnostics.csv").exists()
     assert (outdir / "semiexp_manifest.json").exists()
     assert (outdir / "semiexp_report.html").exists()
+    assert (outdir / "semiexp_tables.tex").exists()
     manifest = json.loads((outdir / "semiexp_manifest.json").read_text(encoding="utf-8"))
     assert manifest["backend"]["fortran77_role"] == "validated numerical kernels only"
     assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
+    assert manifest["outputs"]["latex_tables"] == str(outdir / "semiexp_tables.tex")
     assert manifest["parameters"]["coordinate_generation"]["reduction"] == "non-redundant GIC transform"
     assert manifest["parameters"]["n_gic_parameters"] >= 1
 

@@ -6,16 +6,27 @@ from pathlib import Path
 
 import numpy as np
 
+from merlino_core.numerics import rank_condition
 from merlino_fit.survibfit.modify_geom import read_xyz
 
 from .contracts import IsotopologueObservation, ParameterClassConstraint, SemiexperimentalFitRequest
-from .fit import SemiexperimentalFitResult, _atomic_number, _gic_model, fit_semiexperimental_geometry
+from .fit import (
+    SemiexperimentalFitResult,
+    _active_mask,
+    _atomic_number,
+    _build_measurement_model,
+    _gic_model,
+    _jacobian_constants_wrt_gics,
+    _parameter_class_transform,
+    fit_semiexperimental_geometry,
+)
 
 
 @dataclass(frozen=True)
 class SemiexperimentalGICPreview:
     atoms: tuple[str, ...]
     gic_labels: tuple[str, ...]
+    rows: tuple["SemiexperimentalGICPreviewRow", ...]
     suggested_classes: tuple[ParameterClassConstraint, ...]
     warnings: tuple[str, ...]
 
@@ -34,9 +45,48 @@ class SemiexperimentalGICPreview:
         if not self.suggested_classes:
             lines.append("  none")
         lines.extend(["", "GIC labels:"])
-        lines.extend(f"  {label}" for label in self.gic_labels)
+        lines.extend(f"  {row.label} [{row.kind}] class={row.suggested_class or '-'}" for row in self.rows)
         if self.warnings:
             lines.extend(["", "Warnings:", *[f"  {item}" for item in self.warnings]])
+        return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class SemiexperimentalGICPreviewRow:
+    label: str
+    kind: str
+    atoms: tuple[int, ...]
+    suggested_class: str
+    state: str
+
+
+@dataclass(frozen=True)
+class SemiexperimentalValidationIssue:
+    severity: str
+    message: str
+
+
+@dataclass(frozen=True)
+class SemiexperimentalConditioningPreview:
+    rank: int
+    condition_number: float
+    n_observations: int
+    n_effective_parameters: int
+    components: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+    @property
+    def text(self) -> str:
+        lines = [
+            "Semiexperimental conditioning preview",
+            f"observations: {self.n_observations}",
+            f"effective parameters: {self.n_effective_parameters}",
+            f"rank: {self.rank}",
+            f"condition number: {self.condition_number:.8g}",
+            f"components: {','.join(self.components)}",
+        ]
+        if self.warnings:
+            lines.extend(["Warnings:", *[f"  {item}" for item in self.warnings]])
         return "\n".join(lines)
 
 
@@ -66,8 +116,80 @@ def preview_semiexperimental_gics(
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _prims, _u_matrix, labels = _gic_model(np.asarray(coords, dtype=float), z_numbers)
     suggestions = suggest_parameter_classes(tuple(atoms), labels, observations)
+    rows = _preview_rows(labels, suggestions)
     warnings = _preview_warnings(labels, suggestions)
-    return SemiexperimentalGICPreview(tuple(atoms), labels, suggestions, warnings)
+    return SemiexperimentalGICPreview(tuple(atoms), labels, rows, suggestions, warnings)
+
+
+def validate_semiexperimental_request(request: SemiexperimentalFitRequest) -> tuple[SemiexperimentalValidationIssue, ...]:
+    issues: list[SemiexperimentalValidationIssue] = []
+    try:
+        atoms, _coords, _comment = read_xyz(Path(request.initial_geometry))
+    except Exception as exc:
+        return (SemiexperimentalValidationIssue("error", f"Cannot read parent XYZ: {exc}"),)
+    labels = [obs.label for obs in request.observations]
+    if len(labels) != len(set(labels)):
+        issues.append(SemiexperimentalValidationIssue("error", "Duplicate isotopologue labels"))
+    for obs in request.observations:
+        if any(value <= 0.0 for value in obs.constants.as_tuple()):
+            issues.append(SemiexperimentalValidationIssue("error", f"{obs.label}: rotational constants must be positive"))
+        if obs.weights is not None and any(value <= 0.0 for value in obs.weights.as_tuple()):
+            issues.append(SemiexperimentalValidationIssue("error", f"{obs.label}: sigma-derived weights must be positive"))
+        seen_atoms = set()
+        for atom_index, mass in obs.substitutions.items():
+            if atom_index in seen_atoms:
+                issues.append(SemiexperimentalValidationIssue("error", f"{obs.label}: duplicate substitution at atom {atom_index}"))
+            seen_atoms.add(atom_index)
+            if atom_index < 1 or atom_index > len(atoms):
+                issues.append(SemiexperimentalValidationIssue("error", f"{obs.label}: substitution atom {atom_index} is out of range"))
+            elif mass == 2 and atoms[atom_index - 1].upper() != "H":
+                issues.append(SemiexperimentalValidationIssue("warning", f"{obs.label}: deuterium substitution on non-H atom {atom_index}"))
+        if any(abs(value) > 0.25 * max(abs(base), 1.0) for value, base in zip(obs.correction.as_tuple(), obs.constants.as_tuple())):
+            issues.append(SemiexperimentalValidationIssue("warning", f"{obs.label}: unusually large vibrational correction"))
+    try:
+        preview = preview_semiexperimental_gics(request.initial_geometry, request.observations)
+    except Exception as exc:
+        issues.append(SemiexperimentalValidationIssue("error", f"Cannot generate GIC preview: {exc}"))
+        return tuple(issues)
+    for parameter_class in request.parameter_classes:
+        matches = [label for label in preview.gic_labels if any(pattern.lower() in label.lower() for pattern in parameter_class.patterns)]
+        if not matches:
+            issues.append(SemiexperimentalValidationIssue("error", f"Parameter class {parameter_class.name} matches no GIC"))
+        kinds = {_gic_kind(label) for label in matches}
+        if len(kinds) > 1:
+            issues.append(SemiexperimentalValidationIssue("error", f"Parameter class {parameter_class.name} mixes coordinate types: {', '.join(sorted(kinds))}"))
+    return tuple(issues)
+
+
+def preview_semiexperimental_conditioning(
+    request: SemiexperimentalFitRequest,
+    *,
+    step: float = 1.0e-4,
+) -> SemiexperimentalConditioningPreview:
+    atoms, coords, _comment = read_xyz(Path(request.initial_geometry))
+    coords_arr = np.asarray(coords, dtype=float)
+    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+    prims, u_matrix, labels = _gic_model(coords_arr, z_numbers)
+    measurement = _build_measurement_model(request, atoms, coords_arr, prims, u_matrix, labels)
+    active = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
+    jac_gic = _jacobian_constants_wrt_gics(atoms, coords_arr, request, prims, u_matrix, active, labels, measurement, step=step)
+    transform, _names, _class_by_gic = _parameter_class_transform(labels, active, request.parameter_classes)
+    jac = jac_gic @ transform
+    weighted = jac * np.sqrt(measurement.weights)[:, None]
+    conditioning = rank_condition(weighted)
+    warnings = []
+    if conditioning.rank < weighted.shape[1]:
+        warnings.append("rank deficient for the current isotopologues/classes")
+    if not np.isfinite(conditioning.condition_number) or conditioning.condition_number > 1.0e8:
+        warnings.append("ill-conditioned parameter set")
+    return SemiexperimentalConditioningPreview(
+        conditioning.rank,
+        conditioning.condition_number,
+        int(weighted.shape[0]),
+        int(weighted.shape[1]),
+        measurement.components,
+        tuple(warnings),
+    )
 
 
 def suggest_parameter_classes(
@@ -166,6 +288,14 @@ def benchmark_csv(rows: tuple[SemiexperimentalBenchmarkRow, ...]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def semiexperimental_latex_tables(result: SemiexperimentalFitResult) -> dict[str, str]:
+    return {
+        "parameters": _latex_parameter_table(result),
+        "residuals": _latex_residual_table(result),
+        "kraitchman": _latex_kraitchman_table(result),
+    }
+
+
 def _preview_warnings(
     labels: tuple[str, ...],
     suggestions: tuple[ParameterClassConstraint, ...],
@@ -176,6 +306,42 @@ def _preview_warnings(
     if not suggestions:
         warnings.append("No automatic parameter-class suggestion was found")
     return tuple(warnings)
+
+
+def _preview_rows(
+    labels: tuple[str, ...],
+    suggestions: tuple[ParameterClassConstraint, ...],
+) -> tuple[SemiexperimentalGICPreviewRow, ...]:
+    rows = []
+    for label in labels:
+        assigned = next((item.name for item in suggestions if any(pattern.lower() in label.lower() for pattern in item.patterns)), "")
+        rows.append(SemiexperimentalGICPreviewRow(label, _gic_kind(label), _gic_atoms(label), assigned, "active"))
+    return tuple(rows)
+
+
+def _gic_kind(label: str) -> str:
+    for kind in ("bond", "angle", "dihedral", "out_of_plane", "linear_bend"):
+        if f"{kind}(" in label:
+            return kind
+    if "ring" in label.lower():
+        return "ring"
+    return "mixed"
+
+
+def _gic_atoms(label: str) -> tuple[int, ...]:
+    atoms = []
+    for marker in ("bond(", "angle(", "dihedral(", "out_of_plane(", "linear_bend("):
+        start = 0
+        while True:
+            pos = label.find(marker, start)
+            if pos < 0:
+                break
+            end = label.find(")", pos)
+            if end < 0:
+                break
+            atoms.extend(int(part.strip()) for part in label[pos + len(marker):end].split(",") if part.strip().isdigit())
+            start = end + 1
+    return tuple(sorted(set(atoms)))
 
 
 def _substituted_hydrogens(atoms: tuple[str, ...], observations: tuple[IsotopologueObservation, ...]) -> set[int]:
@@ -285,3 +451,46 @@ def _kraitchman_table(result: SemiexperimentalFitResult) -> str:
         )
     rows.append("</table>")
     return "\n".join(rows)
+
+
+def _latex_parameter_table(result: SemiexperimentalFitResult) -> str:
+    lines = [
+        "\\begin{tabular}{lrrrl}",
+        "\\toprule",
+        "Parameter & Value & Sigma & Active & Class \\\\",
+        "\\midrule",
+    ]
+    for item in result.parameters:
+        lines.append(f"{_tex(item.name)} & {item.value:.8g} & {item.sigma:.3g} & {int(item.active)} & {_tex(item.parameter_class)} \\\\")
+    lines.extend(["\\bottomrule", "\\end{tabular}", ""])
+    return "\n".join(lines)
+
+
+def _latex_residual_table(result: SemiexperimentalFitResult) -> str:
+    lines = [
+        "\\begin{tabular}{llrrr}",
+        "\\toprule",
+        "Isotopologue & Observable & Observed & Calculated & Residual \\\\",
+        "\\midrule",
+    ]
+    for item in result.residuals:
+        lines.append(f"{_tex(item.isotopologue)} & {_tex(item.constant)} & {item.observed_equilibrium_MHz:.8g} & {item.calculated_MHz:.8g} & {item.residual_MHz:.3g} \\\\")
+    lines.extend(["\\bottomrule", "\\end{tabular}", ""])
+    return "\n".join(lines)
+
+
+def _latex_kraitchman_table(result: SemiexperimentalFitResult) -> str:
+    lines = [
+        "\\begin{tabular}{lllrrr}",
+        "\\toprule",
+        "Isotopologue & Atom & Axis & Kraitchman & Fit & Difference \\\\",
+        "\\midrule",
+    ]
+    for item in result.kraitchman:
+        lines.append(f"{_tex(item.isotopologue)} & {item.atom_index} {_tex(item.atom)} & {_tex(item.coordinate)} & {item.kraitchman_abs_angstrom:.6g} & {item.fitted_abs_angstrom:.6g} & {item.difference_angstrom:.3g} \\\\")
+    lines.extend(["\\bottomrule", "\\end{tabular}", ""])
+    return "\n".join(lines)
+
+
+def _tex(text: str) -> str:
+    return str(text).replace("\\", "\\textbackslash{}").replace("_", "\\_").replace("&", "\\&").replace("%", "\\%")

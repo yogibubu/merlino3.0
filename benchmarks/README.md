@@ -19,3 +19,13 @@ python -m merlino vci --qff benchmarks/toy2mode.qff --max-quanta 2 --roots 4 --c
 ```
 
 Expected: VPT2/VCI comparison report and `vpt2_vci_comparison.csv`.
+
+## Semiexperimental MSR Schema
+
+`benchmarks/semiexp_msr/manifest.toml` defines the curated validation database
+schema for MSR-style semiexperimental geometry fits. Cases reference parent
+Cartesian XYZ files and isotopologue observation tables, then record expected
+rank, conditioning and stationary-point diagnostics.
+
+Small runnable inputs live under `examples/semiexp/` and are intended for both
+CLI and GUI smoke tests.

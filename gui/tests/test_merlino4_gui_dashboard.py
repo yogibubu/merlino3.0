@@ -80,6 +80,7 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     assert not window.semiexp_panel.isHidden()
     assert window.backend_selector.findText("python") >= 0
     assert window.backend_selector.findText("fortran77") >= 0
+    assert window.semiexp_preview_table.columnCount() == 5
     window.backend_selector.setCurrentText("fortran77")
     assert window.selected_backends["semiexp_geometry"] == "fortran77"
     assert "selected: fortran77" in window.detail_view.toPlainText()
@@ -100,6 +101,63 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     toml = window.save_semiexp_observations_toml()
     assert toml.exists()
     assert "A_MHz = 1000.0" in toml.read_text(encoding="utf-8")
+    preset = window.save_semiexp_preset()
+    assert preset.exists()
+    window.semiexp_fixed.clear()
+    window.load_semiexp_preset(preset)
+    assert window.semiexp_fixed.text() == "GIC001"
+
+
+@pytest.mark.usefixtures("qtbot")
+def test_semiexp_dashboard_preview_validate_and_conditioning(tmp_path, qtbot):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    obs = tmp_path / "isotopologues.toml"
+    obs.write_text(
+        "\n".join(
+            [
+                "[[isotopologues]]",
+                'label = "parent"',
+                "[isotopologues.constants]",
+                "A_MHz = 822180.189172425",
+                "B_MHz = 437776.592728178",
+                "C_MHz = 285669.514220614",
+                "[isotopologues.vibrational_correction]",
+                "delta_A_MHz = 0.0",
+                "delta_B_MHz = 0.0",
+                "delta_C_MHz = 0.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    window = DashboardWindow(tmp_path)
+    qtbot.addWidget(window)
+    window.select_workflow("semiexp_geometry")
+    window.semiexp_xyz.setText(str(xyz))
+    window.semiexp_observations.setText(str(obs))
+    window.semiexp_outdir.setText(str(tmp_path / "run"))
+
+    window.preview_semiexp_gics()
+    window.validate_semiexp_input()
+    window.preview_semiexp_conditioning()
+
+    text = window.semiexp_command.toPlainText()
+    assert window.semiexp_preview_table.rowCount() > 0
+    assert "input validation: OK" in text
+    assert "condition number" in text
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):

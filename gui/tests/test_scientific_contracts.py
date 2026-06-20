@@ -21,9 +21,12 @@ from merlino_semiexp import (
     corrected_constants_rows,
     fit_semiexperimental_geometry,
     parse_substitutions,
+    preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
     read_observations,
     read_observations_csv,
+    semiexperimental_latex_tables,
+    validate_semiexperimental_request,
     write_semiexperimental_html_report,
     write_observations_csv,
 )
@@ -472,8 +475,77 @@ def test_semiexperimental_gic_preview_and_html_report(tmp_path):
 
     assert "Non-redundant GICs" in preview.text
     assert preview.gic_labels
+    assert preview.rows
+    assert {row.kind for row in preview.rows}.issubset({"bond", "angle", "dihedral", "out_of_plane", "linear_bend", "ring", "mixed"})
     assert any(item.mode in {"shared", "fixed"} for item in preview.suggested_classes)
     assert "Merlino Semiexperimental Geometry Report" in report.read_text(encoding="utf-8")
+    tables = semiexperimental_latex_tables(result)
+    assert {"parameters", "residuals", "kraitchman"} == set(tables)
+    assert "\\begin{tabular}" in tables["parameters"]
+
+
+def test_semiexperimental_validation_and_conditioning_preview(tmp_path):
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(["3", "water", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    observations = (
+        IsotopologueObservation("parent", RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords)))),
+        IsotopologueObservation(
+            "D1",
+            RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords, [None, 2, None]))),
+            substitutions={2: 2},
+        ),
+    )
+    request = SemiexperimentalFitRequest(
+        xyz,
+        observations,
+        parameter_classes=(ParameterClassConstraint("OH_stretches", ("bond(1,2)", "bond(1,3)"), "shared"),),
+    )
+
+    issues = validate_semiexperimental_request(request)
+    conditioning = preview_semiexperimental_conditioning(request)
+
+    assert not [item for item in issues if item.severity == "error"]
+    assert conditioning.n_observations >= 3
+    assert conditioning.n_effective_parameters >= 1
+    assert "condition number" in conditioning.text
+
+
+def test_semiexperimental_validation_flags_bad_classes_and_isotopes(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    obs = IsotopologueObservation(
+        "bad",
+        RotationalConstants(1000.0, 800.0, 600.0),
+        substitutions={1: 2},
+    )
+    request = SemiexperimentalFitRequest(
+        xyz,
+        (obs,),
+        parameter_classes=(ParameterClassConstraint("missing", ("not_a_gic",), "shared"),),
+    )
+
+    issues = validate_semiexperimental_request(request)
+
+    assert any("deuterium substitution on non-H" in item.message for item in issues)
+    assert any("matches no GIC" in item.message for item in issues)
 
 
 def _structure(atoms, coords, isotopes=None):

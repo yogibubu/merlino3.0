@@ -1,0 +1,53 @@
+[benchmark]
+name = "semiexp_msr"
+description = "MSR-style validation database for Cartesian/GIC semiexperimental equilibrium geometries."
+schema_version = 1
+default_observable = "moments"
+default_rotational_components = "auto"
+
+[[fields]]
+name = "case_id"
+required = true
+description = "Stable molecule or isotopologue-set identifier."
+
+[[fields]]
+name = "parent_xyz"
+required = true
+description = "Path to the parent Cartesian XYZ geometry."
+
+[[fields]]
+name = "observations"
+required = true
+description = "Path to TOML/JSON/CSV isotopologue constants, substitutions and corrections."
+
+[[fields]]
+name = "reference_source"
+required = false
+description = "Bibliographic source for experimental constants and correction model."
+
+[[fields]]
+name = "expected_rank"
+required = false
+description = "Expected least-squares Jacobian rank for the curated input."
+
+[[fields]]
+name = "expected_stationary_point"
+required = false
+description = "Expected final classification: minimum, flat_or_rank_deficient or transition_state_or_saddle."
+
+[[quality_gates]]
+name = "valid_input"
+description = "validate_semiexperimental_request returns no errors."
+
+[[quality_gates]]
+name = "conditioning_preview"
+description = "preview_semiexperimental_conditioning rank and condition number are recorded before fitting."
+
+[[quality_gates]]
+name = "fit_report"
+description = "The run writes CSV, HTML, LaTeX table and manifest outputs."
+
+[[quality_gates]]
+name = "kraitchman_comparison"
+description = "Single-substitution cases include a Kraitchman diagnostic table."
+

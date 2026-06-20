@@ -19,6 +19,7 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
     read_observations,
+    semiexperimental_latex_tables,
     write_semiexperimental_html_report,
 )
 from merlino_vpt2_vci import (
@@ -237,7 +238,14 @@ def main(argv: list[str] | None = None) -> int:
             outdir=args.outdir,
         )
         report_path = write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
+        tables_path = args.outdir / "semiexp_tables.tex"
+        tables = semiexperimental_latex_tables(result)
+        tables_path.write_text(
+            "\n\n".join(f"% {name}\n{table}" for name, table in tables.items()),
+            encoding="utf-8",
+        )
         _append_manifest_output(args.outdir / "semiexp_manifest.json", "html_report", report_path)
+        _append_manifest_output(args.outdir / "semiexp_manifest.json", "latex_tables", tables_path)
         print(f"manifest: {result.manifest}")
         print(f"report: {report_path}")
         print(f"rms_MHz: {result.rms_MHz:.8g}")

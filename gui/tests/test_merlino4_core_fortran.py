@@ -75,9 +75,11 @@ def test_semiexp_fortran_core_runtime(tmp_path):
     driver.write_text(
         """      Program TestSemiexp
       Integer Info
+      Integer ClassMap(2)
       Double Precision XYZ(3,2),BRow(3,2),Mass(2),ABC(3),PMom(3)
       Double Precision Jac(2,1),Res(2),W(2),DQ(1),Cov(1,1)
       Double Precision Hess(1,1)
+      Double Precision JacC(2,2),DQC(2),CovC(2,2),HessC(2,2)
       XYZ(1,1)=0.0D0
       XYZ(2,1)=0.0D0
       XYZ(3,1)=0.0D0
@@ -103,6 +105,21 @@ def test_semiexp_fortran_core_runtime(tmp_path):
       If(Info.ne.0) Stop 15
       If(DAbs(DQ(1)-0.6D0).gt.1.0D-10) Stop 16
       If(DAbs(Hess(1,1)-10.0D0).gt.1.0D-10) Stop 17
+      JacC(1,1)=1.0D0
+      JacC(1,2)=0.0D0
+      JacC(2,1)=0.0D0
+      JacC(2,2)=1.0D0
+      Res(1)=2.0D0
+      Res(2)=4.0D0
+      ClassMap(1)=1
+      ClassMap(2)=1
+      Call M4SEClassNormalEq(2,2,1,ClassMap,JacC,Res,W,0.0D0,
+     $                       DQC,CovC,HessC,Info)
+      If(Info.ne.0) Stop 18
+      If(DAbs(DQC(1)-3.0D0).gt.1.0D-10) Stop 19
+      If(DAbs(DQC(2)-3.0D0).gt.1.0D-10) Stop 20
+      If(DAbs(HessC(1,1)-4.0D0).gt.1.0D-10) Stop 21
+      If(DAbs(HessC(1,2)-4.0D0).gt.1.0D-10) Stop 22
       End
 """,
         encoding="utf-8",

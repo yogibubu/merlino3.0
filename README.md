@@ -29,6 +29,10 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
   retained for compatibility.
 - `freeze_check.sh`: regression check before a freeze or commit.
 - `freeze_pack.sh`: creates a source archive after validation.
+- `scripts/freeze_gui.sh`, `scripts/freeze_fortran.sh`,
+  `scripts/freeze_semiexp.sh`, `scripts/freeze_regression.sh`: granular freeze
+  targets for GUI, Fortran kernels, semiexperimental geometry and broad
+  regression checks.
 
 ## Functional Folders
 
@@ -51,6 +55,10 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 - `doc/`: architecture notes, freeze notes, reports, manuals, and current
   developer documentation.
 - `scripts/`: smoke scripts and maintenance utilities.
+- `examples/semiexp/`: end-to-end semiexperimental geometry examples for CLI
+  and GUI validation.
+- `benchmarks/semiexp_msr/`: schema for MSR-style semiexperimental validation
+  sets.
 
 ## Validation
 
@@ -126,6 +134,6 @@ by new workflows.
 See `doc/SEMIEXPERIMENTAL_GEOMETRY.md` for the Merlino standard
 semiexperimental geometry solver, including rationale, recommended defaults,
 GUI execution, isotopologue table editing, GIC preview, automatic parameter
-class suggestions, QM predicates, Kraitchman diagnostics, HTML reports,
-benchmark tables, enriched manifests, Merlino3 GIC regression checks and
-quality checks.
+class suggestions, input validation, conditioning previews, GUI presets, QM
+predicates, Kraitchman diagnostics, HTML/LaTeX reports, benchmark tables,
+enriched manifests, Merlino3 GIC regression checks and quality checks.

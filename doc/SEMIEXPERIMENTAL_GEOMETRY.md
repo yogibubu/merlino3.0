@@ -183,8 +183,14 @@ the interface remains responsive during the least-squares fit.
 The same panel also provides operational helpers:
 
 - an isotopologue table editor that writes the recommended TOML input;
-- a GIC preview showing the generated non-redundant labels before the fit;
+- a structured GIC preview showing labels, coordinate type, atom indices,
+  automatic class suggestions and active/fixed state before the fit;
+- input validation for duplicate labels, impossible substitutions, suspicious
+  corrections and class definitions that match no GIC or mix coordinate types;
+- conditioning preview for the selected isotopologues, fixed parameters and
+  classes before launching the least-squares fit;
 - automatic suggestions for shared/fixed parameter classes;
+- save/load of GUI presets for reproducible setup of repeated fits;
 - direct opening of the generated `semiexp_report.html`.
 - guided workflow state from manifests and expected output files.
 
@@ -315,6 +321,8 @@ The output directory contains:
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
   classes, fitted GICs, residuals and Kraitchman comparison.
+- `semiexp_tables.tex`: paper-ready LaTeX tabular fragments for parameters,
+  residuals and Kraitchman comparison.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
@@ -350,6 +358,22 @@ classification, number of fitted parameters and available Kraitchman rows. This
 is the recommended format for MSR-style validation sets and ring/fused-ring
 stress tests.
 
+The repository also contains `benchmarks/semiexp_msr/manifest.toml`, which is
+the schema for curated MSR-style validation cases. Each case should record the
+parent XYZ, the isotopologue observation table, the reference source and the
+expected numerical diagnostics.
+
+Small executable examples are under `examples/semiexp/`:
+
+```bash
+python -m merlino semiexp \
+  --xyz examples/semiexp/water/parent.xyz \
+  --observations examples/semiexp/water/isotopologues.toml \
+  --outdir working/examples/water_semiexp
+```
+
+The same files can be selected from the GUI semiexperimental workflow.
+
 ## Fortran77 Role And Merlino3 Regression
 
 The semiexperimental production workflow is Python-orchestrated. The Fortran77
@@ -368,6 +392,15 @@ The fixture must contain `provin`. The script runs Merlino3 and Merlino4
 GICForge executables when available, normalizes selected text outputs and
 reports exact matches/mismatches. Without `--strict`, missing local baselines
 are reported as skipped rather than failing routine CI.
+
+Granular freeze targets are available for local checks:
+
+```bash
+scripts/freeze_gui.sh
+scripts/freeze_fortran.sh
+scripts/freeze_semiexp.sh
+scripts/freeze_regression.sh
+```
 
 ## Quality Checks
 

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -27,7 +28,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from merlino_semiexp import preview_semiexperimental_gics, read_observations
+from merlino_semiexp import (
+    ParameterClassConstraint,
+    QMParameterPredicate,
+    SemiexperimentalFitRequest,
+    preview_semiexperimental_conditioning,
+    preview_semiexperimental_gics,
+    read_observations,
+    validate_semiexperimental_request,
+)
 
 from .manifest_browser import ManifestBrowserWindow
 from .workflow_registry import WorkflowSpec, default_workflows
@@ -184,37 +193,17 @@ class DashboardWindow(QMainWindow):
     def _build_semiexp_panel(self) -> QGroupBox:
         panel = QGroupBox("Semiexperimental Geometry Run")
         layout = QVBoxLayout(panel)
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+
+        input_tab = QWidget()
+        input_layout = QVBoxLayout(input_tab)
         form = QFormLayout()
-        layout.addLayout(form)
+        input_layout.addLayout(form)
 
         self.semiexp_xyz = _path_row(self, form, "Parent XYZ:", "Select parent XYZ", "*.xyz")
         self.semiexp_observations = _path_row(self, form, "Isotopologues:", "Select isotopologue observations", "*.toml *.json *.csv")
         self.semiexp_outdir = _directory_row(self, form, "Output directory:")
-
-        self.semiexp_observable = QComboBox()
-        self.semiexp_observable.addItems(["moments", "rotational_constants", "auto"])
-        self.semiexp_observable.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
-        form.addRow("Fit target:", self.semiexp_observable)
-
-        self.semiexp_components = QComboBox()
-        self.semiexp_components.addItems(["auto", "ABC", "AB", "AC", "BC"])
-        self.semiexp_components.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
-        form.addRow("Rotational components:", self.semiexp_components)
-
-        self.semiexp_fixed = QLineEdit()
-        self.semiexp_fixed.setPlaceholderText("e.g. GIC001, angle(2,1,3)")
-        self.semiexp_fixed.textChanged.connect(lambda _text: self._update_semiexp_preview())
-        form.addRow("Fixed GIC patterns:", self.semiexp_fixed)
-
-        self.semiexp_qm = QLineEdit()
-        self.semiexp_qm.setPlaceholderText("pattern:value:sigma[:source]; repeat with semicolons")
-        self.semiexp_qm.textChanged.connect(lambda _text: self._update_semiexp_preview())
-        form.addRow("QM predicates:", self.semiexp_qm)
-
-        self.semiexp_classes = QLineEdit()
-        self.semiexp_classes.setPlaceholderText("CH:shared:bond(1,2)|bond(1,3); XYH:fixed:angle")
-        self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
-        form.addRow("Parameter classes:", self.semiexp_classes)
 
         self.semiexp_iso_table = QTableWidget(0, 14)
         self.semiexp_iso_table.setHorizontalHeaderLabels([
@@ -234,14 +223,49 @@ class DashboardWindow(QMainWindow):
             "sigma_C",
         ])
         self.semiexp_iso_table.setMaximumHeight(150)
-        layout.addWidget(QLabel("Isotopologue editor (optional, writes TOML):"))
-        layout.addWidget(self.semiexp_iso_table)
+        input_layout.addWidget(QLabel("Isotopologue editor (optional, writes TOML):"))
+        input_layout.addWidget(self.semiexp_iso_table)
+
+        option_tab = QWidget()
+        option_form = QFormLayout(option_tab)
+        self.semiexp_observable = QComboBox()
+        self.semiexp_observable.addItems(["moments", "rotational_constants", "auto"])
+        self.semiexp_observable.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Fit target:", self.semiexp_observable)
+
+        self.semiexp_components = QComboBox()
+        self.semiexp_components.addItems(["auto", "ABC", "AB", "AC", "BC"])
+        self.semiexp_components.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Rotational components:", self.semiexp_components)
+
+        self.semiexp_fixed = QLineEdit()
+        self.semiexp_fixed.setPlaceholderText("e.g. GIC001, angle(2,1,3)")
+        self.semiexp_fixed.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Fixed GIC patterns:", self.semiexp_fixed)
+
+        self.semiexp_qm = QLineEdit()
+        self.semiexp_qm.setPlaceholderText("pattern:value:sigma[:source]; repeat with semicolons")
+        self.semiexp_qm.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("QM predicates:", self.semiexp_qm)
+
+        self.semiexp_classes = QLineEdit()
+        self.semiexp_classes.setPlaceholderText("CH:shared:bond(1,2)|bond(1,3); XYH:fixed:angle")
+        self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Parameter classes:", self.semiexp_classes)
+
+        preview_tab = QWidget()
+        preview_layout = QVBoxLayout(preview_tab)
+        self.semiexp_preview_table = QTableWidget(0, 5)
+        self.semiexp_preview_table.setHorizontalHeaderLabels(["label", "type", "atoms", "suggested_class", "state"])
+        preview_layout.addWidget(self.semiexp_preview_table)
 
         self.semiexp_command = QTextEdit()
         self.semiexp_command.setReadOnly(True)
         self.semiexp_command.setMaximumHeight(90)
-        layout.addWidget(QLabel("Command preview:"))
-        layout.addWidget(self.semiexp_command)
+        run_tab = QWidget()
+        run_layout = QVBoxLayout(run_tab)
+        run_layout.addWidget(QLabel("Command preview:"))
+        run_layout.addWidget(self.semiexp_command)
 
         buttons = QHBoxLayout()
         add_iso_button = QPushButton("Add Isotopologue")
@@ -253,16 +277,32 @@ class DashboardWindow(QMainWindow):
         preview_gic_button = QPushButton("Preview GIC")
         preview_gic_button.clicked.connect(self.preview_semiexp_gics)
         buttons.addWidget(preview_gic_button)
+        condition_button = QPushButton("Check Conditioning")
+        condition_button.clicked.connect(self.preview_semiexp_conditioning)
+        buttons.addWidget(condition_button)
+        validate_button = QPushButton("Validate Input")
+        validate_button.clicked.connect(self.validate_semiexp_input)
+        buttons.addWidget(validate_button)
         suggest_classes_button = QPushButton("Suggest Classes")
         suggest_classes_button.clicked.connect(self.suggest_semiexp_classes)
         buttons.addWidget(suggest_classes_button)
+        save_preset_button = QPushButton("Save Preset")
+        save_preset_button.clicked.connect(self.save_semiexp_preset)
+        buttons.addWidget(save_preset_button)
+        load_preset_button = QPushButton("Load Preset")
+        load_preset_button.clicked.connect(self.load_semiexp_preset)
+        buttons.addWidget(load_preset_button)
         open_report_button = QPushButton("Open Report")
         open_report_button.clicked.connect(self.open_semiexp_report)
         buttons.addWidget(open_report_button)
         self.semiexp_run_button = QPushButton("Run Semiexperimental Fit")
         self.semiexp_run_button.clicked.connect(self.run_semiexp_fit)
         buttons.addWidget(self.semiexp_run_button)
-        layout.addLayout(buttons)
+        run_layout.addLayout(buttons)
+        tabs.addTab(input_tab, "Input")
+        tabs.addTab(preview_tab, "GIC Preview")
+        tabs.addTab(option_tab, "Fit Options")
+        tabs.addTab(run_tab, "Run/Reports")
         self.add_semiexp_isotopologue_row(label="parent")
         return panel
 
@@ -323,7 +363,7 @@ class DashboardWindow(QMainWindow):
         for col, value in enumerate(defaults):
             self.semiexp_iso_table.setItem(row, col, QTableWidgetItem(value))
 
-    def save_semiexp_observations_toml(self) -> Path:
+    def save_semiexp_observations_toml(self, checked: bool = False) -> Path:
         target_text = self.semiexp_observations.text().strip()
         target = Path(target_text) if target_text else self.workdir / "isotopologues.toml"
         if target.suffix.lower() != ".toml":
@@ -344,7 +384,25 @@ class DashboardWindow(QMainWindow):
         if obs_path and Path(obs_path).exists():
             observations = read_observations(Path(obs_path))
         preview = preview_semiexperimental_gics(Path(xyz), observations)
+        self._fill_semiexp_preview_table(preview)
         self._append_semiexp_text("\n" + preview.text + "\n")
+
+    def preview_semiexp_conditioning(self) -> None:
+        request = self._semiexp_request_from_ui()
+        if request is None:
+            return
+        preview = preview_semiexperimental_conditioning(request)
+        self._append_semiexp_text("\n" + preview.text + "\n")
+
+    def validate_semiexp_input(self) -> None:
+        request = self._semiexp_request_from_ui()
+        if request is None:
+            return
+        issues = validate_semiexperimental_request(request)
+        if not issues:
+            self._append_semiexp_text("\ninput validation: OK\n")
+            return
+        self._append_semiexp_text("\ninput validation:\n" + "\n".join(f"  {item.severity}: {item.message}" for item in issues) + "\n")
 
     def suggest_semiexp_classes(self) -> None:
         xyz = self.semiexp_xyz.text().strip()
@@ -356,9 +414,46 @@ class DashboardWindow(QMainWindow):
         if obs_path and Path(obs_path).exists():
             observations = read_observations(Path(obs_path))
         preview = preview_semiexperimental_gics(Path(xyz), observations)
+        self._fill_semiexp_preview_table(preview)
         text = ";".join(f"{item.name}:{item.mode}:{'|'.join(item.patterns)}" for item in preview.suggested_classes)
         self.semiexp_classes.setText(text)
         self._append_semiexp_text("\n" + preview.text + "\n")
+
+    def save_semiexp_preset(self, checked: bool = False) -> Path:
+        path = self.workdir / "semiexp_preset.json"
+        data = {
+            "xyz": self.semiexp_xyz.text().strip(),
+            "observations": self.semiexp_observations.text().strip(),
+            "outdir": self.semiexp_outdir.text().strip(),
+            "observable": self.semiexp_observable.currentText(),
+            "components": self.semiexp_components.currentText(),
+            "fixed": self.semiexp_fixed.text().strip(),
+            "qm": self.semiexp_qm.text().strip(),
+            "classes": self.semiexp_classes.text().strip(),
+            "backend": self.selected_backends.get("semiexp_geometry", "python"),
+        }
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self._append_semiexp_text(f"\nwrote preset: {path}\n")
+        return path
+
+    def load_semiexp_preset(self, path: Path | bool | None = None) -> None:
+        target = path if isinstance(path, Path) else self.workdir / "semiexp_preset.json"
+        if not target.exists():
+            self._append_semiexp_text(f"\npreset not found: {target}\n")
+            return
+        data = json.loads(target.read_text(encoding="utf-8"))
+        self.semiexp_xyz.setText(str(data.get("xyz", "")))
+        self.semiexp_observations.setText(str(data.get("observations", "")))
+        self.semiexp_outdir.setText(str(data.get("outdir", "")))
+        self.semiexp_observable.setCurrentText(str(data.get("observable", "moments")))
+        self.semiexp_components.setCurrentText(str(data.get("components", "auto")))
+        self.semiexp_fixed.setText(str(data.get("fixed", "")))
+        self.semiexp_qm.setText(str(data.get("qm", "")))
+        self.semiexp_classes.setText(str(data.get("classes", "")))
+        backend = str(data.get("backend", "python"))
+        if self.backend_selector.findText(backend) >= 0:
+            self.backend_selector.setCurrentText(backend)
+        self._append_semiexp_text(f"\nloaded preset: {target}\n")
 
     def open_semiexp_report(self) -> None:
         outdir = self.semiexp_outdir.text().strip()
@@ -416,6 +511,45 @@ class DashboardWindow(QMainWindow):
                 ])
             lines.append("")
         return "\n".join(lines)
+
+    def _fill_semiexp_preview_table(self, preview) -> None:
+        self.semiexp_preview_table.setRowCount(0)
+        for row_data in preview.rows:
+            row = self.semiexp_preview_table.rowCount()
+            self.semiexp_preview_table.insertRow(row)
+            values = [
+                row_data.label,
+                row_data.kind,
+                ",".join(str(item) for item in row_data.atoms),
+                row_data.suggested_class,
+                row_data.state,
+            ]
+            for col, value in enumerate(values):
+                self.semiexp_preview_table.setItem(row, col, QTableWidgetItem(value))
+
+    def _semiexp_request_from_ui(self) -> SemiexperimentalFitRequest | None:
+        xyz = self.semiexp_xyz.text().strip()
+        obs_path = self.semiexp_observations.text().strip()
+        if not xyz or not obs_path:
+            self._append_semiexp_text("\nselect parent XYZ and observations before this operation\n")
+            return None
+        if not Path(obs_path).exists():
+            self._append_semiexp_text(f"\nobservations file not found: {obs_path}\n")
+            return None
+        classes = []
+        for item in _split_semiexp_items(self.semiexp_classes.text()):
+            parts = item.split(":", 2)
+            if len(parts) == 3:
+                classes.append(ParameterClassConstraint(parts[0], tuple(p for p in parts[2].split("|") if p), parts[1]))
+        return SemiexperimentalFitRequest(
+            Path(xyz),
+            read_observations(Path(obs_path)),
+            fixed_parameters=tuple(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";"))),
+            qm_predicates=tuple(_parse_semiexp_qm_predicates(self.semiexp_qm.text())),
+            observable=self.semiexp_observable.currentText(),
+            rotational_components=self.semiexp_components.currentText(),
+            parameter_classes=tuple(classes),
+        )
 
 
 def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None, workdir: Path | None = None) -> str:
@@ -547,6 +681,20 @@ def _select_directory(parent: QWidget, edit: QLineEdit) -> None:
 
 def _split_semiexp_items(text: str) -> list[str]:
     return [item.strip() for item in text.split(";") if item.strip()]
+
+
+def _parse_semiexp_qm_predicates(text: str) -> list[QMParameterPredicate]:
+    predicates = []
+    for item in _split_semiexp_items(text):
+        parts = item.split(":")
+        if len(parts) < 3:
+            continue
+        source = parts[3] if len(parts) > 3 else "gui"
+        try:
+            predicates.append(QMParameterPredicate(parts[0], float(parts[1]), float(parts[2]), source=source))
+        except ValueError:
+            continue
+    return predicates
 
 
 def _table_text(table: QTableWidget, row: int, col: int) -> str:
