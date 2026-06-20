@@ -901,7 +901,7 @@ class MainWindow(QMainWindow):
 
         group = QButtonGroup(dlg)
         group.setExclusive(True)
-        options = ["SMILES", "XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"]
+        options = ["SMILES", "XYZ", "Gaussian", "Molpro", "MRCC"]
         btns = {}
         for idx, name in enumerate(options):
             btn = QRadioButton(name, dlg)

@@ -27,7 +27,6 @@ C MxPot  = Max Terms in Potential Fitting
       Parameter(MxPot=20)  
       Character*80 FilNam,InFil,OutFil,GauKwd,Title,React,LinScr
       Character*20 StrInp
-      Character*100 SMILES
 CENZO
       Character*16 Group
       Common/IO/In,IOut,IPunch
@@ -40,7 +39,7 @@ CENZO
       Logical DoEck,Do1Dih,DoNorm,DVibRot,InvDst,LConn,DoSySt,Aver
       Logical DoBMat,DoMW,Inv1,DoScan,DoRig,RIgB,RigA,RigL,RigD,RigO
       Logical DoneC,DoB1,DoVCI,DoDVR,DoFit,RdData,DoGNIC,RdIsot
-      Logical RdSMI,DoG16,DoColl,DoGor,DoSpin
+      Logical DoG16,DoColl,DoGor,DoSpin
       Logical RdB0,RdB0Er,RdVib,RdDvEr,RdEle,RdDeEr
       Logical TstAng,TTest,Error,DoVMSR,PrtVal
       Dimension IEl(0:MaxEl)
@@ -137,7 +136,6 @@ C Read keywords
       Read(In,'(A80)') LinScr
       Write(IOut,'(A80)') LinScr
       Call FndKwd(IOut,IPrint,ModPCS,IDeriv,LinScr,Kwd,MxKwd)
-C     RdSMI=Kwd(1)
       DoG16=Kwd(2)
       DoGDV=Kwd(3)
       Aver=Kwd(5)
@@ -164,9 +162,7 @@ C     RdSMI=Kwd(1)
       Clean=Kwd(31)
       DVIBRot=Kwd(32)
       Loose=Kwd(33)
-      RdSMI=Kwd(36)
       DoVMSR=Kwd(37)
-      If(RdSMI) Loose=.True.
       If(DoG16) ImpDih=.true.
       RigB=.False.
       RigA=.False.
@@ -209,69 +205,14 @@ C Read charge and multiplicity
        write(IOut,'(''Wrong Multiplicity'')')
        Stop
       EndIf
-C Read geometry and set connectivity
-      If(RdSMI) then
-       Read(In,*) SMILES
-       write(IOut,*) SMILES
-C Interpret SMILES
-       call SMIF77(IOut,IPrint,MxAt,MxBnd,NAtoms,IAn,IArom,
-     $  InCyc,NBond,IBond,IZ,BndOrd,BL,Alpha,Beta,SMILES)
-C Print Atom Informations 
-C      call SmiBnd(IOut,MxBnd,NAtoms,IAn,IArom,NBond,IBond,
-C    $   BndOrd)
-       Call IClear(NAtoms,LBl)
-       Call IClear(NAtoms,LAlpha)
-       Call IClear(NAtoms,LBeta)
-C Temporary
-       ToAng=1.0d0
-       ToDeg=1.0d0
-C Print Z-matrix      
-       Call ZPrint(IOut,NAtoms,IAN,IZ,LBL,LAlpha,LBeta,BL,ALPHA,BETA,
-     $  ToAng,ToDeg)
-C transform to Cartesian coordinates
-C checking tetrahetral angles (TTest) and 0>teta<180 (TstAng)
-       TstAng=.true.
-       TTest=.true.
-       NZ=NAtoms
-       call AMove(NAtoms,IAn,IAnZ)
-       call AClear(3*NAtoms,C)
-       call AClear(3*NAtoms,CZ)
-       call AClear(NAtoms,A)
-       call AClear(NAtoms,B)
-       call AClear(NAtoms,D)
-       call Aclear(NAtoms,Alpha1)
-       call Aclear(NAtoms,Beta1)
-C Angles should be in radiants
-       ToRad=pi/180.0d0
-       Error=.False.
-       Do IAt=1,NAtoms
-        Alpha(IAt)=Alpha(IAt)*ToRad
-        Beta(IAt)=Beta(IAt)*ToRad
-       EndDo
-       call ZtoC(MaxNZ,NZ,IAnZ,IZ,Bl,Alpha,Beta,TTest,NAtoms,IAn,C,
-     $   CZ,A,B,D,Alpha1,Beta1,IOut,Error,TstAng)
-       If(Error) Stop 
-       Write(IOut,'(/,10X,''Cartesian Coords. from SMILES'')')
-       Do IAt=1,NAtoms
-        Write(IOut,'(I5,2X,A2,3F12.5)') IAt,IEl(IAn(IAt)),
-     $  (C(IXYZ,IAt),IXYZ=1,3)
-       End Do
-C Print interatomic distances
-       Call LlinCl(LinScr) 
-       LinScr(1:22)=' Interatomic Distances (Angstrom)'
-       Call HedPrt(IOut,0,LinScr,Num)
-       ScalI=1.0d0
-       Call DisMat(NAtoms,IAN,C,2,5,IOut,Error,0,ScalI)
-       write(IOut,'('' '')')
-       Stop
-      Else 
-       call Coord(In,IOut,IPunch,IPrint,MxAt,MaxNZ,MxBnd,MxBox,PhyCon,
+C Read Cartesian geometry and set connectivity.  Coordinate generation from
+C SMILES or any other non-XYZ source is owned by the Python layer.
+      call Coord(In,IOut,IPunch,IPrint,MxAt,MaxNZ,MxBnd,MxBox,PhyCon,
      $  KWd,Multip,NAtoms,NFrag,NBond,NH,NZ,IAn,Isot,IFrag,IBond,IANZ,
      $  IZ,MapZAt,Linear,C,CZ,EAN,EANZ,AtMass,TotWt,PMom,RotGHz,RTemp,
      $  MultN,QMom,GFac,NSpec,IScr,Scr,Group)
-       NTRot=6*NFrag
-       If(Linear) NTRot=5*NFrag 
-      EndIf 
+      NTRot=6*NFrag
+      If(Linear) NTRot=5*NFrag
 C Print Coordinates and Rotational Constants
       if(DoEck) then
        Write(IOut,'(/,10X,''Cartesian Coords.in Eckart Orientation'')')
@@ -737,7 +678,6 @@ C Compute Rates
 C
       write(*,'('' Normal Termination of DiNa25'')')
       write(*,'('' DiNa25   output on file xxx.out'')')
-      If(RdSMI)  write(*,'('' AVOGADRO input  on file xxx.xyz'')')
       If(DoG16)  write(*,'('' G16-C01  input  on file xxx.gjf'')')
       If(DoGDV)  write(*,'('' GDV-J28  input  on file xxx.gjf'')')
       If(DoVolt) write(*,'('' VOLT     input  on file xxx.vlt'')')
@@ -817,8 +757,6 @@ C the default is to normalize GNICs
        Call LinUpC(CLine(I1:I2),Test)
        If(Test(1:5).eq.'PRINT') then
         IPrint=1
-       ElseIf(Test(1:6).eq.'SMILES') then
-        Kwd(1)=.True.
        ElseIf(Test(1:3).eq.'G16') then
         Kwd(2)=.True.
         Kwd(7)=.True.
@@ -876,8 +814,6 @@ C the default is to normalize GNICs
         Kwd(37)=.true.
        ElseIf(Test(1:5).eq.'LOOSE') then
         Kwd(33)=.true.
-       ElseIf(Test(1:5).eq.'RDSMI') then
-        Kwd(36)=.true.
        ElseIf(Test(1:3).eq.'OPT') then
         IDeriv(1)=1
        ElseIf(Test(1:4).eq.'FREQ') then
@@ -905,8 +841,6 @@ C      write(IOut,'(A80)') CLine
         Kwd(i)=.true.
    20  continue
       EndIf
-      If(Kwd(1))  write(IOut,'('' SMILES    : SMILES by RdKIT'')') 
-      If(Kwd(36)) write(IOut,'('' RDSMI     : SMILES by GICForge'')')       
       If(Kwd(2))  write(IOut,'('' G16       : Make G16 Input'')')
       If(Kwd(3))  write(IOut,'('' GDV       : Make GDV Input'')')
       If(Kwd(4))  write(IOut,'('' CUBIC     : Freq=Cubic(GDV) and'',

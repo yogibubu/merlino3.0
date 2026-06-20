@@ -18,7 +18,6 @@ from .readers import read_structure
 from .gaussian import (
     read_gaussian_properties,
     compute_deltavib_from_alpha,
-    _find_gaussian_companion_files,
 )
 from .xyzin_utils import set_dvib_in_rotational
 from .deltavib_alpha_dialog import DeltaVibAlphaDialog
@@ -52,9 +51,7 @@ class InputPanel(QWidget):
         self._type_group = QButtonGroup(self)
         self._type_buttons = {}
 
-        for i, name in enumerate(
-            ["SMILES", "XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"]
-        ):
+        for i, name in enumerate(["SMILES", "XYZ", "Gaussian", "Molpro", "MRCC"]):
             btn = QRadioButton(name)
             self._type_group.addButton(btn, i)
             self._type_buttons[name] = btn
@@ -155,7 +152,7 @@ class InputPanel(QWidget):
         mode = self._current_mode()
 
         is_smiles = mode == "SMILES"
-        is_file = mode in {"XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"}
+        is_file = mode in {"XYZ", "Gaussian", "Molpro", "MRCC"}
 
         self.smiles_edit.setEnabled(is_smiles)
         self.file_edit.setEnabled(is_file)
@@ -183,7 +180,7 @@ class InputPanel(QWidget):
 
     def open_file_dialog(self) -> None:
         mode = self._current_mode()
-        if mode in {"XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"}:
+        if mode in {"XYZ", "Gaussian", "Molpro", "MRCC"}:
             self._on_browse_file()
             return
         if mode == "SMILES":
@@ -235,25 +232,6 @@ class InputPanel(QWidget):
                         )
                         if reply == QMessageBox.Yes:
                             self._open_alpha_panel()
-            elif mode == "Gaussian":
-                log_path, _ = _find_gaussian_companion_files(path)
-                if log_path is not None:
-                    dvib = compute_deltavib_from_alpha(log_path, invert_imag=True)
-                    if dvib is not None:
-                        set_dvib_in_rotational(*dvib)
-                        if self.alpha_check.isChecked():
-                            self._open_alpha_panel()
-                        else:
-                            reply = QMessageBox.question(
-                                self,
-                                "DeltaVib",
-                                "ΔVib (from Vibro-Rot alpha) has been added to #ROTATIONAL.\n"
-                                "Do you want to review or modify the included modes?",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes,
-                            )
-                            if reply == QMessageBox.Yes:
-                                self._open_alpha_panel()
         except Exception as e:
             self._show_error("Input error", str(e))
             return
@@ -273,7 +251,7 @@ class InputPanel(QWidget):
             self._show_error("Input error", f"File not found:\n{path}")
             return
 
-        kind = "zmat" if mode == "Z-matrix" else mode.lower()
+        kind = mode.lower()
         src = InputSource(kind=kind, path=path)
 
         try:
@@ -317,12 +295,11 @@ class InputPanel(QWidget):
 
     def _on_browse_file(self):
         mode = self._current_mode()
-        if mode not in {"XYZ", "Z-matrix", "Gaussian", "Molpro", "MRCC"}:
+        if mode not in {"XYZ", "Gaussian", "Molpro", "MRCC"}:
             return
 
         filter_map = {
             "XYZ": "XYZ files (*.xyz);;All files (*)",
-            "Z-matrix": "Z-matrix files (*.zmat *.inp);;All files (*)",
             "Gaussian": "Gaussian output (*.log *.out *.fchk *.fch);;All files (*)",
             "Molpro": "Molpro output (*.out *.log);;All files (*)",
             "MRCC": "MRCC output (*.out *.log);;All files (*)",

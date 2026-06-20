@@ -166,7 +166,7 @@ File inputs are always treated as commit operations.
 
 Gaussian properties (separate file)
 -----------------------------------
-You can provide geometry from any source (SMILES/XYZ/MRCC/MOLPRO/Z-matrix)
+You can provide geometry from any supported source (SMILES/XYZ/MRCC/MOLPRO)
 and a separate Gaussian LOG/OUT file for properties only. In this mode:
 
 - The Gaussian file does NOT overwrite XYZ geometry.

@@ -16,7 +16,6 @@ from .xyz_reader import read_xyz
 from .gaussian import read_gaussian
 from .molpro import read_molpro
 from .mrcc import read_mrcc
-from .zmat_reader import read_zmat
 
 def read_structure(input_source):
     """
@@ -85,16 +84,6 @@ def read_structure(input_source):
         return
 
     # --------------------------------------------------
-    # Z-matrix 
-    # --------------------------------------------------
-    if kind == "zmat":
-        if not hasattr(input_source, "path"):
-            raise AttributeError("Z-matrix input requires 'path' attribute")
-        read_zmat(input_source.path)
-        return
-
-    # --------------------------------------------------
     # Unsupported
     # --------------------------------------------------
     raise ValueError(f"Unsupported input kind: {input_source.kind}")
-

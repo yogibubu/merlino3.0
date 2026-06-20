@@ -24,10 +24,10 @@ failure on actual compile/link errors.
 Build logs are written to `fortran/gicforge/build/gicforge_build.log`, which is
 ignored by git.
 
-GICForge receives Cartesian input from Merlino, builds redundant and
+GICForge receives only Cartesian XYZ input from Merlino, builds redundant and
 non-redundant GICs, optionally writes the B matrix, emits a readable report, and
-creates Gaussian input. GUI orchestration, RDKit/SMILES, DVR and
-post-processing remain Python responsibilities.
+creates Gaussian input. GUI orchestration, RDKit/SMILES, any conversion to
+Cartesian coordinates, DVR and post-processing remain Python responsibilities.
 
 ## Other Fortran Areas
 

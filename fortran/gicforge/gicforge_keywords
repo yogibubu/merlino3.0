@@ -1,6 +1,5 @@
    List of Merlino Keywords                                                     
 
- SMILE     : SMILE Input
  G16       : Make G16 Input
  GDV       : Make GDV Input
  CUBIC     : Freq=Cubic(GDV) and Vibr=Gauconv MSR
@@ -18,18 +17,9 @@
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
  HBOND     : Make H-Bonds
- VOLT      : Make VOLT Input
  BMAT      : Build B Matrix
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan
- ISOTOP    : Read Isotopic Subst.
- DVIBROT   : Read Vibr.Corr. to Rot.Const.
- FITPOT    : 1D-Polynomial Fit
- VCI1      : 1D-vibrational CI
- DVR1      : 1D-vibrational DVR
- COLL      : Collision Rate
- GORIN     : Gorin Barrierless
- SPINFOR   : Spin Forbidden
  PCS0      : PCS0 Model (UFF)
  PCS1      : PCS1 Model (HF3C)
  HPCS2     : HPCS2 Model (B3LYP-D4/6-31G*)

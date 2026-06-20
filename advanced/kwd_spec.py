@@ -27,7 +27,6 @@ KWD_SPEC = {
                 "values": [
                     "xyz",
                     "xyz_enriched",
-                    "zmatrix",
                     "gaussian_output",
                     "molpro_output",
                     "mrcc_output",
