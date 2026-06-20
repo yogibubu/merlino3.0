@@ -84,7 +84,21 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     window.backend_selector.setCurrentText("fortran77")
     assert window.selected_backends["semiexp_geometry"] == "fortran77"
     assert "selected: fortran77" in window.detail_view.toPlainText()
-    window.semiexp_xyz.setText(str(tmp_path / "parent.xyz"))
+    parent_xyz = tmp_path / "parent.xyz"
+    parent_xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    window.semiexp_xyz.setText(str(parent_xyz))
     window.semiexp_observations.setText(str(tmp_path / "isotopologues.toml"))
     window.semiexp_outdir.setText(str(tmp_path / "semiexp"))
     window.semiexp_fixed.setText("GIC001")
@@ -93,7 +107,7 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     args = window.semiexp_command_args()
     assert "--backend" in args
     assert "fortran77" in args
-    assert args[args.index("--prune-condition") + 1] == "200"
+    assert args[args.index("--prune-condition") + 1] == "0"
     assert args.count("--parameter-class") == 2
     assert window.semiexp_run_button.isEnabled()
     window.semiexp_iso_table.item(0, 2).setText("1000.0")
@@ -102,6 +116,11 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     toml = window.save_semiexp_observations_toml()
     assert toml.exists()
     assert "A_MHz = 1000.0" in toml.read_text(encoding="utf-8")
+    job = window.save_semiexp_job_toml()
+    assert job is not None
+    job_text = job.read_text(encoding="utf-8")
+    assert 'schema = "merlino.semiexp.job.v1"' in job_text
+    assert '["O", 0, 0, 0]' in job_text
     preset = window.save_semiexp_preset()
     assert preset.exists()
     window.semiexp_fixed.clear()

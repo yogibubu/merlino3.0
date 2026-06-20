@@ -16,7 +16,7 @@
 \begin{document}
 
 \begin{abstract}
-Semiexperimental equilibrium structures combine ground-state rotational constants with computed vibrational and electronic corrections, yielding structural references that are directly comparable with equilibrium quantum-chemical geometries. Existing refinement workflows demonstrated the power of nonlinear least-squares fits of moments of inertia, predicate observations, and graphical control, but still required substantial care in the construction and maintenance of the structural parameter set. Here we introduce a Cartesian generalized-internal-coordinate (GIC) formulation implemented in Merlino4. The input geometry is Cartesian, isotopologue data are provided as structured TOML, JSON, or CSV records, and the fitted variables are generated automatically, reduced to a non-redundant set, and symmetrized after automatic point-group identification. Ring coordinates are built from endocyclic torsional coordinates and the analogous valence-angle combinations, not from Cremer-Pople variables. The solver fits moments of inertia by default, supports vibrational and electronic corrections, propagates experimental uncertainties to GIC parameters, includes soft quantum-mechanical predicates, and allows chemically meaningful classes of parameters to be refined together or kept fixed. A Kraitchman-coordinate diagnostic is generated for single-substitution isotopologues. The resulting workflow preserves the spectroscopic logic of molecular-structure refinement while removing user-dependent coordinate construction and making the entire procedure reproducible from both command line and graphical interfaces.
+Semiexperimental equilibrium structures combine ground-state rotational constants with computed vibrational and electronic corrections, yielding structural references that are directly comparable with equilibrium quantum-chemical geometries. Existing refinement workflows demonstrated the power of nonlinear least-squares fits of moments of inertia, predicate observations, and graphical control, but still required substantial care in the construction and maintenance of the structural parameter set. Here we introduce a Cartesian generalized-internal-coordinate (GIC) formulation implemented in Merlino4. The input model is defined by a versioned two-file contract: a job file containing keywords, Cartesian parent geometry, and optional fixed-parameter definitions, plus a separate isotopologue file containing rotational constants, vibrational corrections, electronic corrections, substitutions, and uncertainties. Gaussian Cartesian input files with ModRedundant freeze records are also accepted for interoperability, while Z-matrix inputs are deliberately excluded. The fitted variables are generated automatically, reduced to a non-redundant set, and symmetrized after automatic point-group identification. Ring coordinates are built from endocyclic torsional coordinates and the analogous valence-angle combinations, not from Cremer-Pople variables. The solver fits moments of inertia by default, supports vibrational and electronic corrections, propagates experimental uncertainties to GIC and topological parameters, includes soft quantum-mechanical predicates, and allows chemically meaningful classes of parameters to be refined together or kept fixed. A Kraitchman-coordinate diagnostic and human-readable text, HTML, CSV, and \LaTeX{} outputs are generated for each run. The resulting workflow preserves the spectroscopic logic of molecular-structure refinement while removing user-dependent coordinate construction and making the entire procedure reproducible from both command line and graphical interfaces.
 \end{abstract}
 
 \section{Introduction}
@@ -79,7 +79,7 @@ The weighted Levenberg-Marquardt step is
 \end{equation}
 Experimental uncertainties in MHz are propagated to moments when the moment target is used. The final covariance is obtained from the inverse weighted normal matrix scaled by the reduced chi-square, and the Gauss-Newton Hessian is diagonalized to classify the stationary point.
 
-\subsection{Predicate Observations and Parameter Classes}
+\subsection{Predicate Observations, Constraints, and Parameter Classes}
 
 Quantum-mechanical estimates of individual GIC parameters can be introduced as soft predicate observations with user-defined uncertainties. This follows the MSR philosophy while keeping all predicates in the generated GIC label space.
 
@@ -89,13 +89,21 @@ Merlino4 additionally supports parameter classes. A class can be refined as a si
 \end{equation}
 or held fixed. This is useful when deuterated isotopologues are unavailable for all hydrogen sites. Typical examples are grouped CH stretches and blocked XYH or XH$_2$ angle families. The Jacobian is compressed by a class transformation matrix before solving the normal equations, and uncertainties are expanded back to all members of the class in the reported parameter table.
 
+Hard constraints are kept separate from predicates. Parameters can be frozen by matching explicit GIC-label patterns, and Gaussian-style ModRedundant freeze records can be read from Cartesian input files or from the Merlino job file. The recognized records are bond, angle, dihedral, out-of-plane, and linear-bending freezes. They are converted to GIC-label patterns before the active totally symmetric subspace is selected, so constrained coordinates remain visible in the output but are excluded from the normal equations.
+
 \subsection{Kraitchman Diagnostic}
 
 For isotopologues containing a single substitution, Merlino computes substitution coordinates from the Kraitchman equations and compares their absolute values with the fitted coordinates in the parent principal-axis frame. This diagnostic is intentionally separate from the fit: Kraitchman coordinates provide valuable assignment checks, but they do not retain coordinate signs and do not exploit the full correlated least-squares model.
 
 \section{Implementation}
 
-The solver is implemented in Python and mirrored by independent Fortran77 numerical kernels for analytic $\mathbf{B}$ rows, rotational constants, weighted normal equations, and parameter-class compression. Structured isotopologue data can be provided in TOML, JSON, or CSV. The graphical dashboard exposes the same controls as the command-line interface: parent Cartesian file, isotopologue data, backend request, observable, rotational-component policy, fixed parameters, predicate observations, and parameter classes. Jobs launched from the GUI are asynchronous and write a manifest with checksums and numerical diagnostics.
+The solver is implemented in Python and mirrored by independent Fortran77 numerical kernels for analytic $\mathbf{B}$ rows, rotational constants, weighted normal equations, and parameter-class compression. The standard input uses two files. The first is a versioned Merlino semiexperimental job file, identified by the schema string \texttt{merlino.semiexp.job.v1}. It contains fit keywords, the ordered Cartesian parent geometry in \si{\angstrom}, fixed GIC-label patterns, optional ModRedundant freeze cards, predicate observations, and parameter-class definitions. The second file contains isotopologue observations in TOML, JSON, or CSV form. For each isotopologue it stores ground-state rotational constants, isotope substitutions, vibrational corrections, electronic corrections, correction conventions, and optional experimental uncertainties.
+
+Gaussian Cartesian \texttt{.com}/\texttt{.gjf} files remain accepted as geometry inputs when the isotopologue data are supplied separately. In that mode the Cartesian block supplies atom numbering and coordinates, and any ModRedundant \texttt{F} cards following the coordinate block define frozen parameters. Gaussian Z-matrices, dummy atoms, and MSR-style variable blocks are rejected because they reintroduce the coordinate-template ambiguity that the Cartesian/GIC formulation is designed to remove.
+
+The graphical dashboard exposes the same controls as the command-line interface: job-file generation, parent Cartesian file selection, isotopologue table editing, backend request, observable, rotational-component policy, fixed parameters, predicate observations, and parameter classes. Jobs launched from the GUI are asynchronous and write a manifest with checksums and numerical diagnostics.
+
+In addition to CSV files, each run writes a plain-text report, an HTML report, and \LaTeX{} table fragments. The text report is intended for rapid inspection and records convergence diagnostics, corrected experimental and calculated rotational constants, final topological bond lengths, angles, and dihedrals with propagated errors, fitted GIC parameters, and residuals. The CSV files remain the machine-readable source for downstream processing.
 
 \section{Differences from MSR}
 
@@ -109,13 +117,16 @@ The new implementation is directly inspired by the semiexperimental strategy and
 \toprule
 Feature & MSR & Merlino4 \\
 \midrule
-Structural input & user molecular model & Cartesian parent XYZ \\
+Structural input & user molecular model & Cartesian parent geometry \\
+File contract & program-specific input & versioned job file plus reusable isotopologue observations \\
 Fit coordinates & internal/symmetry coordinates & automatic GICs, reduced to non-redundant symmetry-adapted blocks \\
 Observable target & moments of inertia & moments by default; constants optional \\
 Predicate observations & yes & yes, in GIC label space \\
+Fixed parameters & manual coordinate selection & GIC-label patterns or ModRedundant freeze cards \\
 Parameter classes & limited/manual & shared or fixed GIC classes \\
 Kraitchman check & external/manual & generated diagnostic CSV \\
-GUI control & yes & same options as CLI, asynchronous jobs \\
+GUI control & yes & same options as CLI, asynchronous jobs, job-file export \\
+Human-readable output & program reports & text, HTML, CSV, manifest, and \LaTeX{} tables \\
 Ring coordinates & internal coordinate dependent & endocyclic dihedral and valence-angle combinations, not Cremer-Pople variables \\
 Cross-workflow reuse & structure refinement & GIC, GF/PED, VPT2/VCI, DVR interfaces \\
 \bottomrule
@@ -124,11 +135,11 @@ Cross-workflow reuse & structure refinement & GIC, GF/PED, VPT2/VCI, DVR interfa
 
 \section{Planned Validation}
 
-The first validation set will include the molecules used in the MSR article where the required rotational data and vibrational corrections are available, followed by ring and fused-ring cases that stress automatic GIC generation, non-redundant pruning, symmetry adaptation, and ring coordinates built from endocyclic torsions and valence angles. For each molecule we will report residuals in moments and rotational constants, fitted GIC parameters with propagated uncertainties, correlation matrices, stationary-point diagnostics, and Kraitchman comparisons for all single-substitution isotopologues.
+The first validation set will include the molecules used in the MSR article where the required rotational data and vibrational corrections are available, followed by ring and fused-ring cases that stress automatic GIC generation, non-redundant pruning, symmetry adaptation, and ring coordinates built from endocyclic torsions and valence angles. For each molecule we will provide the versioned job file, the reusable isotopologue observation file, residuals in moments and rotational constants, fitted GIC parameters with propagated uncertainties, final topological parameters with errors, correlation matrices, stationary-point diagnostics, and Kraitchman comparisons for all single-substitution isotopologues.
 
 \section{Conclusions}
 
-Merlino4 provides a semiexperimental refinement workflow in which Cartesian input, automatic GIC construction, non-redundant reduction, automatic symmetry adaptation, analytic $\mathbf{B}$ matrices, robust least squares, predicate observations, class constraints, Kraitchman diagnostics, and GUI execution are part of one reproducible pipeline. The approach keeps the spectroscopic strengths of MSR while extending the coordinate model to the same GIC infrastructure used by the rest of Merlino.
+Merlino4 provides a semiexperimental refinement workflow in which versioned input files, Cartesian geometry, automatic GIC construction, non-redundant reduction, automatic symmetry adaptation, analytic $\mathbf{B}$ matrices, robust least squares, predicate observations, class constraints, Kraitchman diagnostics, text/HTML/CSV/\LaTeX{} reports, and GUI execution are part of one reproducible pipeline. The approach keeps the spectroscopic strengths of MSR while extending the coordinate model to the same GIC infrastructure used by the rest of Merlino.
 
 \bibliography{references}
 

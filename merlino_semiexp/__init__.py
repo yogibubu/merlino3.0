@@ -28,16 +28,26 @@ from .kraitchman import (
     kraitchman_comparison,
     kraitchman_seed_geometry,
 )
+from .geometry_input import SemiexperimentalGeometryInput, read_gaussian_cartesian_input, read_geometry_input
+from .job_input import (
+    SEMIEXP_JOB_SCHEMA,
+    SemiexperimentalJobInput,
+    is_semiexperimental_job_file,
+    read_semiexperimental_job,
+)
 from .fit import (
     SemiexperimentalFitDiagnostics,
     SemiexperimentalFitResult,
     SemiexperimentalGeometryParameter,
     SemiexperimentalParameter,
     SemiexperimentalResidual,
+    SemiexperimentalRotationalConstantComparison,
     fit_semiexperimental_geometry,
     geometry_parameters_csv,
     parameters_csv,
     residuals_csv,
+    rotational_constants_csv,
+    semiexperimental_text_report,
     write_semiexperimental_outputs,
 )
 from .report import (
@@ -67,6 +77,8 @@ __all__ = [
     "ParameterClassConstraint",
     "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
+    "SemiexperimentalGeometryInput",
+    "SemiexperimentalJobInput",
     "SemiexperimentalBenchmarkCase",
     "SemiexperimentalBenchmarkRow",
     "SemiexperimentalConditioningPreview",
@@ -76,6 +88,7 @@ __all__ = [
     "SemiexperimentalValidationIssue",
     "SemiexperimentalParameter",
     "SemiexperimentalResidual",
+    "SemiexperimentalRotationalConstantComparison",
     "IsotopologueObservation",
     "QMParameterPredicate",
     "RotationalConstants",
@@ -97,11 +110,18 @@ __all__ = [
     "read_observations_json",
     "read_observations_toml",
     "residuals_csv",
+    "read_gaussian_cartesian_input",
+    "read_geometry_input",
+    "read_semiexperimental_job",
+    "rotational_constants_csv",
     "run_semiexperimental_benchmark",
     "semiexperimental_latex_tables",
+    "semiexperimental_text_report",
     "suggest_parameter_classes",
     "validate_semiexperimental_request",
     "write_observations_csv",
     "write_semiexperimental_outputs",
     "write_semiexperimental_html_report",
+    "is_semiexperimental_job_file",
+    "SEMIEXP_JOB_SCHEMA",
 ]

@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 
 from merlino_core.numerics import rank_condition
-from merlino_fit.survibfit.modify_geom import read_xyz
 
 from .contracts import IsotopologueObservation, ParameterClassConstraint, SemiexperimentalFitRequest
 from .fit import (
@@ -17,9 +16,11 @@ from .fit import (
     _build_measurement_model,
     _gic_model,
     _jacobian_constants_wrt_gics,
+    _combined_fixed_parameters,
     _parameter_class_transform,
     fit_semiexperimental_geometry,
 )
+from .geometry_input import read_geometry_input
 
 
 @dataclass(frozen=True)
@@ -112,11 +113,13 @@ def preview_semiexperimental_gics(
     xyz: Path,
     observations: tuple[IsotopologueObservation, ...] = (),
 ) -> SemiexperimentalGICPreview:
-    atoms, coords, _comment = read_xyz(Path(xyz))
+    geometry_input = read_geometry_input(Path(xyz))
+    atoms = tuple(geometry_input.atoms)
+    coords = geometry_input.coordinates_angstrom
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _prims, _u_matrix, labels = _gic_model(np.asarray(coords, dtype=float), z_numbers)
     suggestions = suggest_parameter_classes(tuple(atoms), labels, observations)
-    rows = _preview_rows(labels, suggestions)
+    rows = _preview_rows(labels, suggestions, geometry_input.fixed_parameters)
     warnings = _preview_warnings(labels, suggestions)
     return SemiexperimentalGICPreview(tuple(atoms), labels, rows, suggestions, warnings)
 
@@ -124,9 +127,10 @@ def preview_semiexperimental_gics(
 def validate_semiexperimental_request(request: SemiexperimentalFitRequest) -> tuple[SemiexperimentalValidationIssue, ...]:
     issues: list[SemiexperimentalValidationIssue] = []
     try:
-        atoms, _coords, _comment = read_xyz(Path(request.initial_geometry))
+        geometry_input = read_geometry_input(Path(request.initial_geometry))
+        atoms = geometry_input.atoms
     except Exception as exc:
-        return (SemiexperimentalValidationIssue("error", f"Cannot read parent XYZ: {exc}"),)
+        return (SemiexperimentalValidationIssue("error", f"Cannot read parent geometry: {exc}"),)
     labels = [obs.label for obs in request.observations]
     if len(labels) != len(set(labels)):
         issues.append(SemiexperimentalValidationIssue("error", "Duplicate isotopologue labels"))
@@ -166,12 +170,14 @@ def preview_semiexperimental_conditioning(
     *,
     step: float = 1.0e-4,
 ) -> SemiexperimentalConditioningPreview:
-    atoms, coords, _comment = read_xyz(Path(request.initial_geometry))
-    coords_arr = np.asarray(coords, dtype=float)
+    geometry_input = read_geometry_input(Path(request.initial_geometry))
+    atoms = geometry_input.atoms
+    coords_arr = np.asarray(geometry_input.coordinates_angstrom, dtype=float)
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     prims, u_matrix, labels = _gic_model(coords_arr, z_numbers)
     measurement = _build_measurement_model(request, atoms, coords_arr, prims, u_matrix, labels)
-    active = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
+    fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
+    active = _active_mask(labels, fixed_parameters, request.parameter_classes)
     jac_gic = _jacobian_constants_wrt_gics(atoms, coords_arr, request, prims, u_matrix, active, labels, measurement, step=step)
     transform, _names, _class_by_gic = _parameter_class_transform(labels, active, request.parameter_classes)
     jac = jac_gic @ transform
@@ -245,6 +251,8 @@ def write_semiexperimental_html_report(
         _parameters_table(result),
         "<h2>Final Cartesian Geometry Parameters</h2>",
         _geometry_parameters_table(result),
+        "<h2>Rotational Constants</h2>",
+        _rotational_constants_table(result),
         "<h2>Residuals</h2>",
         _residuals_table(result),
         "<h2>Kraitchman Comparison</h2>",
@@ -293,6 +301,7 @@ def benchmark_csv(rows: tuple[SemiexperimentalBenchmarkRow, ...]) -> str:
 def semiexperimental_latex_tables(result: SemiexperimentalFitResult) -> dict[str, str]:
     return {
         "parameters": _latex_parameter_table(result),
+        "rotational_constants": _latex_rotational_constants_table(result),
         "residuals": _latex_residual_table(result),
         "kraitchman": _latex_kraitchman_table(result),
     }
@@ -313,11 +322,13 @@ def _preview_warnings(
 def _preview_rows(
     labels: tuple[str, ...],
     suggestions: tuple[ParameterClassConstraint, ...],
+    fixed_parameters: tuple[str, ...] = (),
 ) -> tuple[SemiexperimentalGICPreviewRow, ...]:
     rows = []
     for label in labels:
         assigned = next((item.name for item in suggestions if any(pattern.lower() in label.lower() for pattern in item.patterns)), "")
-        rows.append(SemiexperimentalGICPreviewRow(label, _gic_kind(label), _gic_atoms(label), assigned, "active"))
+        state = "fixed_by_input" if any(pattern.lower() in label.lower() for pattern in fixed_parameters) else "active"
+        rows.append(SemiexperimentalGICPreviewRow(label, _gic_kind(label), _gic_atoms(label), assigned, state))
     return tuple(rows)
 
 
@@ -463,6 +474,23 @@ def _residuals_table(result: SemiexperimentalFitResult) -> str:
     return "\n".join(rows)
 
 
+def _rotational_constants_table(result: SemiexperimentalFitResult) -> str:
+    if not result.rotational_constants:
+        return "<p>No rotational-constant comparison available.</p>"
+    rows = [
+        "<table><tr><th>Isotopologue</th><th>Component</th>"
+        "<th>Corrected experimental / MHz</th><th>Calculated / MHz</th><th>Difference / MHz</th></tr>"
+    ]
+    for item in result.rotational_constants:
+        rows.append(
+            f"<tr><td>{escape(item.isotopologue)}</td><td>{escape(item.component)}</td>"
+            f"<td>{item.corrected_experimental_MHz:.10g}</td><td>{item.calculated_MHz:.10g}</td>"
+            f"<td>{item.difference_MHz:.10g}</td></tr>"
+        )
+    rows.append("</table>")
+    return "\n".join(rows)
+
+
 def _kraitchman_table(result: SemiexperimentalFitResult) -> str:
     if not result.kraitchman:
         return "<p>No single-substitution Kraitchman comparison available.</p>"
@@ -499,6 +527,23 @@ def _latex_residual_table(result: SemiexperimentalFitResult) -> str:
     ]
     for item in result.residuals:
         lines.append(f"{_tex(item.isotopologue)} & {_tex(item.constant)} & {item.observed_equilibrium_MHz:.8g} & {item.calculated_MHz:.8g} & {item.residual_MHz:.3g} \\\\")
+    lines.extend(["\\bottomrule", "\\end{tabular}", ""])
+    return "\n".join(lines)
+
+
+def _latex_rotational_constants_table(result: SemiexperimentalFitResult) -> str:
+    lines = [
+        "\\begin{tabular}{llrrr}",
+        "\\toprule",
+        "Isotopologue & Component & Corrected exp. & Calculated & Difference \\\\",
+        "\\midrule",
+    ]
+    for item in result.rotational_constants:
+        lines.append(
+            f"{_tex(item.isotopologue)} & {_tex(item.component)} & "
+            f"{item.corrected_experimental_MHz:.8g} & {item.calculated_MHz:.8g} & "
+            f"{item.difference_MHz:.3g} \\\\"
+        )
     lines.extend(["\\bottomrule", "\\end{tabular}", ""])
     return "\n".join(lines)
 

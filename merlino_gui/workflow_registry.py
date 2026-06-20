@@ -72,7 +72,7 @@ def default_workflows() -> list[WorkflowSpec]:
             category="Structure",
             service="merlino_semiexp",
             description="Cartesian equilibrium-geometry fit using automatically generated, non-redundant and symmetry-adapted GICs from isotopologue rotational data and QM corrections.",
-            inputs=("parent XYZ", "isotopologue B0 constants", "QM vibrational/electronic corrections", "experimental uncertainties", "QM predicates", "shared/fixed parameter classes"),
+            inputs=("parent Cartesian geometry", "isotopologue B0 constants", "QM vibrational/electronic corrections", "experimental uncertainties", "QM predicates", "shared/fixed parameter classes"),
             outputs=("fitted structure", "GIC parameters", "residuals", "Kraitchman comparison", "covariance/correlation", "least-squares Hessian", "minimum check", "diagnostics", "manifest"),
             backends=("python", "fortran77"),
             status="standard solver",

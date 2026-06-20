@@ -63,18 +63,30 @@ def test_shared_numerics_lm_step_and_conditioning():
 def test_semiexp_cli_defaults_are_standard_solver_defaults():
     args = merlino_parser().parse_args([
         "semiexp",
-        "--xyz",
-        "parent.xyz",
+        "--geometry",
+        "parent.com",
         "--observations",
         "obs.csv",
         "--outdir",
         "run",
     ])
 
+    assert str(args.xyz) == "parent.com"
     assert args.observable == "moments"
     assert args.rotational_components == "auto"
-    assert args.prune_condition == 200.0
+    assert args.prune_condition == 0.0
     assert args.max_step == pytest.approx(0.25)
+
+    job_args = merlino_parser().parse_args([
+        "semiexp",
+        "--job",
+        "fit.mse.toml",
+        "--outdir",
+        "run",
+    ])
+    assert str(job_args.job) == "fit.mse.toml"
+    assert job_args.xyz is None
+    assert job_args.observations is None
 
 
 def test_gaussian_log_summary_parser(tmp_path):
@@ -163,20 +175,6 @@ def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
 
 
 def test_merlino_cli_semiexp(tmp_path):
-    xyz = tmp_path / "water.xyz"
-    xyz.write_text(
-        "\n".join(
-            [
-                "3",
-                "water",
-                "O 0.000000 0.000000 0.000000",
-                "H 0.000000 0.000000 0.987200",
-                "H 0.906600 0.000000 -0.239600",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
     target = Structure.from_atoms_coords(
         ["O", "H", "H"],
         [(0.0, 0.0, 0.0), (0.0, 0.0, 0.9572), (0.9266, 0.0, -0.2396)],
@@ -201,14 +199,43 @@ def test_merlino_cli_semiexp(tmp_path):
         + "\n",
         encoding="utf-8",
     )
+    job_file = tmp_path / "water.mse.toml"
+    job_file.write_text(
+        "\n".join(
+            [
+                'schema = "merlino.semiexp.job.v1"',
+                'title = "water standard SE job"',
+                "",
+                "[files]",
+                f'observations = "{obs_file.name}"',
+                "",
+                "[fit]",
+                'observable = "moments"',
+                'rotational_components = "auto"',
+                "max_step = 0.25",
+                "",
+                "[geometry]",
+                'units = "angstrom"',
+                "atoms = [",
+                '  ["O", 0.000000, 0.000000, 0.000000],',
+                '  ["H", 0.000000, 0.000000, 0.987200],',
+                '  ["H", 0.906600, 0.000000, -0.239600],',
+                "]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     outdir = tmp_path / "semiexp"
 
-    assert merlino_cli(["semiexp", "--xyz", str(xyz), "--observations", str(obs_file), "--outdir", str(outdir)]) == 0
+    assert merlino_cli(["semiexp", "--job", str(job_file), "--outdir", str(outdir)]) == 0
 
     assert (outdir / "semiexp_geometry.xyz").exists()
+    assert (outdir / "semiexp_report.txt").exists()
     assert (outdir / "semiexp_parameters.csv").exists()
     assert (outdir / "semiexp_geometry_parameters.csv").exists()
     assert (outdir / "semiexp_residuals.csv").exists()
+    assert (outdir / "semiexp_rotational_constants.csv").exists()
     assert (outdir / "semiexp_covariance.csv").exists()
     assert (outdir / "semiexp_hessian.csv").exists()
     assert (outdir / "semiexp_diagnostics.csv").exists()
@@ -220,6 +247,8 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
     assert manifest["outputs"]["latex_tables"] == str(outdir / "semiexp_tables.tex")
     assert manifest["outputs"]["geometry_parameters"] == str(outdir / "semiexp_geometry_parameters.csv")
+    assert manifest["outputs"]["rotational_constants"] == str(outdir / "semiexp_rotational_constants.csv")
+    assert manifest["outputs"]["text_report"] == str(outdir / "semiexp_report.txt")
     assert manifest["parameters"]["coordinate_generation"]["reduction"].startswith("primitive stretches")
     assert manifest["parameters"]["n_gic_parameters"] >= 1
     geometry_text = (outdir / "semiexp_geometry_parameters.csv").read_text(encoding="utf-8")
@@ -228,7 +257,13 @@ def test_merlino_cli_semiexp(tmp_path):
     assert "value_degree" in geometry_text
     assert "sigma_degree" in geometry_text
     assert "\nbond," in geometry_text
+    rotconst_text = (outdir / "semiexp_rotational_constants.csv").read_text(encoding="utf-8")
+    assert "corrected_experimental_MHz" in rotconst_text
+    assert "calculated_MHz" in rotconst_text
     assert "\nangle," in geometry_text
+    report_text = (outdir / "semiexp_report.txt").read_text(encoding="utf-8")
+    assert "Rotational constants (MHz)" in report_text
+    assert "Final topological geometry" in report_text
 
 
 def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):

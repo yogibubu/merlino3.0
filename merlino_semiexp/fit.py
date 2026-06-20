@@ -18,11 +18,12 @@ from merlino_gic import run_gicforge
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from topology.elements import atomic_symbol
 from merlino_fit.topology.pipeline import build_topology_objects
-from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
+from merlino_fit.survibfit.modify_geom import write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
 
 from .contracts import IsotopologueObservation, ParameterClassConstraint, QMParameterPredicate, SemiexperimentalFitRequest
+from .geometry_input import read_geometry_input
 from .kraitchman import KraitchmanComparison, KraitchmanSeedResult, kraitchman_comparison, kraitchman_seed_geometry
 
 
@@ -51,6 +52,15 @@ class SemiexperimentalResidual:
     observed_equilibrium_MHz: float
     calculated_MHz: float
     residual_MHz: float
+
+
+@dataclass(frozen=True)
+class SemiexperimentalRotationalConstantComparison:
+    isotopologue: str
+    component: str
+    corrected_experimental_MHz: float
+    calculated_MHz: float
+    difference_MHz: float
 
 
 @dataclass(frozen=True)
@@ -131,6 +141,7 @@ class SemiexperimentalFitResult:
     parameters: tuple[SemiexperimentalParameter, ...]
     geometry_parameters: tuple[SemiexperimentalGeometryParameter, ...]
     residuals: tuple[SemiexperimentalResidual, ...]
+    rotational_constants: tuple[SemiexperimentalRotationalConstantComparison, ...]
     kraitchman: tuple[KraitchmanComparison, ...]
     kraitchman_seed: KraitchmanSeedResult | None
     covariance: np.ndarray
@@ -154,7 +165,7 @@ def fit_semiexperimental_geometry(
     step: float = 1.0e-4,
     damping: float = 1.0e-8,
     max_step: float = 0.25,
-    prune_condition: float = 200.0,
+    prune_condition: float = 0.0,
     tolerance_MHz: float = 1.0e-6,
     gradient_tolerance: float = 1.0e-8,
     outdir: Path | None = None,
@@ -165,15 +176,18 @@ def fit_semiexperimental_geometry(
     matched by substring against generated GIC names, or by exact `GICnnn`.
     """
     request.validate()
-    atoms, coords0, _comment = read_xyz(Path(request.initial_geometry))
-    coords = np.asarray(coords0, dtype=float)
+    geometry_input = read_geometry_input(Path(request.initial_geometry))
+    atoms = list(geometry_input.atoms)
+    coords = np.asarray(geometry_input.coordinates_angstrom, dtype=float)
+    coords0 = coords.copy()
+    fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _validate_observations(request.observations, len(atoms))
     gicforge_backend = _make_gicforge_backend(tuple(atoms), outdir)
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
-    active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes) & _gicforge_a1_mask(labels)
+    active_mask = _active_mask(labels, fixed_parameters, request.parameter_classes) & _gicforge_a1_mask(labels)
     initial_transform, _initial_names, _initial_classes = _parameter_class_transform(
         labels, active_mask, request.parameter_classes
     )
@@ -212,7 +226,7 @@ def fit_semiexperimental_geometry(
     iteration = 0
     for iteration in range(1, loop_max_iter + 1):
         prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
-        active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
+        active_mask = _active_mask(labels, fixed_parameters, request.parameter_classes)
         active_mask &= _gicforge_a1_mask(labels)
         active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
         q = _gic_values(prims, u_matrix, coords)
@@ -277,7 +291,7 @@ def fit_semiexperimental_geometry(
         iteration = loop_max_iter
 
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
-    active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
+    active_mask = _active_mask(labels, fixed_parameters, request.parameter_classes)
     active_mask &= _gicforge_a1_mask(labels)
     active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
     q_final = _gic_values(prims, u_matrix, coords)
@@ -318,6 +332,7 @@ def fit_semiexperimental_geometry(
     class_by_gic = _mark_auto_pruned_classes(labels, class_by_gic, auto_pruned_patterns)
     parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
+    rotational_constant_rows = _rotational_constant_rows(atoms, coords, request.observations)
     geometry_parameters = _geometry_parameters(
         atoms,
         coords,
@@ -340,8 +355,10 @@ def fit_semiexperimental_geometry(
             parameters,
             residual_rows,
             kraitchman_rows,
+            rotational_constants=rotational_constant_rows,
             geometry_parameters=geometry_parameters,
             kraitchman_seed=kraitchman_seed,
+            input_fixed_parameters=geometry_input.fixed_parameters,
             effective_parameter_names=reduced_names,
             covariance=covariance,
             correlation=correlation,
@@ -357,6 +374,7 @@ def fit_semiexperimental_geometry(
         parameters=parameters,
         geometry_parameters=geometry_parameters,
         residuals=residual_rows,
+        rotational_constants=rotational_constant_rows,
         kraitchman=kraitchman_rows,
         kraitchman_seed=kraitchman_seed,
         covariance=covariance,
@@ -382,6 +400,7 @@ def write_semiexperimental_outputs(
     parameters: tuple[SemiexperimentalParameter, ...],
     residuals: tuple[SemiexperimentalResidual, ...],
     kraitchman: tuple[KraitchmanComparison, ...] = (),
+    rotational_constants: tuple[SemiexperimentalRotationalConstantComparison, ...] | None = None,
     geometry_parameters: tuple[SemiexperimentalGeometryParameter, ...] | None = None,
     kraitchman_seed: KraitchmanSeedResult | None = None,
     effective_parameter_names: tuple[str, ...] = (),
@@ -391,12 +410,15 @@ def write_semiexperimental_outputs(
     hessian_eigenvalues: np.ndarray | None = None,
     stationary_point: str = "not_checked",
     diagnostics: SemiexperimentalFitDiagnostics | None = None,
+    input_fixed_parameters: tuple[str, ...] = (),
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     xyz = outdir / "semiexp_geometry.xyz"
     params = outdir / "semiexp_parameters.csv"
     geometry_params = outdir / "semiexp_geometry_parameters.csv"
     residual_csv = outdir / "semiexp_residuals.csv"
+    rotconst_csv = outdir / "semiexp_rotational_constants.csv"
+    text_report = outdir / "semiexp_report.txt"
     kraitchman_csv = outdir / "semiexp_kraitchman.csv"
     kraitchman_xyz = outdir / "semiexp_kraitchman_geometry.xyz"
     covariance_csv = outdir / "semiexp_covariance.csv"
@@ -406,10 +428,30 @@ def write_semiexperimental_outputs(
     diagnostics_csv = outdir / "semiexp_diagnostics.csv"
     active_names = effective_parameter_names or _effective_parameter_names(parameters)
     geometry_rows = geometry_parameters if geometry_parameters is not None else _geometry_parameters(atoms, coords)
+    rotconst_rows = (
+        rotational_constants
+        if rotational_constants is not None
+        else _rotational_constant_rows(atoms, np.asarray(coords, dtype=float), request.observations)
+    )
+    fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, input_fixed_parameters)
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
     geometry_params.write_text(geometry_parameters_csv(geometry_rows), encoding="utf-8")
     residual_csv.write_text(residuals_csv(residuals), encoding="utf-8")
+    rotconst_csv.write_text(rotational_constants_csv(rotconst_rows), encoding="utf-8")
+    text_report.write_text(
+        semiexperimental_text_report(
+            request,
+            parameters,
+            geometry_rows,
+            residuals,
+            rotconst_rows,
+            diagnostics=diagnostics,
+            stationary_point=stationary_point,
+            fixed_parameters=fixed_parameters,
+        ),
+        encoding="utf-8",
+    )
     kraitchman_csv.write_text(kraitchman_csv_rows(kraitchman), encoding="utf-8")
     if kraitchman_seed is not None:
         write_xyz(
@@ -437,6 +479,8 @@ def write_semiexperimental_outputs(
         "parameters": params,
         "geometry_parameters": geometry_params,
         "residuals": residual_csv,
+        "rotational_constants": rotconst_csv,
+        "text_report": text_report,
         "kraitchman": kraitchman_csv,
         "covariance": covariance_csv,
         "correlation": correlation_csv,
@@ -453,7 +497,8 @@ def write_semiexperimental_outputs(
         inputs=manifest_inputs,
         outputs=outputs,
         parameters={
-            "fixed_parameters": request.fixed_parameters,
+            "fixed_parameters": fixed_parameters,
+            "input_fixed_parameters": input_fixed_parameters,
             "parameter_classes": tuple(
                 {"name": item.name, "patterns": item.patterns, "mode": item.mode}
                 for item in request.parameter_classes
@@ -544,6 +589,20 @@ def _effective_parameter_names(parameters: tuple[SemiexperimentalParameter, ...]
     return tuple(names)
 
 
+def _combined_fixed_parameters(
+    explicit_fixed: tuple[str, ...],
+    input_fixed: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in (*explicit_fixed, *input_fixed):
+        text = str(item).strip()
+        if text and text not in seen:
+            result.append(text)
+            seen.add(text)
+    return tuple(result)
+
+
 def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
     stream = StringIO()
     writer = csv.writer(stream)
@@ -557,6 +616,135 @@ def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
             f"{r.residual_MHz:.12g}",
         ])
     return stream.getvalue()
+
+
+def rotational_constants_csv(rows: tuple[SemiexperimentalRotationalConstantComparison, ...]) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow([
+        "isotopologue",
+        "component",
+        "corrected_experimental_MHz",
+        "calculated_MHz",
+        "difference_MHz",
+    ])
+    for item in rows:
+        writer.writerow([
+            item.isotopologue,
+            item.component,
+            f"{item.corrected_experimental_MHz:.12g}",
+            f"{item.calculated_MHz:.12g}",
+            f"{item.difference_MHz:.12g}",
+        ])
+    return stream.getvalue()
+
+
+def semiexperimental_text_report(
+    request: SemiexperimentalFitRequest,
+    parameters: tuple[SemiexperimentalParameter, ...],
+    geometry_parameters: tuple[SemiexperimentalGeometryParameter, ...],
+    residuals: tuple[SemiexperimentalResidual, ...],
+    rotational_constants: tuple[SemiexperimentalRotationalConstantComparison, ...],
+    *,
+    diagnostics: SemiexperimentalFitDiagnostics | None = None,
+    stationary_point: str = "not_checked",
+    fixed_parameters: tuple[str, ...] = (),
+) -> str:
+    lines: list[str] = [
+        "Merlino semiexperimental geometry fit",
+        "=" * 40,
+        f"initial_geometry: {request.initial_geometry}",
+        f"isotopologues: {', '.join(obs.label for obs in request.observations)}",
+        f"stationary_point: {stationary_point}",
+    ]
+    if diagnostics is not None:
+        lines.extend(
+            [
+                f"convergence: {diagnostics.convergence_reason}",
+                f"iterations: {diagnostics.accepted_steps + diagnostics.rejected_steps}",
+                f"objective: {diagnostics.objective:.12g}",
+                f"weighted_rms: {diagnostics.weighted_rms:.12g}",
+                f"reduced_chi_square: {diagnostics.reduced_chi_square:.12g}",
+                f"rank: {diagnostics.rank}",
+                f"condition_number: {diagnostics.condition_number:.12g}",
+                f"observable: {diagnostics.observable}",
+                f"components: {','.join(diagnostics.components)}",
+            ]
+        )
+    if fixed_parameters:
+        lines.append(f"fixed_parameters: {', '.join(fixed_parameters)}")
+    lines.extend(["", "Rotational constants (MHz)", "-" * 40])
+    lines.append(_fixed_width(("isotopologue", "axis", "corrected_exp", "calculated", "exp-calc")))
+    for item in rotational_constants:
+        lines.append(
+            _fixed_width(
+                (
+                    item.isotopologue,
+                    item.component,
+                    f"{item.corrected_experimental_MHz:.8f}",
+                    f"{item.calculated_MHz:.8f}",
+                    f"{item.difference_MHz:.8f}",
+                )
+            )
+        )
+    lines.extend(["", "Final topological geometry", "-" * 40])
+    lines.append(_fixed_width(("kind", "label", "atoms", "value", "sigma", "unit")))
+    for item in geometry_parameters:
+        atoms = "-".join(str(idx) for idx in item.atom_indices)
+        if item.value_angstrom is not None:
+            value = item.value_angstrom
+            sigma = item.sigma_angstrom
+            unit = "Angstrom"
+        else:
+            value = item.value_degree
+            sigma = item.sigma_degree
+            unit = "degree"
+        lines.append(
+            _fixed_width(
+                (
+                    item.kind,
+                    item.label,
+                    atoms,
+                    "" if value is None else f"{value:.8f}",
+                    "" if sigma is None else f"{sigma:.8f}",
+                    unit,
+                )
+            )
+        )
+    lines.extend(["", "GIC parameters", "-" * 40])
+    lines.append(_fixed_width(("name", "value", "sigma", "active", "class")))
+    for item in parameters:
+        lines.append(
+            _fixed_width(
+                (
+                    item.name.split(maxsplit=1)[0],
+                    f"{item.value:.10g}",
+                    f"{item.sigma:.10g}",
+                    "yes" if item.active else "no",
+                    item.parameter_class or "-",
+                )
+            )
+        )
+    lines.extend(["", "Fit residuals", "-" * 40])
+    lines.append(_fixed_width(("isotopologue", "observable", "observed", "calculated", "residual")))
+    for item in residuals:
+        lines.append(
+            _fixed_width(
+                (
+                    item.isotopologue,
+                    item.constant,
+                    f"{item.observed_equilibrium_MHz:.8f}",
+                    f"{item.calculated_MHz:.8f}",
+                    f"{item.residual_MHz:.8f}",
+                )
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _fixed_width(values: tuple[str, ...]) -> str:
+    widths = (18, 12, 18, 18, 18, 12)
+    return " ".join(str(value)[:width].ljust(width) for value, width in zip(values, widths))
 
 
 def _geometry_parameters(
@@ -1362,6 +1550,31 @@ def _residual_rows(
     rows = []
     for idx, (isotopologue, label) in enumerate(model.labels):
         rows.append(SemiexperimentalResidual(isotopologue, label, float(observed[idx]), float(calculated[idx]), float(observed[idx] - calculated[idx])))
+    return tuple(rows)
+
+
+def _rotational_constant_rows(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    observations: tuple[IsotopologueObservation, ...],
+) -> tuple[SemiexperimentalRotationalConstantComparison, ...]:
+    calculated = _constants_vector(atoms, coords, observations).reshape((-1, len(ROTATIONAL_COMPONENTS)))
+    rows: list[SemiexperimentalRotationalConstantComparison] = []
+    for obs, calc_triplet in zip(observations, calculated):
+        for component, observed_value, calculated_value in zip(
+            ROTATIONAL_COMPONENTS,
+            obs.corrected.as_tuple(),
+            calc_triplet,
+        ):
+            rows.append(
+                SemiexperimentalRotationalConstantComparison(
+                    obs.label,
+                    component,
+                    float(observed_value),
+                    float(calculated_value),
+                    float(observed_value - calculated_value),
+                )
+            )
     return tuple(rows)
 
 

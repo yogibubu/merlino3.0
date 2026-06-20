@@ -35,7 +35,16 @@ The recommended CLI is:
 
 ```bash
 python -m merlino semiexp \
-  --xyz parent_initial.xyz \
+  --job cyclopentadiene.mse.toml \
+  --outdir semiexp_run
+```
+
+The equivalent interoperability mode, useful when the parent geometry is
+already available as a Gaussian Cartesian input, is:
+
+```bash
+python -m merlino semiexp \
+  --geometry parent_initial.com \
   --observations isotopologues.toml \
   --outdir semiexp_run \
   --observable moments \
@@ -54,11 +63,11 @@ These defaults are intentional:
   `ABC`.
 - `--max-step 0.25` limits the norm of active-GIC steps and prevents aggressive
   updates from leaving the chemically valid topology basin.
-- `--prune-condition 200` removes weak A1 parameters from the active fit when
-  the initial weighted Jacobian is poorly conditioned and a deterministic
-  column removal brings the condition number below the target. Removed
-  coordinates are reported as `auto_pruned_weak`, not silently hidden. Use
-  `--prune-condition 0` to disable this MSR-style observability pruning.
+- `--prune-condition 0` leaves the full totally symmetric GIC subspace active.
+  Passing a positive value enables deterministic removal of weak A1 parameters
+  until the initial weighted Jacobian condition is below the requested target.
+  Removed coordinates are reported as `auto_pruned_weak`; this is a diagnostic
+  fallback, not the recommended default for MSR-grade refinements.
 - `--damping 1e-8` is only the initial Levenberg-Marquardt damping. It is
   decreased after accepted steps and increased after rejected steps.
 - `--max-iter` defaults to an automatic cap proportional to the number of
@@ -70,10 +79,45 @@ must be made directly in MHz.
 
 ## Input
 
-The XYZ file contains the starting parent geometry in Angstrom. Isotopologue
-observations can be provided as TOML, JSON or CSV. TOML is the recommended
-human-edited format because it keeps constants, isotope substitutions and
-corrections grouped by isotopologue.
+The canonical Merlino input is a two-file setup:
+
+- `*.mse.toml`: job file with keywords, Cartesian parent geometry and optional
+  fixed-parameter definitions;
+- `*.toml`, `*.json` or `*.csv`: isotopologue observations with rotational
+  constants, vibrational corrections, electronic corrections and optional
+  uncertainties.
+
+The complete file-format contract is documented in
+`doc/SEMIEXPERIMENTAL_FILE_FORMATS.md`.
+
+For interoperability, the parent geometry can still be provided as standard XYZ
+or as a Gaussian `.com` / `.gjf` input with Cartesian coordinates. Gaussian
+Z-matrices are intentionally not accepted in this workflow. If the Gaussian
+input contains a ModRedundant section, freeze constraints written as
+`B/A/D/O/L ... F` are converted into fixed GIC patterns before the fit.
+
+Minimal accepted Gaussian-style geometry input:
+
+```text
+#p hf/sto-3g opt=modredundant
+
+parent Cartesian geometry
+
+0 1
+C   0.000000   0.000000   0.000000
+H   0.000000   0.000000   1.089000
+
+B 1 2 F
+```
+
+Everything after the blank line following the Cartesian block is interpreted as
+Gaussian ModRedundant data. Fixed parameters must be expressed there with the
+standard freeze action `F`; Z-matrix variables and MSR-style `R0001/A0001`
+cards are not part of the Merlino4 SE input.
+
+Isotopologue observations are provided separately as TOML, JSON or CSV. TOML is
+the recommended human-edited format because it keeps constants, isotope
+substitutions and corrections grouped by isotopologue.
 
 Recommended TOML:
 
@@ -92,12 +136,14 @@ delta_A_MHz = 1.0
 delta_B_MHz = 2.0
 delta_C_MHz = 3.0
 source = "B3LYP/cc-pVTZ"
+convention = "subtract"
 
 [isotopologues.electronic_correction]
 delta_A_MHz = 0.1
 delta_B_MHz = 0.2
 delta_C_MHz = 0.3
 source = "relativistic+BOB"
+convention = "subtract"
 
 [isotopologues.sigma_MHz]
 A_MHz = 0.010
@@ -145,19 +191,26 @@ CSV remains supported for spreadsheets and backward compatibility.
 The observation CSV columns are:
 
 ```text
-label,A_MHz,B_MHz,C_MHz,delta_A_MHz,delta_B_MHz,delta_C_MHz,correction_source,substitutions
+label,A_MHz,B_MHz,C_MHz,delta_A_MHz,delta_B_MHz,delta_C_MHz,correction_source,correction_convention,substitutions
 ```
 
 `A_MHz`, `B_MHz` and `C_MHz` are experimental ground-state constants `B0`.
 `delta_*_MHz` are vibrational corrections. Optional electronic corrections are
 available in TOML/JSON as `electronic_correction` and in CSV as
 `delta_elec_A_MHz`, `delta_elec_B_MHz`, `delta_elec_C_MHz`,
-`electronic_correction_source`.
+`electronic_correction_source` and `electronic_correction_convention`.
 
-Merlino uses the convention:
+Merlino defaults to the subtractive convention:
 
 ```text
 Be = B0 - delta_vib - delta_elec
+```
+
+Set `convention = "additive"` for MSR-style corrections already defined as
+terms to add to the ground-state constants:
+
+```text
+Be = B0 + delta_vib + delta_elec
 ```
 
 `substitutions` uses one-based atom indices. In TOML/JSON it can be a mapping,
@@ -175,8 +228,9 @@ through `I = K/B`.
 The Merlino4 dashboard exposes the semiexperimental solver from the
 `Semiexperimental Geometry` workflow. The panel lets the user select:
 
-- parent Cartesian XYZ file;
+- parent Cartesian geometry file (`.xyz`, `.com` or `.gjf`);
 - TOML/JSON/CSV isotopologue observations;
+- or a complete Merlino job file (`.mse.toml`);
 - output directory;
 - Python or Fortran77 backend request;
 - moment or rotational-constant target;
@@ -204,7 +258,7 @@ The same panel also provides operational helpers:
 
 ## Fit Model
 
-1. Read the parent XYZ geometry.
+1. Read the parent Cartesian geometry (`.xyz`, `.com` or `.gjf`).
 2. Build topology and primitive internal coordinates.
 3. Build the primitive GIC set automatically, as in other black-box internal
    coordinate generators.
@@ -377,11 +431,15 @@ Angstrom; angle and dihedral sigmas are reported in degrees.
 The output directory contains:
 
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
+- `semiexp_report.txt`: plain-text human-readable report with diagnostics,
+  corrected/calculated rotational constants, final bond lengths/angles/dihedrals
+  with propagated errors, GIC parameters and residuals.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
   classes, fitted GICs, final Cartesian bond lengths/angles/dihedrals with
-  propagated errors, residuals and Kraitchman comparison.
+  propagated errors, rotational-constant comparison, residuals and Kraitchman
+  comparison.
 - `semiexp_tables.tex`: paper-ready LaTeX tabular fragments for parameters,
-  residuals and Kraitchman comparison.
+  rotational constants, residuals and Kraitchman comparison.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
 - `semiexp_geometry_parameters.csv`: final Cartesian geometry interpreted as
@@ -392,6 +450,11 @@ The output directory contains:
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
   selected observable. Units are MHz for rotational constants, amu Angstrom^2
   for moments of inertia and native GIC units for QM predicates.
+- `semiexp_rotational_constants.csv`: for every isotopologue and for A, B and C,
+  the corrected experimental equilibrium rotational constants, the constants
+  calculated from the fitted geometry and the difference
+  `corrected experimental - calculated`, all in MHz. This file is always
+  written, even when the fit target is moments of inertia.
 - `semiexp_kraitchman.csv`: diagnostic comparison with Kraitchman substitution
   coordinates for single-substitution isotopologues.
 - `semiexp_kraitchman_geometry.xyz`: diagnostic Kraitchman-seeded geometry in
@@ -429,7 +492,7 @@ stress tests.
 
 The repository also contains `benchmarks/semiexp_msr/manifest.toml`, which is
 the schema for curated MSR-style validation cases. Each case should record the
-parent XYZ, the isotopologue observation table, the reference source and the
+parent Cartesian geometry, the isotopologue observation table, the reference source and the
 expected numerical diagnostics.
 
 Small executable examples are under `examples/semiexp/`:

@@ -19,6 +19,7 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
     read_observations,
+    read_semiexperimental_job,
     semiexperimental_latex_tables,
     write_semiexperimental_html_report,
 )
@@ -86,8 +87,19 @@ def build_parser() -> argparse.ArgumentParser:
         "semiexp",
         help="Fit semiexperimental equilibrium geometry with the Cartesian/GIC Merlino standard solver",
     )
-    semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
-    semiexp.add_argument("--observations", type=Path, required=True, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
+    semiexp.add_argument(
+        "--job",
+        type=Path,
+        help="Merlino semiexperimental job file (.mfit, .mse.toml or .semiexp.toml)",
+    )
+    semiexp.add_argument(
+        "--xyz",
+        "--geometry",
+        dest="xyz",
+        type=Path,
+        help="Initial parent Cartesian geometry in XYZ or Gaussian .com/.gjf format",
+    )
+    semiexp.add_argument("--observations", type=Path, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
@@ -103,8 +115,8 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument(
         "--prune-condition",
         type=float,
-        default=200.0,
-        help="Auto-prune weak SE parameters until the initial weighted Jacobian condition is below this target; use 0 to disable",
+        default=0.0,
+        help="Auto-prune weak SE parameters until the initial weighted Jacobian condition is below this target; default 0 disables pruning",
     )
     semiexp.add_argument(
         "--observable",
@@ -229,24 +241,45 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "semiexp":
-        fixed = _parse_fixed_parameters(args.fixed)
-        observations = read_observations(args.observations)
+        job = read_semiexperimental_job(args.job) if args.job else None
+        geometry_path = args.xyz or (job.path if job is not None else None)
+        observations_path = args.observations or (job.observations if job is not None else None)
+        if geometry_path is None:
+            raise ValueError("semiexp needs --geometry or --job")
+        if observations_path is None:
+            raise ValueError("semiexp needs --observations or a [files].observations entry in --job")
+        fixed = _merge_unique(job.fixed_parameters if job else (), _parse_fixed_parameters(args.fixed))
+        observations = read_observations(observations_path)
+        observable = _job_default(args.observable, DEFAULT_SEMIEXP_OBSERVABLE, job.observable if job else None)
+        rotational_components = _job_default(
+            args.rotational_components,
+            DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+            job.rotational_components if job else None,
+        )
+        qm_predicates = _merge_unique(job.qm_predicates if job else (), _parse_qm_predicates(args.qm_predicate))
+        parameter_classes = _merge_unique(job.parameter_classes if job else (), _parse_parameter_classes(args.parameter_class))
+        backend = _job_default(args.backend, "python", job.backend if job else None)
+        max_iter = args.max_iter if args.max_iter is not None else (job.max_iter if job else None)
+        step = _job_default(args.step, 1.0e-4, job.step if job else None)
+        damping = _job_default(args.damping, 1.0e-8, job.damping if job else None)
+        max_step = _job_default(args.max_step, 0.25, job.max_step if job else None)
+        prune_condition = _job_default(args.prune_condition, 0.0, job.prune_condition if job else None)
         request = SemiexperimentalFitRequest(
-            initial_geometry=args.xyz,
+            initial_geometry=geometry_path,
             observations=observations,
             fixed_parameters=fixed,
-            observable=args.observable,
-            rotational_components=args.rotational_components,
-            qm_predicates=_parse_qm_predicates(args.qm_predicate),
-            parameter_classes=_parse_parameter_classes(args.parameter_class),
+            observable=observable,
+            rotational_components=rotational_components,
+            qm_predicates=qm_predicates,
+            parameter_classes=parameter_classes,
         )
         result = fit_semiexperimental_geometry(
             request,
-            max_iter=args.max_iter,
-            step=args.step,
-            damping=args.damping,
-            max_step=args.max_step,
-            prune_condition=args.prune_condition,
+            max_iter=max_iter,
+            step=step,
+            damping=damping,
+            max_step=max_step,
+            prune_condition=prune_condition,
             outdir=args.outdir,
         )
         report_path = write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
@@ -268,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"condition_number: {result.diagnostics.condition_number:.8g}")
         print(f"observable: {result.diagnostics.observable}")
         print(f"components: {','.join(result.diagnostics.components)}")
-        print(f"backend: {args.backend}")
+        print(f"backend: {backend}")
         return 0
 
     if args.command == "gaussian-summary":
@@ -362,6 +395,20 @@ def _parse_parameter_classes(items: list[str]) -> tuple[ParameterClassConstraint
         patterns = tuple(part.strip() for part in parts[2].split("|") if part.strip())
         constraints.append(ParameterClassConstraint(parts[0].strip(), patterns, parts[1].strip()))
     return tuple(constraints)
+
+
+def _merge_unique[T](left: tuple[T, ...], right: tuple[T, ...]) -> tuple[T, ...]:
+    result: list[T] = []
+    for item in (*left, *right):
+        if item not in result:
+            result.append(item)
+    return tuple(result)
+
+
+def _job_default[T](value: T, default: T, job_value: T | None) -> T:
+    if job_value is not None and value == default:
+        return job_value
+    return value
 
 
 def _append_manifest_output(manifest_path: Path, name: str, path: Path) -> None:

@@ -32,9 +32,11 @@ from PySide6.QtWidgets import (
 from merlino_semiexp import (
     ParameterClassConstraint,
     QMParameterPredicate,
+    SEMIEXP_JOB_SCHEMA,
     SemiexperimentalFitRequest,
     preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
+    read_geometry_input,
     read_observations,
     validate_semiexperimental_request,
 )
@@ -202,7 +204,7 @@ class DashboardWindow(QMainWindow):
         form = QFormLayout()
         input_layout.addLayout(form)
 
-        self.semiexp_xyz = _path_row(self, form, "Parent XYZ:", "Select parent XYZ", "*.xyz")
+        self.semiexp_xyz = _path_row(self, form, "Parent geometry:", "Select parent geometry", "*.xyz *.com *.gjf")
         self.semiexp_observations = _path_row(self, form, "Isotopologues:", "Select isotopologue observations", "*.toml *.json *.csv")
         self.semiexp_outdir = _directory_row(self, form, "Output directory:")
 
@@ -257,7 +259,7 @@ class DashboardWindow(QMainWindow):
         self.semiexp_prune_condition = QDoubleSpinBox()
         self.semiexp_prune_condition.setRange(0.0, 1.0e9)
         self.semiexp_prune_condition.setDecimals(1)
-        self.semiexp_prune_condition.setValue(200.0)
+        self.semiexp_prune_condition.setValue(0.0)
         self.semiexp_prune_condition.setSpecialValueText("disabled")
         self.semiexp_prune_condition.valueChanged.connect(lambda _value: self._update_semiexp_preview())
         option_form.addRow("Prune condition target:", self.semiexp_prune_condition)
@@ -283,6 +285,9 @@ class DashboardWindow(QMainWindow):
         save_iso_button = QPushButton("Save TOML")
         save_iso_button.clicked.connect(self.save_semiexp_observations_toml)
         buttons.addWidget(save_iso_button)
+        save_job_button = QPushButton("Save Job")
+        save_job_button.clicked.connect(self.save_semiexp_job_toml)
+        buttons.addWidget(save_job_button)
         preview_gic_button = QPushButton("Preview GIC")
         preview_gic_button.clicked.connect(self.preview_semiexp_gics)
         buttons.addWidget(preview_gic_button)
@@ -348,7 +353,7 @@ class DashboardWindow(QMainWindow):
         complete = all(args[idx] for idx in (2, 4, 6))
         command = "python -m merlino " + " ".join(shlex.quote(item) for item in args)
         if not complete:
-            command += "\n\nSelect parent XYZ, isotopologue observations and output directory before running."
+            command += "\n\nSelect parent geometry, isotopologue observations and output directory before running."
         self.semiexp_command.setPlainText(command)
         self.semiexp_run_button.setEnabled(complete)
 
@@ -385,10 +390,22 @@ class DashboardWindow(QMainWindow):
         self._append_semiexp_text(f"\nwrote observations: {target}\n")
         return target
 
+    def save_semiexp_job_toml(self, checked: bool = False) -> Path | None:
+        geometry_path = self.semiexp_xyz.text().strip()
+        observations_path = self.semiexp_observations.text().strip()
+        if not geometry_path or not observations_path:
+            self._append_semiexp_text("\nselect parent geometry and observations before saving a job\n")
+            return None
+        geometry = read_geometry_input(Path(geometry_path))
+        target = self.workdir / "semiexp_job.mse.toml"
+        target.write_text(self._semiexp_job_toml(geometry, Path(observations_path)), encoding="utf-8")
+        self._append_semiexp_text(f"\nwrote job: {target}\n")
+        return target
+
     def preview_semiexp_gics(self) -> None:
         xyz = self.semiexp_xyz.text().strip()
         if not xyz:
-            self._append_semiexp_text("\nselect parent XYZ before GIC preview\n")
+            self._append_semiexp_text("\nselect parent geometry before GIC preview\n")
             return
         observations = ()
         obs_path = self.semiexp_observations.text().strip()
@@ -418,7 +435,7 @@ class DashboardWindow(QMainWindow):
     def suggest_semiexp_classes(self) -> None:
         xyz = self.semiexp_xyz.text().strip()
         if not xyz:
-            self._append_semiexp_text("\nselect parent XYZ before suggesting classes\n")
+            self._append_semiexp_text("\nselect parent geometry before suggesting classes\n")
             return
         observations = ()
         obs_path = self.semiexp_observations.text().strip()
@@ -507,11 +524,13 @@ class DashboardWindow(QMainWindow):
                 f"delta_B_MHz = {_float_text(values[6], default='0.0')}",
                 f"delta_C_MHz = {_float_text(values[7], default='0.0')}",
                 'source = "gui"',
+                'convention = "subtract"',
                 "[isotopologues.electronic_correction]",
                 f"delta_A_MHz = {_float_text(values[8], default='0.0')}",
                 f"delta_B_MHz = {_float_text(values[9], default='0.0')}",
                 f"delta_C_MHz = {_float_text(values[10], default='0.0')}",
                 'source = "gui"',
+                'convention = "subtract"',
             ])
             if values[11].strip() and values[12].strip() and values[13].strip():
                 lines.extend([
@@ -522,6 +541,62 @@ class DashboardWindow(QMainWindow):
                 ])
             lines.append("")
         return "\n".join(lines)
+
+    def _semiexp_job_toml(self, geometry, observations_path: Path) -> str:
+        fixed = tuple(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";")))
+        fixed = tuple(dict.fromkeys((*geometry.fixed_parameters, *fixed)))
+        lines = [
+            f'schema = "{SEMIEXP_JOB_SCHEMA}"',
+            f'title = "{_toml_string(geometry.comment or "Merlino semiexperimental fit")}"',
+            "",
+            "[files]",
+            f'observations = "{_toml_string(str(observations_path))}"',
+            "",
+            "[fit]",
+            f'backend = "{_toml_string(self.selected_backends.get("semiexp_geometry", "python"))}"',
+            f'observable = "{_toml_string(self.semiexp_observable.currentText())}"',
+            f'rotational_components = "{_toml_string(self.semiexp_components.currentText())}"',
+            f"prune_condition = {self.semiexp_prune_condition.value():.12g}",
+            "",
+            "[geometry]",
+            'units = "angstrom"',
+            "atoms = [",
+        ]
+        for atom, xyz in zip(geometry.atoms, geometry.coordinates_angstrom):
+            lines.append(f'  ["{_toml_string(atom)}", {xyz[0]:.12g}, {xyz[1]:.12g}, {xyz[2]:.12g}],')
+        lines.extend(["]", "", "[constraints]"])
+        if fixed:
+            lines.append("fixed_gic_patterns = [")
+            lines.extend(f'  "{_toml_string(item)}",' for item in fixed)
+            lines.append("]")
+        else:
+            lines.append("fixed_gic_patterns = []")
+        for predicate in _parse_semiexp_qm_predicates(self.semiexp_qm.text()):
+            lines.extend(
+                [
+                    "",
+                    "[[qm_predicates]]",
+                    f'pattern = "{_toml_string(predicate.label_pattern)}"',
+                    f"value = {predicate.value:.12g}",
+                    f"sigma = {predicate.sigma:.12g}",
+                    f'source = "{_toml_string(predicate.source)}"',
+                ]
+            )
+        for parameter_class in _split_semiexp_items(self.semiexp_classes.text()):
+            parts = parameter_class.split(":", 2)
+            if len(parts) != 3:
+                continue
+            patterns = [pattern for pattern in parts[2].split("|") if pattern]
+            lines.extend(
+                [
+                    "",
+                    "[[parameter_classes]]",
+                    f'name = "{_toml_string(parts[0])}"',
+                    f'mode = "{_toml_string(parts[1])}"',
+                    "patterns = [" + ", ".join(f'"{_toml_string(pattern)}"' for pattern in patterns) + "]",
+                ]
+            )
+        return "\n".join(lines) + "\n"
 
     def _fill_semiexp_preview_table(self, preview) -> None:
         self.semiexp_preview_table.setRowCount(0)
@@ -542,7 +617,7 @@ class DashboardWindow(QMainWindow):
         xyz = self.semiexp_xyz.text().strip()
         obs_path = self.semiexp_observations.text().strip()
         if not xyz or not obs_path:
-            self._append_semiexp_text("\nselect parent XYZ and observations before this operation\n")
+            self._append_semiexp_text("\nselect parent geometry and observations before this operation\n")
             return None
         if not Path(obs_path).exists():
             self._append_semiexp_text(f"\nobservations file not found: {obs_path}\n")

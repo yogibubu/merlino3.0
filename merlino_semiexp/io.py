@@ -17,10 +17,12 @@ CSV_FIELDS = (
     "delta_B_MHz",
     "delta_C_MHz",
     "correction_source",
+    "correction_convention",
     "delta_elec_A_MHz",
     "delta_elec_B_MHz",
     "delta_elec_C_MHz",
     "electronic_correction_source",
+    "electronic_correction_convention",
     "substitutions",
     "sigma_A_MHz",
     "sigma_B_MHz",
@@ -94,12 +96,14 @@ def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:
                         float(row["delta_B_MHz"] or 0.0),
                         float(row["delta_C_MHz"] or 0.0),
                         source=str(row["correction_source"] or "unspecified"),
+                        convention=str(row.get("correction_convention") or "subtract"),
                     ),
                     electronic_correction=ElectronicCorrection(
                         float(row.get("delta_elec_A_MHz") or 0.0),
                         float(row.get("delta_elec_B_MHz") or 0.0),
                         float(row.get("delta_elec_C_MHz") or 0.0),
                         source=str(row.get("electronic_correction_source") or "unspecified"),
+                        convention=str(row.get("electronic_correction_convention") or "subtract"),
                     ),
                     substitutions=parse_substitutions(str(row["substitutions"] or "")),
                     weights=weights,
@@ -142,10 +146,12 @@ def write_observations_csv(path: Path, observations: tuple[IsotopologueObservati
                     "delta_B_MHz": f"{obs.correction.delta_B_MHz:.12g}",
                     "delta_C_MHz": f"{obs.correction.delta_C_MHz:.12g}",
                     "correction_source": obs.correction.source,
+                    "correction_convention": obs.correction.convention,
                     "delta_elec_A_MHz": f"{obs.electronic_correction.delta_A_MHz:.12g}",
                     "delta_elec_B_MHz": f"{obs.electronic_correction.delta_B_MHz:.12g}",
                     "delta_elec_C_MHz": f"{obs.electronic_correction.delta_C_MHz:.12g}",
                     "electronic_correction_source": obs.electronic_correction.source,
+                    "electronic_correction_convention": obs.electronic_correction.convention,
                     "substitutions": format_substitutions(obs.substitutions),
                     "sigma_A_MHz": _sigma_text(obs.weights.A_MHz) if obs.weights else "",
                     "sigma_B_MHz": _sigma_text(obs.weights.B_MHz) if obs.weights else "",
@@ -203,6 +209,7 @@ def _vibrational_from_mapping(item: dict) -> VibrationalCorrection:
         float(item.get("delta_B_MHz", 0.0)),
         float(item.get("delta_C_MHz", 0.0)),
         source=str(item.get("source", "unspecified")),
+        convention=str(item.get("convention", "subtract")),
     )
 
 
@@ -212,6 +219,7 @@ def _electronic_from_mapping(item: dict) -> ElectronicCorrection:
         float(item.get("delta_B_MHz", 0.0)),
         float(item.get("delta_C_MHz", 0.0)),
         source=str(item.get("source", "unspecified")),
+        convention=str(item.get("convention", "subtract")),
     )
 
 

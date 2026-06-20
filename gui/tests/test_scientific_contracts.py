@@ -20,6 +20,7 @@ from merlino_semiexp import (
     ParameterClassConstraint,
     QMParameterPredicate,
     RotationalConstants,
+    SEMIEXP_JOB_SCHEMA,
     SemiexperimentalFitRequest,
     VibrationalCorrection,
     corrected_constants_rows,
@@ -29,8 +30,10 @@ from merlino_semiexp import (
     parse_substitutions,
     preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
+    read_geometry_input,
     read_observations,
     read_observations_csv,
+    read_semiexperimental_job,
     semiexperimental_latex_tables,
     validate_semiexperimental_request,
     write_semiexperimental_html_report,
@@ -88,6 +91,15 @@ def test_semiexperimental_correction_subtracts_vibrational_delta():
     corrected = CorrectedRotationalConstants(observed, correction, electronic).equilibrium
 
     assert corrected.as_tuple() == (998.75, 801.5, 599.75)
+
+
+def test_semiexperimental_correction_can_use_msr_additive_convention():
+    observed = RotationalConstants(1000.0, 800.0, 600.0)
+    correction = VibrationalCorrection(1.0, 2.0, 3.0, source="MSR DBvib", convention="additive")
+    electronic = ElectronicCorrection(0.25, 0.5, 0.75, source="MSR DBEle", convention="additive")
+    corrected = CorrectedRotationalConstants(observed, correction, electronic).equilibrium
+
+    assert corrected.as_tuple() == pytest.approx((1001.25, 802.5, 603.75))
 
 
 def test_semiexperimental_fit_request_validation(tmp_path):
@@ -196,6 +208,163 @@ C_MHz = 500.0
     assert json_obs[0].corrected.C_MHz == pytest.approx(587.5)
 
 
+def test_semiexperimental_reads_gaussian_cartesian_com_and_modredundant_constraints(tmp_path):
+    gaussian_input = tmp_path / "water.com"
+    gaussian_input.write_text(
+        """
+#p hf/sto-3g opt=modredundant
+
+water constrained
+
+0 1
+O  0.00000000  0.00000000  0.00000000
+H  0.00000000  0.00000000  0.95720000
+H  0.92660000  0.00000000 -0.23960000
+
+B 1 2 F
+A 2 1 3 F
+""",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(gaussian_input)
+
+    assert geometry.source_format == "gaussian_cartesian_modredundant"
+    assert geometry.comment == "water constrained"
+    assert geometry.atoms == ("O", "H", "H")
+    assert geometry.coordinates_angstrom.shape == (3, 3)
+    assert "bond(1,2)" in geometry.fixed_parameters
+    assert "angle(2,1,3)" in geometry.fixed_parameters
+
+
+def test_semiexperimental_rejects_gaussian_zmatrix_com(tmp_path):
+    gaussian_input = tmp_path / "zmat.com"
+    gaussian_input.write_text(
+        """
+#p hf/sto-3g geom=coord=zmat
+
+old z-matrix input
+
+0 1
+C
+H 1 R1
+
+R1=1.09
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Cartesian coordinates"):
+        read_geometry_input(gaussian_input)
+
+
+def test_semiexperimental_reads_gaussian_cartesian_com_with_blank_title(tmp_path):
+    gaussian_input = tmp_path / "blank_title.com"
+    gaussian_input.write_text(
+        """
+#p hf/sto-3g
+
+
+0 1
+C 0.0 0.0 0.0
+H 0.0 0.0 1.0
+""",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(gaussian_input)
+
+    assert geometry.comment == "blank_title"
+    assert geometry.atoms == ("C", "H")
+
+
+def test_semiexperimental_reads_standard_job_toml(tmp_path):
+    observations = tmp_path / "isotopologues.toml"
+    observations.write_text(
+        """
+[[isotopologues]]
+label = "parent"
+[isotopologues.constants]
+A_MHz = 1000.0
+B_MHz = 800.0
+C_MHz = 600.0
+""",
+        encoding="utf-8",
+    )
+    job_path = tmp_path / "water.mse.toml"
+    job_path.write_text(
+        f"""
+schema = "{SEMIEXP_JOB_SCHEMA}"
+title = "water SE fit"
+
+[files]
+observations = "{observations.name}"
+
+[fit]
+observable = "moments"
+rotational_components = "auto"
+max_step = 0.2
+prune_condition = 0.0
+
+[geometry]
+units = "angstrom"
+atoms = [
+  ["O", 0.000000, 0.000000, 0.000000],
+  ["H", 0.000000, 0.000000, 0.957200],
+  ["H", 0.926600, 0.000000, -0.239600],
+]
+
+[constraints]
+modredundant = [
+  "B 1 2 F",
+]
+fixed_gic_patterns = ["angle(2,1,3)"]
+
+[[qm_predicates]]
+pattern = "GIC001"
+value = 1.0
+sigma = 0.1
+source = "test"
+
+[[parameter_classes]]
+name = "OH"
+mode = "shared"
+patterns = ["bond(1,2)", "bond(1,3)"]
+""",
+        encoding="utf-8",
+    )
+
+    job = read_semiexperimental_job(job_path)
+    geometry = read_geometry_input(job_path)
+
+    assert job.observations == observations
+    assert job.geometry.atoms == ("O", "H", "H")
+    assert geometry.source_format == "merlino_semiexp_job"
+    assert "bond(1,2)" in job.fixed_parameters
+    assert "angle(2,1,3)" in job.fixed_parameters
+    assert job.qm_predicates[0].source == "test"
+    assert job.parameter_classes[0].name == "OH"
+
+
+def test_semiexperimental_rejects_dummy_atoms_in_cartesian_com(tmp_path):
+    gaussian_input = tmp_path / "dummy.com"
+    gaussian_input.write_text(
+        """
+#p hf/sto-3g
+
+dummy atom
+
+0 1
+X 0.0 0.0 0.0
+C 0.0 0.0 1.0
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Invalid atom token"):
+        read_geometry_input(gaussian_input)
+
+
 def test_semiexperimental_substitution_parser():
     assert parse_substitutions("2:13;5:18;6:D;7:T") == {2: 13, 5: 18, 6: 2, 7: 3}
     with pytest.raises(ValueError):
@@ -223,16 +392,19 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     initial = target.copy()
     initial[1, 2] += 0.08
     initial[2, 0] -= 0.05
-    xyz = tmp_path / "water_initial.xyz"
-    xyz.write_text(
+    geometry_input = tmp_path / "water_initial.com"
+    geometry_input.write_text(
         "\n".join(
             [
-                "3",
+                "#p hf/sto-3g opt=modredundant",
+                "",
                 "distorted water",
+                "",
+                "0 1",
                 *[f"{atom} {x:.8f} {y:.8f} {z:.8f}" for atom, (x, y, z) in zip(atoms, initial)],
+                "",
             ]
-        )
-        + "\n",
+        ),
         encoding="utf-8",
     )
     parent_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, target)))
@@ -241,7 +413,7 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
         IsotopologueObservation("parent", parent_constants),
         IsotopologueObservation("D1", d1_constants, substitutions={2: 2}),
     )
-    request = SemiexperimentalFitRequest(xyz, observations)
+    request = SemiexperimentalFitRequest(geometry_input, observations)
     initial_rms = _rotconst_rms(atoms, initial, observations)
 
     result = fit_semiexperimental_geometry(request, max_iter=8, outdir=tmp_path / "semiexp")
@@ -268,16 +440,22 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert any(item.kind == "bond" and item.sigma_angstrom is not None for item in result.geometry_parameters)
     assert any(item.kind == "angle" and item.value_degree is not None for item in result.geometry_parameters)
     assert any(item.kind == "angle" and item.sigma_degree is not None for item in result.geometry_parameters)
+    assert len(result.rotational_constants) == 3 * len(observations)
+    assert any(item.component == "A" for item in result.rotational_constants)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_geometry_parameters.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_residuals.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_rotational_constants.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_covariance.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_correlation.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_hessian.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
+    rotconst_text = (tmp_path / "semiexp" / "semiexp_rotational_constants.csv").read_text(encoding="utf-8")
+    assert "corrected_experimental_MHz" in rotconst_text
+    assert "difference_MHz" in rotconst_text
 
 
 def test_semiexperimental_topological_dihedral_errors_are_propagated():
@@ -549,9 +727,11 @@ def test_semiexperimental_gic_preview_and_html_report(tmp_path):
     report_text = report.read_text(encoding="utf-8")
     assert "Merlino Semiexperimental Geometry Report" in report_text
     assert "Final Cartesian Geometry Parameters" in report_text
+    assert "Rotational Constants" in report_text
+    assert "Corrected experimental / MHz" in report_text
     assert "Angle or dihedral / degree" in report_text
     tables = semiexperimental_latex_tables(result)
-    assert {"parameters", "residuals", "kraitchman"} == set(tables)
+    assert {"parameters", "rotational_constants", "residuals", "kraitchman"} == set(tables)
     assert "\\begin{tabular}" in tables["parameters"]
 
 

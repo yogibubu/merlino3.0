@@ -28,9 +28,14 @@ class VibrationalCorrection:
     delta_B_MHz: float = 0.0
     delta_C_MHz: float = 0.0
     source: str = "unspecified"
+    convention: str = "subtract"
 
     def as_tuple(self) -> tuple[float, float, float]:
         return (self.delta_A_MHz, self.delta_B_MHz, self.delta_C_MHz)
+
+    @property
+    def sign(self) -> float:
+        return _correction_sign(self.convention)
 
 
 @dataclass(frozen=True)
@@ -41,9 +46,14 @@ class ElectronicCorrection:
     delta_B_MHz: float = 0.0
     delta_C_MHz: float = 0.0
     source: str = "unspecified"
+    convention: str = "subtract"
 
     def as_tuple(self) -> tuple[float, float, float]:
         return (self.delta_A_MHz, self.delta_B_MHz, self.delta_C_MHz)
+
+    @property
+    def sign(self) -> float:
+        return _correction_sign(self.convention)
 
 
 @dataclass(frozen=True)
@@ -59,7 +69,13 @@ class CorrectedRotationalConstants:
         a, b, c = self.observed.as_tuple()
         da, db, dc = self.correction.as_tuple()
         ea, eb, ec = self.electronic_correction.as_tuple()
-        return RotationalConstants(a - da - ea, b - db - eb, c - dc - ec)
+        vib_sign = self.correction.sign
+        elec_sign = self.electronic_correction.sign
+        return RotationalConstants(
+            a + vib_sign * da + elec_sign * ea,
+            b + vib_sign * db + elec_sign * eb,
+            c + vib_sign * dc + elec_sign * ec,
+        )
 
 
 @dataclass(frozen=True)
@@ -140,3 +156,12 @@ class SemiexperimentalFitRequest:
                 raise ValueError("QM predicate sigma must be positive")
         for parameter_class in self.parameter_classes:
             parameter_class.validate()
+
+
+def _correction_sign(convention: str) -> float:
+    text = str(convention or "subtract").strip().lower().replace("-", "_")
+    if text in {"subtract", "subtractive", "observed_minus_delta", "b0_minus_delta"}:
+        return -1.0
+    if text in {"add", "additive", "observed_plus_delta", "b0_plus_delta", "msr"}:
+        return 1.0
+    raise ValueError(f"Unknown semiexperimental correction convention: {convention}")
