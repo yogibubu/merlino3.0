@@ -16,7 +16,7 @@
 \begin{document}
 
 \begin{abstract}
-Semiexperimental equilibrium structures combine ground-state rotational constants with computed vibrational and electronic corrections, yielding structural references that are directly comparable with equilibrium quantum-chemical geometries. Existing refinement workflows demonstrated the power of nonlinear least-squares fits of moments of inertia, predicate observations, and graphical control, but still required substantial care in the construction and maintenance of the structural parameter set. Here we introduce a Cartesian generalized-internal-coordinate (GIC) formulation implemented in Merlino4. The input geometry is Cartesian, isotopologue data are provided as structured TOML, JSON, or CSV records, and the fitted variables are automatically generated non-redundant GICs with analytic Wilson $\mathbf{B}$ matrices. The solver fits moments of inertia by default, supports vibrational and electronic corrections, propagates experimental uncertainties to GIC parameters, includes soft quantum-mechanical predicates, and allows chemically meaningful classes of parameters to be refined together or kept fixed. A Kraitchman-coordinate diagnostic is generated for single-substitution isotopologues. The resulting workflow preserves the spectroscopic logic of molecular-structure refinement while removing user-dependent coordinate construction and making the entire procedure reproducible from both command line and graphical interfaces.
+Semiexperimental equilibrium structures combine ground-state rotational constants with computed vibrational and electronic corrections, yielding structural references that are directly comparable with equilibrium quantum-chemical geometries. Existing refinement workflows demonstrated the power of nonlinear least-squares fits of moments of inertia, predicate observations, and graphical control, but still required substantial care in the construction and maintenance of the structural parameter set. Here we introduce a Cartesian generalized-internal-coordinate (GIC) formulation implemented in Merlino4. The input geometry is Cartesian, isotopologue data are provided as structured TOML, JSON, or CSV records, and the fitted variables are generated automatically, reduced to a non-redundant set, and symmetrized after automatic point-group identification. Ring coordinates are built from endocyclic torsional coordinates and the analogous valence-angle combinations, not from Cremer-Pople variables. The solver fits moments of inertia by default, supports vibrational and electronic corrections, propagates experimental uncertainties to GIC parameters, includes soft quantum-mechanical predicates, and allows chemically meaningful classes of parameters to be refined together or kept fixed. A Kraitchman-coordinate diagnostic is generated for single-substitution isotopologues. The resulting workflow preserves the spectroscopic logic of molecular-structure refinement while removing user-dependent coordinate construction and making the entire procedure reproducible from both command line and graphical interfaces.
 \end{abstract}
 
 \section{Introduction}
@@ -25,7 +25,7 @@ Accurate equilibrium geometries are central to rotational spectroscopy, force-fi
 
 The MSR program represented an important step in this direction by combining nonlinear least-squares refinement of moments of inertia, advanced error analysis, predicate observations, automatic generation of symmetry-adapted internal coordinates, and a graphical interface.\cite{Mendolicchio2017MSR} That design established several principles that remain essential: the fit should be performed in a stable observable space, missing experimental information can be complemented by weighted predicates, and uncertainty propagation must be part of the standard output rather than a post-processing option.
 
-Merlino4 keeps these principles but changes the coordinate layer. The molecular structure is read as Cartesian coordinates, while the variables optimized in the least-squares problem are non-redundant generalized internal coordinates generated automatically from topology, rings, and symmetry information. This removes the need for user-defined coordinate templates and provides a common coordinate layer for Gaussian input generation, Wilson GF analysis, VPT2/VCI workflows, puckering coordinates, and semiexperimental refinement.
+Merlino4 keeps these principles but changes the coordinate layer. The molecular structure is read as Cartesian coordinates, while the variables optimized in the least-squares problem are generalized internal coordinates generated automatically from topology, rings, and symmetry information. As in other modern coordinate generators, the primitive coordinate list is built without manual intervention; the distinctive step is the subsequent reduction to a non-redundant active set and the symmetry adaptation obtained after automatic point-group identification. This provides a common coordinate layer for Gaussian input generation, Wilson GF analysis, VPT2/VCI workflows, ring-puckering paths, and semiexperimental refinement.
 
 The present article describes the new semiexperimental structure solver and its integration into the broader GIC infrastructure. Particular attention is paid to four extensions motivated by practical spectroscopy: grouped refinement of parameter classes such as CH stretches, blocking of poorly determined hydrogen-angle classes, explicit comparison with Kraitchman substitution coordinates, and complete graphical access to the same options available from the command line.
 
@@ -46,13 +46,17 @@ I_{\alpha}^{(s)} = \frac{K}{B_{\alpha,e}^{(s)}},
 \end{equation}
 where $K$ is the standard rotational conversion constant. Fitting moments avoids the reciprocal amplification that can occur when optimizing directly in rotational-constant space. Direct fits of rotational constants remain available for diagnostic comparisons, with automatic selection of the best-conditioned constant pair for planar molecules.
 
-\subsection{GIC Parameterization}
+\subsection{Automatic Non-Redundant and Symmetry-Adapted GIC Parameterization}
 
-Starting from the parent Cartesian geometry, Merlino constructs a molecular topology, primitive internal coordinates, and a non-redundant GIC transformation,
+Starting from the parent Cartesian geometry, Merlino constructs a molecular topology and a primitive internal-coordinate list automatically. This first construction step is deliberately similar in spirit to other black-box internal-coordinate generators: bonds, valence angles, linear bends, torsions, out-of-plane terms, and ring-local primitives are generated from the molecular graph. Merlino then performs two additional operations before the coordinates enter the least-squares model. First, the primitive set is reduced to a non-redundant GIC transformation,
 \begin{equation}
 \mathbf{q} = \mathbf{U}^{\mathrm{T}}\mathbf{s},
 \end{equation}
-where $\mathbf{s}$ is the vector of primitive stretches, bends, torsions, out-of-plane terms, ring coordinates, and other standard internal primitives. The same GIC machinery is used by the Merlino GF and Gaussian-input workflows, ensuring that structural refinement and vibrational analysis operate on consistent coordinates.
+where $\mathbf{s}$ is the vector of primitive coordinates. Second, the point group is identified from the Cartesian structure and used to symmetrize the non-redundant GICs without mixing different coordinate types. Stretches, bends, torsions, ring-valence combinations, and other coordinate families are therefore reduced and symmetrized within their own homogeneous blocks.
+
+For rings, Merlino does not use Cremer-Pople coordinates in the GIC layer. Ring puckering and ring deformation are represented by combinations of endocyclic dihedral angles and by analogous combinations of endocyclic valence angles. This choice keeps the variables in the same generalized-internal-coordinate algebra as the rest of the molecule and avoids switching to a separate ring-specific coordinate convention during structure refinement.
+
+The same GIC machinery is used by the Merlino GF and Gaussian-input workflows, ensuring that structural refinement and vibrational analysis operate on consistent coordinates.
 
 The Cartesian displacement associated with a GIC correction is obtained from the analytic Wilson matrix,
 \begin{equation}
@@ -106,12 +110,13 @@ The new implementation is directly inspired by the semiexperimental strategy and
 Feature & MSR & Merlino4 \\
 \midrule
 Structural input & user molecular model & Cartesian parent XYZ \\
-Fit coordinates & internal/symmetry coordinates & automatic non-redundant GICs \\
+Fit coordinates & internal/symmetry coordinates & automatic GICs, reduced to non-redundant symmetry-adapted blocks \\
 Observable target & moments of inertia & moments by default; constants optional \\
 Predicate observations & yes & yes, in GIC label space \\
 Parameter classes & limited/manual & shared or fixed GIC classes \\
 Kraitchman check & external/manual & generated diagnostic CSV \\
 GUI control & yes & same options as CLI, asynchronous jobs \\
+Ring coordinates & internal coordinate dependent & endocyclic dihedral and valence-angle combinations, not Cremer-Pople variables \\
 Cross-workflow reuse & structure refinement & GIC, GF/PED, VPT2/VCI, DVR interfaces \\
 \bottomrule
 \end{tabular}
@@ -119,11 +124,11 @@ Cross-workflow reuse & structure refinement & GIC, GF/PED, VPT2/VCI, DVR interfa
 
 \section{Planned Validation}
 
-The first validation set will include the molecules used in the MSR article where the required rotational data and vibrational corrections are available, followed by ring and fused-ring cases that stress automatic GIC generation. For each molecule we will report residuals in moments and rotational constants, fitted GIC parameters with propagated uncertainties, correlation matrices, stationary-point diagnostics, and Kraitchman comparisons for all single-substitution isotopologues.
+The first validation set will include the molecules used in the MSR article where the required rotational data and vibrational corrections are available, followed by ring and fused-ring cases that stress automatic GIC generation, non-redundant pruning, symmetry adaptation, and ring coordinates built from endocyclic torsions and valence angles. For each molecule we will report residuals in moments and rotational constants, fitted GIC parameters with propagated uncertainties, correlation matrices, stationary-point diagnostics, and Kraitchman comparisons for all single-substitution isotopologues.
 
 \section{Conclusions}
 
-Merlino4 provides a semiexperimental refinement workflow in which Cartesian input, automatic non-redundant GICs, analytic $\mathbf{B}$ matrices, robust least squares, predicate observations, class constraints, Kraitchman diagnostics, and GUI execution are part of one reproducible pipeline. The approach keeps the spectroscopic strengths of MSR while extending the coordinate model to the same GIC infrastructure used by the rest of Merlino.
+Merlino4 provides a semiexperimental refinement workflow in which Cartesian input, automatic GIC construction, non-redundant reduction, automatic symmetry adaptation, analytic $\mathbf{B}$ matrices, robust least squares, predicate observations, class constraints, Kraitchman diagnostics, and GUI execution are part of one reproducible pipeline. The approach keeps the spectroscopic strengths of MSR while extending the coordinate model to the same GIC infrastructure used by the rest of Merlino.
 
 \bibliography{references}
 

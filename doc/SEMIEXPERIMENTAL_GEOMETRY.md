@@ -15,7 +15,10 @@ coordinate ordering, dummy atoms, manually chosen dependent coordinates and
 molecule-specific parameter choices. The Merlino solver instead uses:
 
 - Cartesian parent geometry as the only structural input.
-- Automatic topology and non-redundant GIC generation.
+- Automatic topology and primitive GIC generation.
+- Reduction of the generated GICs to a non-redundant active set.
+- Automatic point-group identification and symmetry adaptation of the
+  non-redundant GICs within homogeneous coordinate families.
 - Analytic Wilson B matrix for standard internal primitives.
 - Weighted Levenberg-Marquardt least squares with adaptive damping.
 - Direct propagation of experimental uncertainties to GIC parameters.
@@ -181,21 +184,32 @@ the interface remains responsive during the least-squares fit.
 
 1. Read the parent XYZ geometry.
 2. Build topology and primitive internal coordinates.
-3. Build the non-redundant GIC transform used by Merlino GF workflows.
-4. Convert the selected observations to the fit target:
+3. Build the primitive GIC set automatically, as in other black-box internal
+   coordinate generators.
+4. Reduce the GIC set to a non-redundant transform and symmetrize it after
+   automatic point-group identification.
+5. For rings, use endocyclic dihedral combinations and analogous endocyclic
+   valence-angle combinations; Cremer-Pople variables are not used as GIC fit
+   coordinates.
+6. Convert the selected observations to the fit target:
    moments of inertia by default, rotational constants on request.
-5. Add optional QM predicates as weighted pseudo-observations.
-6. Compute the Jacobian of observables with respect to active GICs.
-7. Solve weighted LM normal equations with adaptive damping and step limiting.
-8. Back-transform GIC steps to Cartesian displacements using the analytic B
+7. Add optional QM predicates as weighted pseudo-observations.
+8. Compute the Jacobian of observables with respect to active GICs.
+9. Solve weighted LM normal equations with adaptive damping and step limiting.
+10. Back-transform GIC steps to Cartesian displacements using the analytic B
    matrix and reject steps that do not improve the weighted objective.
-9. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
+11. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
    the final geometry.
 
 The Wilson B matrix is analytic for Merlino's standard primitives: bonds,
 angles, linear bends, dihedrals and out-of-plane terms. Fragment coordinates
 retain their existing finite-difference fallback, but semiexperimental
 molecular GIC fits use connected molecular coordinates.
+
+The non-redundant and symmetrized GICs are built block-wise: stretches, valence
+angles, torsions, out-of-plane terms and ring-specific combinations are pruned
+and symmetrized within their own coordinate families. This prevents the
+least-squares variables from mixing physically different coordinate types.
 
 ## QM Predicates
 
