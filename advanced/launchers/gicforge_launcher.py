@@ -1,6 +1,6 @@
 import subprocess
-from pathlib import Path
 from .base_launcher import BaseLauncher, LauncherResult
+from merlino_fortran import resolve_backend
 
 
 class GICForgeLauncher(BaseLauncher):
@@ -14,9 +14,8 @@ class GICForgeLauncher(BaseLauncher):
 
         try:
             try:
-                exec_path = self.resolve_executable()
+                exec_path = resolve_backend("gicforge")
             except FileNotFoundError:
-                self.executable = "prova.x"
                 exec_path = self.resolve_executable()
 
             with logfile.open("w") as log:

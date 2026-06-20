@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import shutil
 
+from merlino_core.paths import repo_root
+
 
 class LauncherResult:
     def __init__(
@@ -22,7 +24,7 @@ class BaseLauncher:
     Base class for all Merlino launchers.
 
     Executable resolution order:
-    1. merlino3.0/bin/<executable>
+    1. Merlino repository bin/<executable>
     2. system PATH
     """
 
@@ -37,18 +39,14 @@ class BaseLauncher:
         """
         Resolve the executable path.
 
-        First look for Merlino internal executables in merlino3.0/bin,
-        then fallback to PATH.
+        First look for Merlino internal executables in bin/, then fallback to
+        PATH. New Fortran-specific wrappers live in `merlino_fortran`; this
+        method remains for generic launcher compatibility.
         """
-        # File position:
-        # merlino3.0/advanced/launchers/base_launcher.py
-        # parents[0] -> launchers
-        # parents[1] -> advanced
-        # parents[2] -> merlino3.0
-        repo_root = Path(__file__).resolve().parents[2]
+        root = repo_root(__file__)
 
         # 1. internal Merlino executable
-        local_exec = repo_root / "bin" / self.executable
+        local_exec = root / "bin" / self.executable
         if local_exec.exists():
             return local_exec
 
@@ -58,11 +56,10 @@ class BaseLauncher:
             return Path(path_exec)
 
         raise FileNotFoundError(
-            f"Executable '{self.executable}' not found in merlino3.0/bin or PATH"
+            f"Executable '{self.executable}' not found in {root / 'bin'} or PATH"
         )
 
     # ------------------------------------------------------------------
 
     def run(self) -> LauncherResult:
         raise NotImplementedError
-

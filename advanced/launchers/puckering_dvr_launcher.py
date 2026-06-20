@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QObject, QProcess, Signal
+from merlino_fortran import resolve_backend
 
 
 class PuckeringDVRLauncher(QObject):
@@ -20,7 +21,10 @@ class PuckeringDVRLauncher(QObject):
         self.dvr_root = self.repo_root / "puckering_dvr"
         self.script = self.dvr_root / "scripts" / "mw_path_dvr.py"
         self.fortran_bridge = self.dvr_root / "scripts" / "fortran_bridge" / "run_fortran_dvr.py"
-        self.fortran_exe = self.repo_root / "bin" / "path_dvr.x"
+        try:
+            self.fortran_exe = resolve_backend("dvr", root=self.repo_root)
+        except FileNotFoundError:
+            self.fortran_exe = self.repo_root / "bin" / "path_dvr.x"
         self.process = QProcess(self)
 
     def start_path_analysis(
