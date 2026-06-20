@@ -32,6 +32,8 @@ coordinates.
   non-redundant GIC/B matrix to GF frequencies and PED.
 - `merlino_vpt2_vci.vci`: product-basis VCI matrix elements and dense
   diagonalization for small spaces.
+- `merlino_vpt2_vci.vpt2`: VPT2 energies and VPT2/VCI comparison on the same
+  canonical QFF and mode-selection options.
 - `merlino_vpt2_vci.davidson`: independent symmetric Davidson diagonalizer
   using only `matvec` and an approximate diagonal.
 - `merlino_vpt2_vci.workflow`: Gaussian-FCHK to GF/VCI orchestration.
@@ -40,6 +42,8 @@ coordinates.
 
 - `fortran/vpt2_vci/gf_core.f`: independent GF helper.
 - `fortran/vpt2_vci/vci_core.f`: product-basis and dense VCI helpers.
+- `fortran/vpt2_vci/vpt2_core.f`: VPT2 helper for quartic first-order and cubic
+  second-order corrections on a supplied basis.
 - `fortran/vpt2_vci/davidson_core.f`: independent Davidson support routines.
 
 The Fortran code is fixed-form Fortran77 and receives arrays only. It is not a
@@ -84,6 +88,13 @@ computed by Merlino.
 
 The VCI result reports excitation energies, solved block metadata, expectation
 values of modal quanta for each final state, and dominant basis-state weights.
+
+## VPT2/VCI Comparison
+
+`compare_vpt2_vci` applies the same reduced-mode selection and pruning options
+to VPT2 and VCI, then reports absolute and excitation-energy differences. VPT2
+uses quartic terms at first order and cubic terms at second order in the same
+dimensionless normal-coordinate convention used by the VCI Hamiltonian.
 
 Large VCI spaces use the standalone Davidson contract. Gaussian/GDV routines
 are not dependencies or copy sources for Merlino4.

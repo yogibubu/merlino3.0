@@ -50,6 +50,7 @@ def test_vpt2_vci_inventory_records_active_backend_status():
         "davidson_core.f",
         "gf_core.f",
         "vci_core.f",
+        "vpt2_core.f",
     }
     assert inventory.davidson_backend is not None
     assert inventory.davidson_backend.name == "davidson_core.f"

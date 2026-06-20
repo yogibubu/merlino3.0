@@ -60,6 +60,7 @@ def test_vpt2_vci_source_compiles_to_objects():
     assert (root / "fortran" / "vpt2_vci" / "build" / "gf_core.o").exists()
     assert (root / "fortran" / "vpt2_vci" / "build" / "vci_core.o").exists()
     assert (root / "fortran" / "vpt2_vci" / "build" / "davidson_core.o").exists()
+    assert (root / "fortran" / "vpt2_vci" / "build" / "vpt2_core.o").exists()
 
 
 def test_vpt2_vci_fortran_controlled_basis_runtime(tmp_path):
@@ -115,6 +116,51 @@ def test_vpt2_vci_fortran_controlled_basis_runtime(tmp_path):
             "-ffixed-form",
             str(driver),
             str(root / "fortran" / "vpt2_vci" / "vci_core.f"),
+            "-o",
+            str(exe),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+
+
+def test_vpt2_fortran_quartic_runtime(tmp_path):
+    if shutil.which("gfortran") is None:
+        pytest.skip("gfortran is not available")
+    root = repo_root(Path(__file__))
+    driver = tmp_path / "test_vpt2.f"
+    driver.write_text(
+        """      Program TestVPT2
+      Integer Basis(1,1),C3Idx(3,1),C4Idx(4,1)
+      Double Precision Freq(1),C3Val(1),C4Val(1)
+      Double Precision E0(1),E1(1),E2(1),ETot(1)
+      Basis(1,1)=0
+      Freq(1)=100.0D0
+      C4Idx(1,1)=1
+      C4Idx(2,1)=1
+      C4Idx(3,1)=1
+      C4Idx(4,1)=1
+      C4Val(1)=4.0D0
+      Call M4VPT2Basis(1,1,Basis,Freq,0,C3Idx,C3Val,
+     $                 1,C4Idx,C4Val,E0,E1,E2,ETot)
+      If(Abs(E0(1)-50.0D0).gt.1.0D-8) Stop 20
+      If(Abs(E1(1)-3.0D0).gt.1.0D-8) Stop 21
+      If(Abs(E2(1)).gt.1.0D-8) Stop 22
+      If(Abs(ETot(1)-53.0D0).gt.1.0D-8) Stop 23
+      End
+""",
+        encoding="utf-8",
+    )
+    exe = tmp_path / "test_vpt2"
+    subprocess.run(
+        [
+            "gfortran",
+            "-std=legacy",
+            "-ffixed-form",
+            str(driver),
+            str(root / "fortran" / "vpt2_vci" / "vpt2_core.f"),
             "-o",
             str(exe),
         ],

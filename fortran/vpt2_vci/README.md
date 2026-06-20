@@ -10,6 +10,8 @@ VPT2/VCI backend. They are not copied from GDV.
   - `M4VCIBasis` keeps the simple total-quanta basis contract.
   - `M4VCIBasisCtl` adds per-mode min/max quanta and min/max total quanta for
     one-, two-, three- and four-mode excitation classes.
+- `vpt2_core.f`: small-space VPT2 helper using quartic first-order and cubic
+  second-order corrections on a supplied basis.
 - `davidson_core.f`: independent Davidson support routines based only on
   residual vectors, diagonals and orthogonalization.
 

@@ -40,6 +40,15 @@ from .vci import (
     solve_vci_from_anharmonic_input,
     zero_anharmonic_force_field,
 )
+from .vpt2 import (
+    VPT2Result,
+    VPT2State,
+    VPT2VCIComparison,
+    compare_vpt2_vci,
+    compare_vpt2_vci_from_anharmonic_input,
+    solve_vpt2,
+    solve_vpt2_from_anharmonic_input,
+)
 from .workflow import VPT2VCIRun, run_python_vci_from_gaussian_fchk
 
 __all__ = [
@@ -60,8 +69,13 @@ __all__ = [
     "VCIStateContribution",
     "VPT2VCIInventory",
     "VPT2VCIRun",
+    "VPT2Result",
+    "VPT2State",
+    "VPT2VCIComparison",
     "anharmonic_input_from_gaussian_fchk",
     "build_vci_hamiltonian",
+    "compare_vpt2_vci",
+    "compare_vpt2_vci_from_anharmonic_input",
     "davidson_lowest",
     "force_field_from_anharmonic_input",
     "generate_vibrational_basis",
@@ -79,6 +93,8 @@ __all__ = [
     "run_python_vci_from_gaussian_fchk",
     "solve_vci",
     "solve_vci_from_anharmonic_input",
+    "solve_vpt2",
+    "solve_vpt2_from_anharmonic_input",
     "solve_wilson_gf",
     "zero_anharmonic_force_field",
 ]

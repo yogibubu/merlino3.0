@@ -6,6 +6,7 @@ from merlino_vpt2_vci import (
     QuarticForceField,
     AnharmonicInput,
     VCIOptions,
+    compare_vpt2_vci,
     davidson_lowest,
     generate_vibrational_basis,
     gf_from_gaussian_fchk_with_merlino_gics,
@@ -17,6 +18,7 @@ from merlino_vpt2_vci import (
     run_python_vci_from_gaussian_fchk,
     solve_vci,
     solve_vci_from_anharmonic_input,
+    solve_vpt2_from_anharmonic_input,
     solve_wilson_gf,
     zero_anharmonic_force_field,
 )
@@ -194,6 +196,44 @@ def test_vci_per_mode_and_excitation_class_limits():
     assert (1, 1, 1) in basis
     assert (2, 1, 1) not in basis
     assert all(state[1] <= 2 and state[2] <= 1 for state in basis)
+
+
+def test_vpt2_quartic_first_order_matches_ground_state_shift():
+    result = solve_vpt2_from_anharmonic_input(
+        AnharmonicInput(
+            harmonic_frequencies_cm=np.array([100.0]),
+            anharmonic_frequencies_cm=np.array([]),
+            cubic_cm={},
+            quartic_cm={(0, 0, 0, 0): 4.0},
+        ),
+        max_quanta=0,
+    )
+
+    assert np.allclose(result.energies_cm, [53.0])
+    assert np.allclose(result.states[0].first_order_cm, 3.0)
+
+
+def test_vpt2_vci_comparison_uses_same_reduced_mode_selection():
+    qff = QuarticForceField(
+        harmonic_frequencies_cm=np.array([500.0, 1000.0, 1500.0]),
+        cubic_cm={(1, 1, 2): -2.0, (0, 1, 1): 100.0},
+        quartic_cm={(1, 1, 1, 1): 0.8, (2, 2, 2, 2): 0.5, (0, 0, 1, 1): 200.0},
+    )
+    options = VCIOptions(
+        active_modes=(1, 2),
+        mode_max_quanta=(0, 3, 2),
+        excitation_class_limits={1: (1, 2), 2: (2, 3)},
+        force_constant_threshold_cm=1.0,
+    )
+
+    comparison = compare_vpt2_vci(qff, max_quanta=3, n_roots=4, options=options)
+
+    assert comparison.vpt2.basis == comparison.vci.basis[: len(comparison.vpt2.basis)]
+    assert all(len(state) == 2 for state in comparison.vpt2.basis)
+    assert all(state[0] <= 3 and state[1] <= 2 for state in comparison.vpt2.basis)
+    assert (0, 0) in comparison.vpt2.basis
+    assert comparison.energy_differences_cm.shape == (4,)
+    assert np.max(np.abs(comparison.excitation_differences_cm)) < 20.0
 
 
 def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
