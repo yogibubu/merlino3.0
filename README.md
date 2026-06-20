@@ -106,5 +106,9 @@ python -m merlino vci --qff field.qff --max-quanta 3 --roots 6 --csv-dir csv
 python -m merlino gic --workdir working
 python -m merlino gaussian-summary calc.log
 python -m merlino backends
+python -m merlino compare-backends
 python -m merlino dvr-args --repo-root . --log scan.log --outdir out --figdir fig
 ```
+
+See `doc/DEVELOPER_WORKFLOW.md` for the service/CLI/GUI/manifest contract used
+by new workflows.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from merlino_vpt2_vci import (
     QuarticForceField,
     AnharmonicInput,
     VCIOptions,
+    ScientificValidationError,
     compare_vpt2_vci,
     davidson_lowest,
     generate_vibrational_basis,
@@ -23,6 +25,7 @@ from merlino_vpt2_vci import (
     solve_vci_from_anharmonic_input,
     solve_vpt2_from_anharmonic_input,
     solve_wilson_gf,
+    validate_force_field,
     zero_anharmonic_force_field,
 )
 
@@ -281,3 +284,14 @@ def test_gui_service_reports_are_independent_from_qt(tmp_path):
 
     assert "VPT2/VCI comparison" in report.text
     assert len(report.comparison.vci.basis) >= 3
+
+
+def test_force_field_validation_rejects_bad_modes():
+    qff = QuarticForceField(
+        harmonic_frequencies_cm=np.array([1000.0]),
+        cubic_cm={(0, 0, 2): 1.0},
+        quartic_cm={},
+    )
+
+    with pytest.raises(ScientificValidationError):
+        validate_force_field(qff)

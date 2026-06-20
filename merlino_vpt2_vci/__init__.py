@@ -1,5 +1,7 @@
 """VPT2/VCI contracts for Merlino4."""
 
+from merlino_core import ScientificValidationError
+
 from .contracts import (
     DavidsonSettings,
     ForceFieldSource,
@@ -39,6 +41,7 @@ from .gui_service import (
     vpt2_vci_csv_tables,
     write_csv_tables,
 )
+from .validation import validate_force_field
 from .vci import (
     QuarticForceField,
     VCIBlockInfo,
@@ -75,6 +78,7 @@ __all__ = [
     "HessianInput",
     "PEDTable",
     "QuarticForceField",
+    "ScientificValidationError",
     "VCIBlockInfo",
     "VCIOptions",
     "VCIRequest",
@@ -112,6 +116,7 @@ __all__ = [
     "run_python_vci_from_gaussian_fchk",
     "run_vpt2_vci_report",
     "vpt2_vci_csv_tables",
+    "validate_force_field",
     "write_csv_tables",
     "solve_vci",
     "solve_vci_from_anharmonic_input",

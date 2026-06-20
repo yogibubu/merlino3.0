@@ -144,6 +144,9 @@ class VPT2VCIWindow(QMainWindow):
         self.run_vpt2_vci_button = QPushButton("Run VPT2 / VCI")
         self.run_vpt2_vci_button.clicked.connect(self.run_vpt2_vci)
         row_run.addWidget(self.run_vpt2_vci_button)
+        preview_cli_button = QPushButton("Preview CLI")
+        preview_cli_button.clicked.connect(self.preview_cli_command)
+        row_run.addWidget(preview_cli_button)
         row_run.addStretch()
         vci_layout.addLayout(row_run)
         layout.addWidget(vci_group)
@@ -202,6 +205,22 @@ class VPT2VCIWindow(QMainWindow):
         qff_path = self._optional_existing_path(self.qff_edit.text())
         fchk_path = self._optional_existing_path(self.fchk_edit.text())
         return load_force_field(fchk_path=fchk_path, qff_path=qff_path)
+
+    def preview_cli_command(self) -> None:
+        qff = self.qff_edit.text().strip()
+        fchk = self.fchk_edit.text().strip()
+        max_quanta = self.max_quanta_edit.text().strip() or "2"
+        roots = self.roots_edit.text().strip() or "6"
+        parts = ["python -m merlino vci"]
+        if qff:
+            parts.append(f"--qff {qff}")
+        if fchk:
+            parts.append(f"--fchk {fchk}")
+        parts.extend([f"--max-quanta {max_quanta}", f"--roots {roots}"])
+        active = self.active_modes_edit.text().strip()
+        if active:
+            parts.append(f"--active-modes {active}")
+        self.output_text.setPlainText("Equivalent CLI:\n" + " ".join(parts))
 
     def _vci_options(self) -> VCIOptions:
         return VCIOptions(

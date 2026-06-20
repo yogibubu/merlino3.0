@@ -77,3 +77,14 @@ def test_dvr_window_refreshes_result_preview(tmp_path, qtbot):
     assert "puckering_dvr_summary.txt" in text
     assert "state,energy_cm-1" in text
     assert "puckering_dvr_potential_levels.pdf" in text
+
+
+@pytest.mark.usefixtures("qtbot")
+def test_dvr_window_previews_cli(tmp_path, qtbot):
+    window = DVRWindow(tmp_path, tmp_path)
+    qtbot.addWidget(window)
+    window.preview_cli_command()
+
+    text = window.output_text.toPlainText()
+    assert "python -m merlino dvr-args" in text
+    assert "--solver fourier" in text

@@ -10,7 +10,15 @@ from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
 from merlino_gaussian import summarize_gaussian_log
 from merlino_gic import run_gicforge
-from merlino_vpt2_vci import VCIOptions, load_force_field, run_gf_report_from_fchk, run_vpt2_vci_report, write_csv_tables
+from merlino_vpt2_vci import (
+    QuarticForceField,
+    VCIOptions,
+    load_force_field,
+    run_gf_report_from_fchk,
+    run_vpt2_vci_report,
+    solve_vci,
+    write_csv_tables,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("log", type=Path)
 
     sub.add_parser("backends", help="Show configured backend availability")
+    sub.add_parser("compare-backends", help="Run small backend consistency checks")
 
     dvr = sub.add_parser("dvr-args", help="Build DVR command args and manifest without executing")
     dvr.add_argument("--repo-root", type=Path, required=True)
@@ -169,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"input_orientation_count: {summary.input_orientation_count}")
         print(f"scan_marker_count: {summary.scan_marker_count}")
         print(f"puckering_marker_count: {summary.puckering_marker_count}")
+        print(f"frequency_count: {len(summary.frequencies_cm)}")
+        print(f"last_orientation_atoms: {len(summary.last_orientation)}")
         return 0
 
     if args.command == "backends":
@@ -191,6 +202,25 @@ def main(argv: list[str] | None = None) -> int:
         gaussian = shutil.which(load_config().gaussian_executable)
         print(f"gaussian: {'available' if gaussian else 'missing'} ({gaussian or load_config().gaussian_executable})")
         return 0
+
+    if args.command == "compare-backends":
+        import numpy as np
+
+        qff = QuarticForceField(
+            harmonic_frequencies_cm=np.array([1000.0, 1500.0]),
+            cubic_cm={(0, 0, 1): -2.0},
+            quartic_cm={(0, 0, 0, 0): 0.8},
+        )
+        dense = solve_vci(qff, max_quanta=3, n_roots=3, method="dense")
+        davidson = solve_vci(qff, max_quanta=3, n_roots=3, method="davidson")
+        delta = float(np.max(np.abs(dense.energies_cm - davidson.energies_cm)))
+        print(f"python_dense_vs_davidson_max_delta_cm-1: {delta:.6g}")
+        try:
+            source = resolve_source_backend("vpt2_vci")
+            print(f"fortran_vpt2_vci_source: available ({source})")
+        except Exception as exc:
+            print(f"fortran_vpt2_vci_source: missing ({exc})")
+        return 0 if delta < 1.0e-6 else 1
 
     return 2
 

@@ -104,6 +104,21 @@ def test_vpt2_vci_window_runs_comparison_from_indexed_qff(tmp_path, qtbot):
 
 
 @pytest.mark.usefixtures("qtbot")
+def test_vpt2_vci_window_previews_cli(tmp_path, qtbot):
+    window = VPT2VCIWindow(tmp_path, tmp_path)
+    qtbot.addWidget(window)
+    window.qff_edit.setText(str(tmp_path / "field.qff"))
+    window.max_quanta_edit.setText("3")
+    window.roots_edit.setText("5")
+
+    window.preview_cli_command()
+
+    text = window.output_text.toPlainText()
+    assert "python -m merlino vci" in text
+    assert "--max-quanta 3" in text
+
+
+@pytest.mark.usefixtures("qtbot")
 def test_vpt2_vci_window_exports_report_and_roundtrips_preset(tmp_path, qtbot):
     window = VPT2VCIWindow(tmp_path, tmp_path)
     qtbot.addWidget(window)

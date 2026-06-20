@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from advanced.launchers.gaussian_launcher import GaussianLauncher
 from advanced.launchers.puckering_dvr_launcher import PuckeringDVRLauncher
 
@@ -176,6 +177,9 @@ class DVRWindow(QMainWindow):
         self.run_button = QPushButton("Run DVR")
         self.run_button.clicked.connect(self.run_dvr)
         actions.addWidget(self.run_button)
+        preview_cli = QPushButton("Preview CLI")
+        preview_cli.clicked.connect(self.preview_cli_command)
+        actions.addWidget(preview_cli)
 
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.close)
@@ -250,6 +254,32 @@ class DVRWindow(QMainWindow):
             self.solver_combo.currentText(),
             compute_rotconst=self.rotconst_check.isChecked(),
             label_cremer_pople=self.cremer_check.isChecked(),
+        )
+
+    def preview_cli_command(self) -> None:
+        request = self._current_dvr_request(check_only=False)
+        args = build_path_analysis_args(request)
+        self.output_text.setPlainText(
+            "Equivalent CLI:\n"
+            f"python -m merlino dvr-args --repo-root {self.repo_root} --log {request.log_path} "
+            f"--outdir {request.outdir} --figdir {request.figdir} --prefix {request.normalized_prefix} "
+            f"--boundary {request.boundary} --solver {request.solver}\n\n"
+            "Backend command:\n"
+            f"{request.python_executable} {' '.join(args)}"
+        )
+
+    def _current_dvr_request(self, *, check_only: bool = False) -> DVRRequest:
+        return DVRRequest(
+            repo_root=self.repo_root,
+            log_path=Path(self.log_edit.text().strip()).expanduser(),
+            outdir=Path(self.outdir_edit.text().strip()).expanduser(),
+            figdir=Path(self.figdir_edit.text().strip()).expanduser(),
+            prefix=self.prefix_edit.text().strip() or "puckering_dvr",
+            boundary=self.boundary_combo.currentText(),
+            solver=self.solver_combo.currentText(),
+            compute_rotconst=self.rotconst_check.isChecked(),
+            label_cremer_pople=self.cremer_check.isChecked(),
+            check_only=check_only,
         )
 
     def _on_finished(self, success: bool, message: str) -> None:
@@ -409,6 +439,11 @@ class DVRWindow(QMainWindow):
         }
         path = outdir / f"{prefix}_dvr_run_manifest.json"
         path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        try:
+            request = self._current_dvr_request()
+            write_dvr_manifest(request, list(args), status="started")
+        except Exception:
+            pass
         return path
 
     def _result_paths(self) -> dict[str, Path | list[Path]]:

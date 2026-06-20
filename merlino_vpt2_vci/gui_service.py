@@ -10,6 +10,7 @@ import numpy as np
 from .gaussian_qff import anharmonic_input_from_gaussian_fchk, hessian_input_from_gaussian_fchk, read_indexed_qff_text
 from .internal_gf import InternalGFResult, gf_from_hessian_input_with_merlino_gics
 from .vci import QuarticForceField, VCIOptions, force_field_from_anharmonic_input
+from .validation import validate_force_field
 from .vpt2 import VPT2VCIComparison, compare_vpt2_vci
 
 
@@ -64,6 +65,7 @@ def run_vpt2_vci_report(
     options: VCIOptions | None = None,
 ) -> VPT2VCIReport:
     """Run VPT2/VCI on a canonical force field and return a formatted report."""
+    validate_force_field(force_field)
     comparison = compare_vpt2_vci(force_field, max_quanta=max_quanta, n_roots=roots, options=options)
     return VPT2VCIReport(force_field, comparison, format_vpt2_vci_report(force_field, comparison))
 

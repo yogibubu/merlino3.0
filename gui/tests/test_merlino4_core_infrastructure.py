@@ -5,6 +5,7 @@ import json
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_core.cli import main as merlino_cli
 from merlino_gaussian import summarize_gaussian_log
+from merlino_gui import discover_manifests
 
 
 def test_workspace_config_and_manifest_contracts(tmp_path):
@@ -42,7 +43,15 @@ def test_gaussian_log_summary_parser(tmp_path):
         "\n".join(
             [
                 " Standard orientation:",
+                " ---------------------------------------------------------------------",
+                " Center     Atomic      Atomic             Coordinates (Angstroms)",
+                " Number     Number       Type             X           Y           Z",
+                " ---------------------------------------------------------------------",
+                "      1          8           0        0.000000    0.000000    0.000000",
+                "      2          1           0        0.000000    0.000000    0.960000",
+                " ---------------------------------------------------------------------",
                 " SCF Done:  E(RB3LYP) = -76.123456 A.U.",
+                " Frequencies -- 1000.0 1500.0 2000.0",
                 " QPck001 PhiP001 RPck001",
                 " Normal termination of Gaussian 16",
             ]
@@ -56,6 +65,8 @@ def test_gaussian_log_summary_parser(tmp_path):
     assert summary.scf_energies_hartree == (-76.123456,)
     assert summary.standard_orientation_count == 1
     assert summary.puckering_marker_count == 3
+    assert summary.frequencies_cm == (1000.0, 1500.0, 2000.0)
+    assert len(summary.last_orientation) == 2
 
 
 def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
@@ -141,3 +152,16 @@ def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):
     )
     assert merlino_cli(["gaussian-summary", str(log)]) == 0
     assert merlino_cli(["backends"]) == 0
+    assert merlino_cli(["compare-backends"]) == 0
+
+
+def test_manifest_discovery(tmp_path):
+    run_dir = tmp_path / "runs" / "demo"
+    run_dir.mkdir(parents=True)
+    manifest = build_run_manifest(workflow="demo", status="completed", run_dir=run_dir)
+    path = manifest.write()
+
+    entries = discover_manifests(tmp_path)
+
+    assert entries[0].path == path
+    assert entries[0].workflow == "demo"

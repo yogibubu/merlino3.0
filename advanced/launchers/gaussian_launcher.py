@@ -1,5 +1,6 @@
 from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, Signal
+from merlino_core import load_config
 from merlino_gaussian import (
     GAUSSIAN_EXECUTABLE,
     GaussianInputError,
@@ -16,10 +17,11 @@ class GaussianLauncher(QObject):
 
     finished = Signal(bool, str)  # success, message
 
-    def __init__(self, workdir: Path, parent=None):
+    def __init__(self, workdir: Path, parent=None, executable: str | None = None):
         super().__init__(parent)
         self.workdir = Path(workdir)
         self.process = QProcess(self)
+        self.executable = executable or load_config(workdir=self.workdir).gaussian_executable or GAUSSIAN_EXECUTABLE
 
     def _select_log_path(self):
         """
@@ -41,7 +43,7 @@ class GaussianLauncher(QObject):
         self.process.errorOccurred.connect(self._on_error)
 
         # Start Gaussian in background
-        self.process.start(GAUSSIAN_EXECUTABLE, [str(gauin)])
+        self.process.start(self.executable, [str(gauin)])
 
         if not self.process.waitForStarted(3000):
             self.finished.emit(False, "Failed to start Gaussian process")

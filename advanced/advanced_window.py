@@ -13,6 +13,8 @@ from PySide6.QtCore import Qt
 import numpy as np
 from PySide6.QtGui import QPixmap
 
+from merlino_core import ensure_workspace, load_config
+
 # Merlino / QM
 from advanced.provin_writer import ProvinWriter
 from advanced.launchers.gicforge_launcher import GICForgeLauncher
@@ -54,6 +56,8 @@ class AdvancedWindow(QMainWindow):
         self.xyzin = self.workdir / "xyzin"
         self.project_name = None
         self.project_out_dir = None
+        self.config = load_config(workdir=self.workdir)
+        self.workspace = None
 
         self.kwd_widgets = {}
 
@@ -190,6 +194,7 @@ class AdvancedWindow(QMainWindow):
         self.project_name = name
         self.project_out_dir = base / name
         self.project_out_dir.mkdir(parents=True, exist_ok=True)
+        self.workspace = ensure_workspace(self.project_out_dir)
 
     def _get_merlino_fit_root(self) -> Path:
         root = self.project_root / "merlino_fit"
@@ -519,8 +524,8 @@ class AdvancedWindow(QMainWindow):
 
         gauin = self.workdir / "gauin.gjf"
         with gauin.open("w") as fh:
-            fh.write("%Nprocshared=8\n")
-            fh.write("%Mem=32GB\n")
+            fh.write(f"%Nprocshared={self.config.gaussian_nproc}\n")
+            fh.write(f"%Mem={self.config.gaussian_memory}\n")
             fh.write("%chk=gauin.chk\n")
             fh.write(route + "\n\n")
             fh.write(title + "\n\n")
@@ -744,7 +749,7 @@ class AdvancedWindow(QMainWindow):
     # ==============================================================
 
     def run_gaussian(self):
-        self.gaussian_launcher = GaussianLauncher(self.workdir, parent=self)
+        self.gaussian_launcher = GaussianLauncher(self.workdir, parent=self, executable=self.config.gaussian_executable)
         self.gaussian_launcher.finished.connect(self._on_gaussian_finished)
 
         self.gaussian_launcher.start()

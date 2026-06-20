@@ -8,12 +8,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QPushButton,
     QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from .manifest_browser import ManifestBrowserWindow
 from .workflow_registry import WorkflowSpec, default_workflows
 
 
@@ -47,6 +49,10 @@ class DashboardWindow(QMainWindow):
         self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.status_label)
 
+        manifest_button = QPushButton("Open Manifest Browser")
+        manifest_button.clicked.connect(self.open_manifest_browser)
+        layout.addWidget(manifest_button)
+
         splitter = QSplitter(Qt.Horizontal)
         layout.addWidget(splitter, stretch=1)
 
@@ -67,6 +73,12 @@ class DashboardWindow(QMainWindow):
         self.workflow_list.currentItemChanged.connect(self._show_workflow)
         if self.workflow_list.count():
             self.workflow_list.setCurrentRow(0)
+
+    def open_manifest_browser(self) -> None:
+        self.manifest_browser = ManifestBrowserWindow(self.workdir, parent=self)
+        self.manifest_browser.show()
+        self.manifest_browser.raise_()
+        self.manifest_browser.activateWindow()
 
     def _show_workflow(self, current: QListWidgetItem | None, previous=None) -> None:
         if current is None:
