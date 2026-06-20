@@ -79,7 +79,8 @@ Repository layout:
   GIC ridondanti/non ridondanti, puo scrivere la matrice B, produce output
   leggibile e input Gaussian; orchestrazione, RDKit, DVR e post-processing
   restano in Python
-- note storiche root spostate in `doc/legacy/`
+- note storiche root non duplicate in Merlino4: restano nel checkout congelato
+  di Merlino3.0
 - report voluminosi spostati in `doc/reports/`
 
 Verifiche minime fatte

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from merlino_core import repo_root
 from merlino_semiexp import (
     CorrectedRotationalConstants,
     IsotopologueObservation,
@@ -14,7 +13,8 @@ from merlino_semiexp import (
     read_observations_csv,
     write_observations_csv,
 )
-from merlino_vpt2_vci import DavidsonSettings, ForceFieldSource, VCIRequest, inventory_legacy_fortran
+from merlino_core import repo_root
+from merlino_vpt2_vci import DavidsonSettings, ForceFieldSource, VCIRequest, inventory_vpt2_vci_backends
 
 
 def test_davidson_settings_validation():
@@ -37,11 +37,11 @@ def test_vci_request_validation(tmp_path):
         VCIRequest(force_field=ForceFieldSource(tmp_path / "qff.log"), max_quanta=0).validate()
 
 
-def test_vpt2_vci_inventory_records_legacy_vci1d():
-    inventory = inventory_legacy_fortran(repo_root(__file__))
-    assert inventory.legacy_vci1d is not None
-    assert inventory.legacy_vci1d.name == "vci1d.f"
-    assert inventory.notes
+def test_vpt2_vci_inventory_records_active_backend_status():
+    inventory = inventory_vpt2_vci_backends(repo_root(__file__))
+    assert inventory.active_fortran_sources == ()
+    assert inventory.davidson_backend is None
+    assert "Davidson" in " ".join(inventory.notes)
 
 
 def test_semiexperimental_correction_subtracts_vibrational_delta():

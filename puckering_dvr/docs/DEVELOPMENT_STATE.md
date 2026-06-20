@@ -24,9 +24,9 @@ likely future split is:
 - two-dimensional product-basis solvers;
 - command-line and graphical user interfaces.
 
-The `scripts/legacy_thf` directory contains earlier tetrahydrofuran benchmark
-helpers. They are kept for provenance and comparison, but new development should
-use `scripts/mw_path_dvr.py` as the reference implementation.
+Earlier tetrahydrofuran benchmark helpers are kept in the frozen Merlino3.0
+tree. New development should use `scripts/mw_path_dvr.py` as the reference
+implementation.
 
 ## Implemented Features
 

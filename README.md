@@ -37,13 +37,13 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
   generation, and related tests.
 - `puckering_dvr/`: vendored DVR backend. It consumes completed Gaussian outputs
   and does not generate Gaussian paths.
-- `fortran/`: Fortran backends and legacy numerical programs. Active GICForge
-  source is under `fortran/gicforge/`.
+- `fortran/`: active Fortran backends. GICForge lives under
+  `fortran/gicforge/`; the DVR kernel lives under `fortran/dvr/`.
 - `bin/`: runnable binaries used by launchers, such as `gicforge.x`.
 - `projects/`: local project/library data ignored by git.
 - `working/`: runtime working directory ignored by git.
-- `doc/`: architecture notes, freeze notes, reports, manuals, and legacy root
-  notes.
+- `doc/`: architecture notes, freeze notes, reports, manuals, and current
+  developer documentation.
 - `scripts/`: smoke scripts and maintenance utilities.
 
 ## Validation

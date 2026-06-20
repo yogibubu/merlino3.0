@@ -53,21 +53,25 @@ class VCIRequest:
 
 @dataclass(frozen=True)
 class VPT2VCIInventory:
-    """Current Fortran VPT2/VCI code discovered in the Merlino tree."""
+    """Current VPT2/VCI backend status discovered in the Merlino4 tree."""
 
-    legacy_vci1d: Path | None
+    active_fortran_sources: tuple[Path, ...]
+    davidson_backend: Path | None
     notes: tuple[str, ...]
 
 
-def inventory_legacy_fortran(repo_root: Path) -> VPT2VCIInventory:
-    """Record what VPT2/VCI Fortran exists before implementing new kernels."""
+def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
+    """Record active VPT2/VCI kernels available in Merlino4."""
     root = Path(repo_root)
-    legacy_vci1d = root / "fortran" / "legacy" / "vibrational" / "vci1d.f"
+    source_dir = root / "fortran" / "vpt2_vci"
+    sources = tuple(sorted(source_dir.glob("*.f"))) if source_dir.exists() else ()
+    davidson = source_dir / "davidson.f"
     notes = [
-        "Current tree contains a legacy one-dimensional VCI driver.",
-        "Full quartic-field VPT2/VCI backend and Davidson diagonalizer are not active yet.",
+        "No active quartic-field VPT2/VCI Fortran backend is present in Merlino4 yet.",
+        "The Davidson diagonalizer still has to be implemented before large VCI production runs.",
     ]
     return VPT2VCIInventory(
-        legacy_vci1d=legacy_vci1d if legacy_vci1d.exists() else None,
+        active_fortran_sources=sources,
+        davidson_backend=davidson if davidson.exists() else None,
         notes=tuple(notes),
     )

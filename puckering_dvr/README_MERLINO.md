@@ -6,8 +6,8 @@ from:
 `/Users/vincenzobarone/Desktop/puckering_dvr_github`
 
 The Merlino copy intentionally includes code, documentation and runnable
-examples, but excludes the source `.git` directory, the legacy zip package and
-the bibliography PDFs. Those files are not needed at runtime.
+examples, but excludes source-control archives and bibliography PDFs. Those
+files are not needed at runtime.
 
 ## Merlino Flow
 

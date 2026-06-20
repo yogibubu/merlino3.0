@@ -57,8 +57,8 @@ they can evolve independently.
 - Root smoke scripts moved under `scripts/`:
   - `scripts/smoke_geometry_pipeline.py`
   - `scripts/smoke_advanced_window.py`
-- References updated (`doc/legacy/readme_rotvib`,
-  `doc/legacy/FREEZE_NOTES_2026-02-04.md`).
+- Historical Merlino3 root notes removed from the Merlino4 source tree; use
+  the frozen Merlino3.0 checkout for that archive.
 
 ## Test Stability
 - Sign/format-robust regression checks added for GIC output in:
@@ -69,8 +69,7 @@ they can evolve independently.
 ## Path DVR / Puckering Integration
 - Runtime copy imported under `puckering_dvr/` from
   `/Users/vincenzobarone/Desktop/puckering_dvr_github`.
-- The imported copy excludes source `.git`, legacy zip package, and
-  bibliography PDFs.
+- The imported copy excludes source-control archives and bibliography PDFs.
 - The main toolbar exposes a dedicated `DVR` window.
 - The window runs `puckering_dvr/scripts/mw_path_dvr.py` on any Gaussian
   optimized scan/path log and writes DVR outputs/figures under the selected

@@ -107,7 +107,7 @@ coordinate families:
 - linear bend
 - torsion
 
-The implementation is in `fortran/symmetry/gic_type_symmetry.f` and is called
+The implementation is in `fortran/gicforge/gic_type_symmetry.f` and is called
 from `fortran/gicforge/dina25.f`. It only acts on generic one-term coordinates
 and only groups coordinates with the same family and compatible atomic-number
 signature. Specialized ring/puckering/butterfly coordinates are left unchanged.

@@ -5,7 +5,7 @@ from .contracts import (
     ForceFieldSource,
     VCIRequest,
     VPT2VCIInventory,
-    inventory_legacy_fortran,
+    inventory_vpt2_vci_backends,
 )
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "ForceFieldSource",
     "VCIRequest",
     "VPT2VCIInventory",
-    "inventory_legacy_fortran",
+    "inventory_vpt2_vci_backends",
 ]

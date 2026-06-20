@@ -1,4 +1,4 @@
-# Cleanup Report (Merlino 3.0)
+# Cleanup Report (Merlino 4.0)
 
 ## Completed
 - Unified topology source of truth to `merlino_fit/topology`.
@@ -10,9 +10,7 @@
 - Moved root smoke scripts into `scripts/`:
   - `scripts/smoke_geometry_pipeline.py`
   - `scripts/smoke_advanced_window.py`
-- Updated references:
-  - `doc/legacy/readme_rotvib`
-  - `doc/legacy/FREEZE_NOTES_2026-02-04.md`
+- Removed historical Merlino3-only material from the Merlino4 source tree.
 - Updated active docs/UI labels from `Merlino 2.x` to `Merlino 3.0`.
 
 ## Residual Duplicates (intentional or low priority)
@@ -21,14 +19,8 @@
 - `merlino_fit/topology/readme_topology` and `topology/readme_topology` (compatibility pointers to `doc/topology_doc.txt`).
 - Binary/data duplicates:
   - `bin/gicforge.x` and compatibility alias `bin/prova.x`
-  - `fortran/legacy/readers/read_xyzin.f` and
-    `fortran/symmetry/read_xyzin.f` (standalone historical reader versus
-    symmetry reference reader)
-  - `fortran/symmetry/xyzin` and `fortran/symmetry/xyzin2`
   - `geometry/fchkin` (sample FCHK kept as canonical; root duplicate removed)
 
-## Legacy Historical Docs Kept As-Is
-- `doc/merlino2.1_freeze.md`
-- `doc/addendum_merlino2.1.1`
-
-These intentionally keep original version naming for archive traceability.
+## Historical Material Policy
+Merlino4 does not duplicate historical source trees, legacy benchmark scripts,
+or old root notes. Use the frozen Merlino3.0 tree for those archives.

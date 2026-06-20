@@ -17,8 +17,8 @@ the top-level README. New implementation files should not be added at root.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
   generation, and test suite.
 - `puckering_dvr/`: DVR analysis backend for completed Gaussian outputs.
-- `fortran/`: Fortran backends. Active code lives in `fortran/gicforge` and
-  `fortran/dvr`; historical standalone utilities live under `fortran/legacy`.
+- `fortran/`: active Fortran backends. Code lives in `fortran/gicforge` and
+  `fortran/dvr`; historical standalone utilities remain in Merlino3.0.
 
 ## Generated And Local Files
 
@@ -34,7 +34,8 @@ the top-level README. New implementation files should not be added at root.
 - `doc/RING_NUMBERING_CONVENTION.md`: ring numbering convention shared by
   Python and Fortran.
 - `doc/reports/`: larger reports and TeX artifacts.
-- `doc/legacy/`: historical root notes retained for traceability.
+- Historical Merlino3 notes are not duplicated in Merlino4; use the frozen
+  Merlino3.0 tree for that archive.
 
 ## Fortran Build Policy
 
