@@ -265,7 +265,9 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     }
     assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
     assert any(item.kind == "bond" and item.value_angstrom is not None for item in result.geometry_parameters)
+    assert any(item.kind == "bond" and item.sigma_angstrom is not None for item in result.geometry_parameters)
     assert any(item.kind == "angle" and item.value_degree is not None for item in result.geometry_parameters)
+    assert any(item.kind == "angle" and item.sigma_degree is not None for item in result.geometry_parameters)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_geometry_parameters.csv").exists()
@@ -276,6 +278,42 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
+
+
+def test_semiexperimental_topological_dihedral_errors_are_propagated():
+    from merlino_semiexp.fit import _geometry_parameters
+
+    atoms = ("C", "C", "C", "C")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [2.5, 1.0, 0.0],
+            [3.5, 1.0, 1.0],
+        ],
+        dtype=float,
+    )
+    fit_prims = (
+        Primitive("bond", (0, 1)),
+        Primitive("bond", (1, 2)),
+        Primitive("bond", (2, 3)),
+        Primitive("angle", (0, 1, 2)),
+        Primitive("angle", (1, 2, 3)),
+        Primitive("dihedral", (0, 1, 2, 3)),
+    )
+
+    rows = _geometry_parameters(
+        atoms,
+        coords,
+        fit_prims=fit_prims,
+        fit_u_matrix=np.eye(len(fit_prims)),
+        active_mask=np.ones(len(fit_prims), dtype=bool),
+        transform=np.eye(len(fit_prims)),
+        covariance=np.eye(len(fit_prims)) * 1.0e-6,
+    )
+
+    assert any(item.kind == "dihedral" and item.value_degree is not None for item in rows)
+    assert any(item.kind == "dihedral" and item.sigma_degree is not None for item in rows)
 
 
 def test_semiexperimental_qm_predicate_adds_weighted_parameter_prior(tmp_path):
@@ -498,6 +536,7 @@ def test_semiexperimental_gic_preview_and_html_report(tmp_path):
     report_text = report.read_text(encoding="utf-8")
     assert "Merlino Semiexperimental Geometry Report" in report_text
     assert "Final Cartesian Geometry Parameters" in report_text
+    assert "Angle or dihedral / degree" in report_text
     tables = semiexperimental_latex_tables(result)
     assert {"parameters", "residuals", "kraitchman"} == set(tables)
     assert "\\begin{tabular}" in tables["parameters"]

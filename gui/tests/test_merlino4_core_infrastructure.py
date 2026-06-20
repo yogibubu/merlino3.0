@@ -223,7 +223,9 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["parameters"]["n_gic_parameters"] >= 1
     geometry_text = (outdir / "semiexp_geometry_parameters.csv").read_text(encoding="utf-8")
     assert "value_angstrom" in geometry_text
+    assert "sigma_angstrom" in geometry_text
     assert "value_degree" in geometry_text
+    assert "sigma_degree" in geometry_text
     assert "\nbond," in geometry_text
     assert "\nangle," in geometry_text
 

@@ -61,6 +61,8 @@ class SemiexperimentalGeometryParameter:
     atom_symbols: tuple[str, ...]
     value_angstrom: float | None = None
     value_degree: float | None = None
+    sigma_angstrom: float | None = None
+    sigma_degree: float | None = None
 
 
 @dataclass(frozen=True)
@@ -284,7 +286,15 @@ def fit_semiexperimental_geometry(
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
-    geometry_parameters = _geometry_parameters(atoms, coords)
+    geometry_parameters = _geometry_parameters(
+        atoms,
+        coords,
+        fit_prims=prims,
+        fit_u_matrix=u_matrix,
+        active_mask=active_mask,
+        transform=transform,
+        covariance=covariance,
+    )
     kraitchman_rows = kraitchman_comparison(atoms, coords, request.observations)
     kraitchman_seed = kraitchman_seed_geometry(atoms, coords, request.observations, kraitchman_rows)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
@@ -463,7 +473,16 @@ def parameters_csv(parameters: tuple[SemiexperimentalParameter, ...]) -> str:
 def geometry_parameters_csv(parameters: tuple[SemiexperimentalGeometryParameter, ...]) -> str:
     stream = StringIO()
     writer = csv.writer(stream)
-    writer.writerow(["kind", "label", "atoms", "symbols", "value_angstrom", "value_degree"])
+    writer.writerow([
+        "kind",
+        "label",
+        "atoms",
+        "symbols",
+        "value_angstrom",
+        "sigma_angstrom",
+        "value_degree",
+        "sigma_degree",
+    ])
     for item in parameters:
         writer.writerow([
             item.kind,
@@ -471,7 +490,9 @@ def geometry_parameters_csv(parameters: tuple[SemiexperimentalGeometryParameter,
             "-".join(str(idx) for idx in item.atom_indices),
             "-".join(item.atom_symbols),
             "" if item.value_angstrom is None else f"{item.value_angstrom:.12g}",
+            "" if item.sigma_angstrom is None else f"{item.sigma_angstrom:.12g}",
             "" if item.value_degree is None else f"{item.value_degree:.12g}",
+            "" if item.sigma_degree is None else f"{item.sigma_degree:.12g}",
         ])
     return stream.getvalue()
 
@@ -507,6 +528,12 @@ def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
 def _geometry_parameters(
     atoms: list[str] | tuple[str, ...],
     coords: np.ndarray,
+    *,
+    fit_prims: object | None = None,
+    fit_u_matrix: np.ndarray | None = None,
+    active_mask: np.ndarray | None = None,
+    transform: np.ndarray | None = None,
+    covariance: np.ndarray | None = None,
 ) -> tuple[SemiexperimentalGeometryParameter, ...]:
     coords = np.asarray(coords, dtype=float)
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
@@ -515,19 +542,11 @@ def _geometry_parameters(
     except Exception as exc:
         raise ScientificValidationError(f"Cannot build final geometry parameter table: {exc}") from exc
 
-    rows: list[SemiexperimentalGeometryParameter] = []
+    specs: list[tuple[str, str, tuple[int, ...], tuple[str, ...], Primitive, float]] = []
     for i, j in sorted(tuple(sorted(pair)) for pair in graph.bonds):
         label = f"R({i + 1},{j + 1})"
         symbols = (str(atoms[i]), str(atoms[j]))
-        rows.append(
-            SemiexperimentalGeometryParameter(
-                "bond",
-                label,
-                (i + 1, j + 1),
-                symbols,
-                value_angstrom=float(np.linalg.norm(coords[i] - coords[j])),
-            )
-        )
+        specs.append(("bond", label, (i + 1, j + 1), symbols, Primitive("bond", (i, j)), 1.0))
 
     for center in range(len(atoms)):
         neighbors = sorted(graph.adjacency[center])
@@ -535,27 +554,108 @@ def _geometry_parameters(
             for right in neighbors[pos + 1 :]:
                 label = f"A({left + 1},{center + 1},{right + 1})"
                 symbols = (str(atoms[left]), str(atoms[center]), str(atoms[right]))
-                rows.append(
-                    SemiexperimentalGeometryParameter(
-                        "angle",
+                primitive = Primitive("angle", (left, center, right))
+                specs.append(("angle", label, (left + 1, center + 1, right + 1), symbols, primitive, 180.0 / np.pi))
+
+    for center_left, center_right in sorted(tuple(sorted(pair)) for pair in graph.bonds):
+        left_neighbors = sorted(atom for atom in graph.adjacency[center_left] if atom != center_right)
+        right_neighbors = sorted(atom for atom in graph.adjacency[center_right] if atom != center_left)
+        for left in left_neighbors:
+            for right in right_neighbors:
+                if left == right:
+                    continue
+                label = f"D({left + 1},{center_left + 1},{center_right + 1},{right + 1})"
+                symbols = (
+                    str(atoms[left]),
+                    str(atoms[center_left]),
+                    str(atoms[center_right]),
+                    str(atoms[right]),
+                )
+                primitive = Primitive("dihedral", (left, center_left, center_right, right))
+                specs.append(
+                    (
+                        "dihedral",
                         label,
-                        (left + 1, center + 1, right + 1),
+                        (left + 1, center_left + 1, center_right + 1, right + 1),
                         symbols,
-                        value_degree=_angle_degree(coords[left], coords[center], coords[right]),
+                        primitive,
+                        180.0 / np.pi,
                     )
                 )
+
+    primitives = [item[4] for item in specs]
+    values = eval_primitives(primitives, coords) if primitives else np.array(())
+    sigmas = _geometry_parameter_sigmas(
+        primitives,
+        coords,
+        fit_prims=fit_prims,
+        fit_u_matrix=fit_u_matrix,
+        active_mask=active_mask,
+        transform=transform,
+        covariance=covariance,
+    )
+    rows: list[SemiexperimentalGeometryParameter] = []
+    for idx, (kind, label, atom_indices, symbols, _primitive, angular_scale) in enumerate(specs):
+        value = float(values[idx])
+        sigma = sigmas[idx] if sigmas is not None else None
+        if kind == "bond":
+            rows.append(
+                SemiexperimentalGeometryParameter(
+                    kind,
+                    label,
+                    atom_indices,
+                    symbols,
+                    value_angstrom=value,
+                    sigma_angstrom=sigma,
+                )
+            )
+        else:
+            rows.append(
+                SemiexperimentalGeometryParameter(
+                    kind,
+                    label,
+                    atom_indices,
+                    symbols,
+                    value_degree=value * angular_scale,
+                    sigma_degree=None if sigma is None else sigma * angular_scale,
+                )
+            )
     return tuple(rows)
 
 
-def _angle_degree(left: np.ndarray, center: np.ndarray, right: np.ndarray) -> float:
-    v1 = np.asarray(left, dtype=float) - np.asarray(center, dtype=float)
-    v2 = np.asarray(right, dtype=float) - np.asarray(center, dtype=float)
-    n1 = np.linalg.norm(v1)
-    n2 = np.linalg.norm(v2)
-    if n1 <= 0.0 or n2 <= 0.0:
-        return float("nan")
-    cosine = float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))
-    return float(np.degrees(np.arccos(cosine)))
+def _geometry_parameter_sigmas(
+    geometry_prims: list[Primitive],
+    coords: np.ndarray,
+    *,
+    fit_prims: object | None,
+    fit_u_matrix: np.ndarray | None,
+    active_mask: np.ndarray | None,
+    transform: np.ndarray | None,
+    covariance: np.ndarray | None,
+) -> list[float | None] | None:
+    if (
+        not geometry_prims
+        or fit_prims is None
+        or fit_u_matrix is None
+        or active_mask is None
+        or transform is None
+        or covariance is None
+        or covariance.size == 0
+        or transform.size == 0
+    ):
+        return None
+    covariance = np.asarray(covariance, dtype=float)
+    b_fit = np.asarray(fit_u_matrix, dtype=float).T @ b_matrix_analytic(fit_prims, coords)
+    active_indices = np.where(active_mask)[0]
+    dq_dr = np.zeros((b_fit.shape[0], transform.shape[1]), dtype=float)
+    dq_dr[active_indices, :] = transform
+    if covariance.shape != (dq_dr.shape[1], dq_dr.shape[1]):
+        return None
+    dx_dr = np.linalg.pinv(b_fit, rcond=1.0e-8) @ dq_dr
+    b_geom = b_matrix_analytic(geometry_prims, coords)
+    jac = b_geom @ dx_dr
+    variances = np.einsum("ij,jk,ik->i", jac, covariance, jac, optimize=True)
+    return [float(np.sqrt(max(value, 0.0))) if np.isfinite(value) else None for value in variances]
 
 
 def kraitchman_csv_rows(rows: tuple[KraitchmanComparison, ...]) -> str:

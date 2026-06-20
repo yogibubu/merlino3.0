@@ -431,10 +431,11 @@ def _parameters_table(result: SemiexperimentalFitResult) -> str:
 
 def _geometry_parameters_table(result: SemiexperimentalFitResult) -> str:
     if not result.geometry_parameters:
-        return "<p>No final bond/angle table available.</p>"
+        return "<p>No final topological geometry parameter table available.</p>"
     rows = [
         "<table><tr><th>Kind</th><th>Label</th><th>Atoms</th><th>Symbols</th>"
-        "<th>Bond length / Angstrom</th><th>Angle / degree</th></tr>"
+        "<th>Bond length / Angstrom</th><th>Sigma / Angstrom</th>"
+        "<th>Angle or dihedral / degree</th><th>Sigma / degree</th></tr>"
     ]
     for item in result.geometry_parameters:
         rows.append(
@@ -442,7 +443,9 @@ def _geometry_parameters_table(result: SemiexperimentalFitResult) -> str:
             f"<td>{'-'.join(str(idx) for idx in item.atom_indices)}</td>"
             f"<td>{escape('-'.join(item.atom_symbols))}</td>"
             f"<td>{'' if item.value_angstrom is None else f'{item.value_angstrom:.8f}'}</td>"
-            f"<td>{'' if item.value_degree is None else f'{item.value_degree:.6f}'}</td></tr>"
+            f"<td>{'' if item.sigma_angstrom is None else f'{item.sigma_angstrom:.8f}'}</td>"
+            f"<td>{'' if item.value_degree is None else f'{item.value_degree:.6f}'}</td>"
+            f"<td>{'' if item.sigma_degree is None else f'{item.sigma_degree:.6f}'}</td></tr>"
         )
     rows.append("</table>")
     return "\n".join(rows)

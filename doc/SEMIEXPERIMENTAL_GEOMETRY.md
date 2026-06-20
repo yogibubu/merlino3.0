@@ -332,21 +332,42 @@ are written to `semiexp_diagnostics.csv`.
 The default `--observable moments` remains preferred for planar and non-planar
 molecules unless direct MHz residuals are specifically required.
 
+## Topological Parameter Uncertainties
+
+The final human-readable structural table is not a second fit. Merlino evaluates
+ordinary topological coordinates on the optimized Cartesian geometry: bonded
+distances, valence angles and proper dihedrals from the final connectivity.
+Their one-sigma errors are propagated from the covariance matrix of the active
+least-squares parameters through the same GIC-to-Cartesian differential used by
+the optimizer:
+
+```text
+J_top = B_top pinv(B_GIC) T_active
+Cov(topological) = J_top Cov(active) J_top^T
+```
+
+`B_top` is the Wilson B matrix of the reported bond, angle and dihedral
+coordinates, `B_GIC` is the B matrix of the final non-redundant GIC set and
+`T_active` is the active parameter/class transform. Bond sigmas are reported in
+Angstrom; angle and dihedral sigmas are reported in degrees.
+
 ## Output
 
 The output directory contains:
 
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
-  classes, fitted GICs, final Cartesian bond lengths/angles, residuals and
-  Kraitchman comparison.
+  classes, fitted GICs, final Cartesian bond lengths/angles/dihedrals with
+  propagated errors, residuals and Kraitchman comparison.
 - `semiexp_tables.tex`: paper-ready LaTeX tabular fragments for parameters,
   residuals and Kraitchman comparison.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
 - `semiexp_geometry_parameters.csv`: final Cartesian geometry interpreted as
-  ordinary structural parameters. Bond lengths are reported in Angstrom and
-  valence angles in degrees, with atom indices and element labels.
+  ordinary structural parameters. Bond lengths are reported in Angstrom;
+  valence angles and proper dihedrals are reported in degrees. The table also
+  contains propagated one-sigma errors from the semiexperimental covariance
+  matrix, atom indices and element labels.
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
   selected observable. Units are MHz for rotational constants, amu Angstrom^2
   for moments of inertia and native GIC units for QM predicates.
