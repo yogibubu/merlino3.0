@@ -132,7 +132,7 @@ class SemiexperimentalFitResult:
 def fit_semiexperimental_geometry(
     request: SemiexperimentalFitRequest,
     *,
-    max_iter: int = 12,
+    max_iter: int = 20,
     step: float = 1.0e-4,
     damping: float = 1.0e-8,
     max_step: float = 0.25,

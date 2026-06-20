@@ -257,7 +257,7 @@ def run_semiexperimental_benchmark(
     cases: tuple[SemiexperimentalBenchmarkCase, ...],
     *,
     outdir: Path | None = None,
-    max_iter: int = 12,
+    max_iter: int = 20,
 ) -> tuple[SemiexperimentalBenchmarkRow, ...]:
     rows = []
     for case in cases:
