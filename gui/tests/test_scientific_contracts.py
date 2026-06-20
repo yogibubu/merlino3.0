@@ -316,6 +316,19 @@ def test_semiexperimental_topological_dihedral_errors_are_propagated():
     assert any(item.kind == "dihedral" and item.sigma_degree is not None for item in rows)
 
 
+def test_semiexperimental_weak_parameter_pruning_is_deterministic():
+    from merlino_semiexp.fit import _weak_parameter_patterns
+
+    weighted_jac = np.diag([10.0, 1.0, 0.01])
+    names = (
+        "GIC001 GICForge A1Str0001 irrep=A1",
+        "GIC002 GICForge A1Ang0001 irrep=A1",
+        "GIC003 GICForge A1Ang0002 irrep=A1",
+    )
+
+    assert _weak_parameter_patterns(names, weighted_jac, 20.0) == ("A1Ang0002",)
+
+
 def test_semiexperimental_qm_predicate_adds_weighted_parameter_prior(tmp_path):
     xyz = tmp_path / "water.xyz"
     xyz.write_text(

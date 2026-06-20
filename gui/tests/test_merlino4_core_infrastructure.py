@@ -73,6 +73,7 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
 
     assert args.observable == "moments"
     assert args.rotational_components == "auto"
+    assert args.prune_condition == 200.0
     assert args.max_step == pytest.approx(0.25)
 
 

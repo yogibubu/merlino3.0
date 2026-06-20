@@ -101,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--damping", type=float, default=1.0e-8, help="Initial Levenberg-Marquardt damping")
     semiexp.add_argument("--max-step", type=float, default=0.25, help="Maximum active-GIC step norm per iteration")
     semiexp.add_argument(
+        "--prune-condition",
+        type=float,
+        default=200.0,
+        help="Auto-prune weak SE parameters until the initial weighted Jacobian condition is below this target; use 0 to disable",
+    )
+    semiexp.add_argument(
         "--observable",
         choices=("moments", "rotational_constants", "auto"),
         default=DEFAULT_SEMIEXP_OBSERVABLE,
@@ -240,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
             step=args.step,
             damping=args.damping,
             max_step=args.max_step,
+            prune_condition=args.prune_condition,
             outdir=args.outdir,
         )
         report_path = write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)

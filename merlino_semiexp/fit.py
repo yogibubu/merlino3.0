@@ -81,6 +81,8 @@ class SemiexperimentalFitDiagnostics:
     observable: str
     components: tuple[str, ...]
     planar: bool
+    auto_pruned_parameters: tuple[str, ...] = ()
+    prune_condition_target: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ def fit_semiexperimental_geometry(
     step: float = 1.0e-4,
     damping: float = 1.0e-8,
     max_step: float = 0.25,
+    prune_condition: float = 200.0,
     tolerance_MHz: float = 1.0e-6,
     gradient_tolerance: float = 1.0e-8,
     outdir: Path | None = None,
@@ -174,6 +177,30 @@ def fit_semiexperimental_geometry(
     initial_transform, _initial_names, _initial_classes = _parameter_class_transform(
         labels, active_mask, request.parameter_classes
     )
+    auto_pruned_patterns: tuple[str, ...] = ()
+    if prune_condition > 0.0 and initial_transform.shape[1] > 1:
+        try:
+            initial_jac_gic = _jacobian_constants_wrt_gics(
+                atoms,
+                coords,
+                request,
+                prims,
+                u_matrix,
+                active_mask,
+                labels,
+                measurement_model,
+                step=step,
+            )
+            initial_weighted_jac = (initial_jac_gic @ initial_transform) * np.sqrt(measurement_model.weights)[:, None]
+            auto_pruned_patterns = _weak_parameter_patterns(_initial_names, initial_weighted_jac, prune_condition)
+            if auto_pruned_patterns:
+                active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
+                initial_transform, _initial_names, _initial_classes = _parameter_class_transform(
+                    labels, active_mask, request.parameter_classes
+                )
+        except Exception:
+            # Pruning is an observability refinement; unsupported mock/legacy primitives must not block the fit.
+            auto_pruned_patterns = ()
     n_optimized_parameters = initial_transform.shape[1]
     loop_max_iter = _resolve_max_iterations(max_iter, n_optimized_parameters) if n_optimized_parameters else 0
 
@@ -187,6 +214,7 @@ def fit_semiexperimental_geometry(
         prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
         active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
         active_mask &= _gicforge_a1_mask(labels)
+        active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
         q = _gic_values(prims, u_matrix, coords)
         calc = _measurement_vector(atoms, coords, request, q, labels, measurement_model)
         obs = measurement_model.observed
@@ -251,6 +279,7 @@ def fit_semiexperimental_geometry(
     prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
     active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
     active_mask &= _gicforge_a1_mask(labels)
+    active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
     q_final = _gic_values(prims, u_matrix, coords)
     bq = u_matrix.T @ b_matrix_analytic(prims, coords)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
@@ -282,8 +311,11 @@ def fit_semiexperimental_geometry(
         observable=measurement_model.observable,
         components=measurement_model.components,
         planar=measurement_model.planar,
+        auto_pruned_parameters=auto_pruned_patterns,
+        prune_condition_target=prune_condition,
     )
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
+    class_by_gic = _mark_auto_pruned_classes(labels, class_by_gic, auto_pruned_patterns)
     parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
     geometry_parameters = _geometry_parameters(
@@ -436,6 +468,8 @@ def write_semiexperimental_outputs(
             "n_gic_parameters": len(parameters),
             "n_effective_parameters": len(active_names),
             "n_active_gic_parameters": sum(1 for item in parameters if item.active),
+            "auto_pruned_parameters": diagnostics.auto_pruned_parameters if diagnostics else (),
+            "prune_condition_target": diagnostics.prune_condition_target if diagnostics else 0.0,
             "max_iterations": diagnostics.max_iterations if diagnostics else None,
             "n_kraitchman_rows": len(kraitchman),
             "kraitchman_seed_method": kraitchman_seed.method if kraitchman_seed else "not_available",
@@ -898,6 +932,72 @@ def _active_mask(
     return np.array(mask, dtype=bool)
 
 
+def _auto_pruned_active_mask(labels: tuple[str, ...], patterns: tuple[str, ...]) -> np.ndarray:
+    if not patterns:
+        return np.ones(len(labels), dtype=bool)
+    lowered = tuple(pattern.lower() for pattern in patterns)
+    return np.array([not any(pattern in label.lower() for pattern in lowered) for label in labels], dtype=bool)
+
+
+def _mark_auto_pruned_classes(
+    labels: tuple[str, ...],
+    class_by_gic: tuple[str, ...],
+    patterns: tuple[str, ...],
+) -> tuple[str, ...]:
+    if not patterns:
+        return class_by_gic
+    lowered = tuple(pattern.lower() for pattern in patterns)
+    classes = list(class_by_gic)
+    if len(classes) < len(labels):
+        classes.extend("" for _ in range(len(labels) - len(classes)))
+    for idx, label in enumerate(labels):
+        if any(pattern in label.lower() for pattern in lowered):
+            classes[idx] = "auto_pruned_weak"
+    return tuple(classes)
+
+
+def _weak_parameter_patterns(
+    names: tuple[str, ...],
+    weighted_jac: np.ndarray,
+    condition_target: float,
+) -> tuple[str, ...]:
+    if weighted_jac.size == 0 or weighted_jac.shape[1] <= 1 or condition_target <= 0.0:
+        return ()
+    remaining = list(range(weighted_jac.shape[1]))
+    pruned: list[str] = []
+    while len(remaining) > 1:
+        current = weighted_jac[:, remaining]
+        conditioning = rank_condition(current)
+        if np.isfinite(conditioning.condition_number) and conditioning.condition_number <= condition_target:
+            break
+        best: tuple[float, int] | None = None
+        for col in remaining:
+            trial = [item for item in remaining if item != col]
+            trial_condition = rank_condition(weighted_jac[:, trial]).condition_number
+            if not np.isfinite(trial_condition):
+                continue
+            score = (trial_condition, col)
+            if best is None or score < best:
+                best = score
+        if best is None or best[0] >= conditioning.condition_number:
+            break
+        removed = best[1]
+        pattern = _parameter_prune_pattern(names[removed])
+        if pattern:
+            pruned.append(pattern)
+        remaining.remove(removed)
+    return tuple(pruned)
+
+
+def _parameter_prune_pattern(name: str) -> str:
+    parts = str(name).split()
+    if len(parts) >= 3 and re.match(r"^[A-Z][0-9][A-Za-z]+[0-9]+$", parts[2]):
+        return parts[2]
+    if parts:
+        return parts[0]
+    return str(name)
+
+
 def _parameter_class_transform(
     labels: tuple[str, ...],
     active_mask: np.ndarray,
@@ -1311,6 +1411,8 @@ def _diagnostics(
     observable: str,
     components: tuple[str, ...],
     planar: bool,
+    auto_pruned_parameters: tuple[str, ...] = (),
+    prune_condition_target: float = 0.0,
 ) -> SemiexperimentalFitDiagnostics:
     conditioning = rank_condition(weighted_jac)
     obj = objective(weighted_residual)
@@ -1330,6 +1432,8 @@ def _diagnostics(
         observable=observable,
         components=components,
         planar=planar,
+        auto_pruned_parameters=auto_pruned_parameters,
+        prune_condition_target=float(prune_condition_target),
     )
 
 

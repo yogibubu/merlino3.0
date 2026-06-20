@@ -8,6 +8,7 @@ from PySide6.QtCore import QProcess, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -253,6 +254,14 @@ class DashboardWindow(QMainWindow):
         self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
         option_form.addRow("Parameter classes:", self.semiexp_classes)
 
+        self.semiexp_prune_condition = QDoubleSpinBox()
+        self.semiexp_prune_condition.setRange(0.0, 1.0e9)
+        self.semiexp_prune_condition.setDecimals(1)
+        self.semiexp_prune_condition.setValue(200.0)
+        self.semiexp_prune_condition.setSpecialValueText("disabled")
+        self.semiexp_prune_condition.valueChanged.connect(lambda _value: self._update_semiexp_preview())
+        option_form.addRow("Prune condition target:", self.semiexp_prune_condition)
+
         preview_tab = QWidget()
         preview_layout = QVBoxLayout(preview_tab)
         self.semiexp_preview_table = QTableWidget(0, 5)
@@ -321,6 +330,8 @@ class DashboardWindow(QMainWindow):
             self.semiexp_observable.currentText(),
             "--rotational-components",
             self.semiexp_components.currentText(),
+            "--prune-condition",
+            f"{self.semiexp_prune_condition.value():.12g}",
         ]
         if self.semiexp_fixed.text().strip():
             args.extend(["--fixed", self.semiexp_fixed.text().strip()])

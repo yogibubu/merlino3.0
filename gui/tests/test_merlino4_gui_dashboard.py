@@ -93,6 +93,7 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     args = window.semiexp_command_args()
     assert "--backend" in args
     assert "fortran77" in args
+    assert args[args.index("--prune-condition") + 1] == "200"
     assert args.count("--parameter-class") == 2
     assert window.semiexp_run_button.isEnabled()
     window.semiexp_iso_table.item(0, 2).setText("1000.0")

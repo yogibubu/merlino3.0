@@ -54,6 +54,11 @@ These defaults are intentional:
   `ABC`.
 - `--max-step 0.25` limits the norm of active-GIC steps and prevents aggressive
   updates from leaving the chemically valid topology basin.
+- `--prune-condition 200` removes weak A1 parameters from the active fit when
+  the initial weighted Jacobian is poorly conditioned and a deterministic
+  column removal brings the condition number below the target. Removed
+  coordinates are reported as `auto_pruned_weak`, not silently hidden. Use
+  `--prune-condition 0` to disable this MSR-style observability pruning.
 - `--damping 1e-8` is only the initial Levenberg-Marquardt damping. It is
   decreased after accepted steps and increased after rejected steps.
 - `--max-iter` defaults to an automatic cap proportional to the number of
@@ -332,6 +337,22 @@ are written to `semiexp_diagnostics.csv`.
 The default `--observable moments` remains preferred for planar and non-planar
 molecules unless direct MHz residuals are specifically required.
 
+## Weak-Parameter Pruning
+
+GICForge generates a complete totally symmetric non-redundant coordinate set,
+but a given isotopologue set does not necessarily observe every A1 direction
+with comparable accuracy. Leaving a weak direction active can inflate the
+standard deviations of the fitted coordinates without improving the residual.
+
+Before the nonlinear fit starts, Merlino analyzes the weighted Jacobian of the
+selected observables with respect to the active A1 coordinates. If the condition
+number is above `--prune-condition`, it removes the coordinate column whose
+removal most improves the condition number, repeats deterministically, and then
+uses the pruned active set for the fit. The default target is 200. Pruned
+coordinates remain in `semiexp_parameters.csv` with `active=0` and
+`parameter_class=auto_pruned_weak`; diagnostics and the manifest record the
+exact patterns removed.
+
 ## Topological Parameter Uncertainties
 
 The final human-readable structural table is not a second fit. Merlino evaluates
@@ -385,7 +406,8 @@ The output directory contains:
 - `semiexp_diagnostics.csv`: convergence reason, objective, weighted RMS,
   reduced chi square, Jacobian rank, condition number, accepted/rejected steps,
   automatic/explicit iteration cap, selected observable and selected
-  components.
+  components, plus any `auto_pruned_weak` parameters removed from the active
+  fit.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
 The parameter values use native Merlino GIC units: stretches in Angstrom and
