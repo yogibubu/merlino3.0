@@ -46,11 +46,12 @@ def default_workflows() -> list[WorkflowSpec]:
         ),
         WorkflowSpec(
             workflow_id="vpt2_vci",
-            title="VPT2 / VCI",
+            title="GF / VPT2-VCI",
             service="merlino_vpt2_vci",
-            description="VPT2/VCI from Gaussian quartic force fields with Davidson for large VCI spaces.",
-            inputs=("Gaussian quartic force field", "basis cutoffs", "root/convergence settings"),
-            outputs=("VPT2 constants", "VCI levels", "dominant coefficients", "Davidson report"),
+            description="Wilson GF/PED and VPT2/VCI on canonical Merlino Hessian/QFF inputs.",
+            inputs=("canonical Hessian/QFF", "optional Gaussian FCHK adapter", "basis cutoffs", "root/convergence settings"),
+            outputs=("GF frequencies", "PED table", "VPT2 levels", "VCI levels", "dominant coefficients", "Davidson report"),
+            status="GUI window available",
         ),
         WorkflowSpec(
             workflow_id="semiexp_geometry",

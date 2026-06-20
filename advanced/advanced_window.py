@@ -21,6 +21,7 @@ from advanced.launchers.gaussian_launcher import GaussianLauncher
 from advanced.launchers.vpt2_launcher import VPT2Launcher
 from advanced.launchers.survibfit_launcher import SurvibfitLauncher
 from advanced.dvr_window import DVRWindow
+from advanced.vpt2_vci_window import VPT2VCIWindow
 
 from advanced.kwd_spec import KWD_SPEC
 
@@ -169,6 +170,7 @@ class AdvancedWindow(QMainWindow):
         layout.addLayout(methods_layout)
 
         self._build_survibfit_panel(layout)
+        self._build_vpt2_vci_shortcut_panel(layout)
         self._build_dvr_shortcut_panel(layout)
 
         close_btn = QPushButton("Close")
@@ -381,6 +383,30 @@ class AdvancedWindow(QMainWindow):
     # ==================================================================
     # Path DVR panel
     # ==================================================================
+    def _build_vpt2_vci_shortcut_panel(self, layout: QVBoxLayout):
+        group = QGroupBox("GF / VPT2-VCI")
+        vbox = QVBoxLayout(group)
+
+        info = QLabel(
+            "Dedicated window for Wilson GF/PED in Merlino non-redundant GICs "
+            "and anharmonic VPT2/VCI comparisons from canonical Merlino QFF inputs."
+        )
+        info.setWordWrap(True)
+        vbox.addWidget(info)
+
+        self.open_vpt2_vci_btn = QPushButton("Open GF / VPT2-VCI window")
+        self.open_vpt2_vci_btn.clicked.connect(self.open_vpt2_vci_window)
+        vbox.addWidget(self.open_vpt2_vci_btn)
+
+        layout.addWidget(group)
+
+    def open_vpt2_vci_window(self):
+        if not hasattr(self, "vpt2_vci_window") or self.vpt2_vci_window is None:
+            self.vpt2_vci_window = VPT2VCIWindow(self.workdir, self.project_root, parent=self)
+        self.vpt2_vci_window.show()
+        self.vpt2_vci_window.raise_()
+        self.vpt2_vci_window.activateWindow()
+
     def _build_dvr_shortcut_panel(self, layout: QVBoxLayout):
         group = QGroupBox("Path DVR – Gaussian scan analysis")
         vbox = QVBoxLayout(group)

@@ -330,6 +330,23 @@ Default DVR settings:
 - rotational constants: enabled
 - Cremer-Pople labeling: disabled unless explicitly requested
 
+## GF / VPT2-VCI Window
+
+The Advanced window exposes a dedicated `GF / VPT2-VCI` panel implemented in
+`advanced/vpt2_vci_window.py`.
+
+The window has two independent actions:
+
+- `Run GF / PED` reads geometry and Cartesian Hessian from a Gaussian FCHK
+  adapter, builds Merlino non-redundant GICs, solves Wilson GF and reports
+  frequencies plus PED in GIC coordinates.
+- `Run VPT2 / VCI` reads either a canonical indexed QFF text file or the
+  current FCHK adapter, applies mode/cutoff/pruning settings, and reports a
+  VPT2/VCI energy comparison plus dominant VCI contributions.
+
+The GUI does not contain scientific algorithms. It only validates paths and
+formats reports; the numerical work remains in `merlino_vpt2_vci`.
+
 GUI testing policy
 
 Core GUI widgets are covered by focused Qt tests under `gui/tests`. Full
