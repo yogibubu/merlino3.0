@@ -3,15 +3,16 @@
 Merlino keeps the Fortran code under `fortran/`, separated by backend or
 historical module.
 
-## Active PROVA Backend
+## Active GICForge Backend
 
-- Source: `fortran/prova/`
-- Main executable in source tree: `fortran/prova/prova`
-- Runtime executable used by launchers: `bin/prova.x`
+- Source: `fortran/gicforge/`
+- Main executable in source tree: `fortran/gicforge/gicforge`
+- Runtime executable used by launchers: `bin/gicforge.x`
+- Compatibility runtime alias: `bin/prova.x`
 - Build command:
 
 ```bash
-cd fortran/prova
+cd fortran/gicforge
 ./compile_MAC
 ```
 
@@ -20,8 +21,13 @@ fixed-form legacy Fortran. This suppresses compiler deprecation noise such as
 shared DO labels, arithmetic IF, and Hollerith constants while preserving
 failure on actual compile/link errors.
 
-Build logs are written to `fortran/prova/build/prova_build.log`, which is
+Build logs are written to `fortran/gicforge/build/gicforge_build.log`, which is
 ignored by git.
+
+GICForge receives Cartesian input from Merlino, builds redundant and
+non-redundant GICs, optionally writes the B matrix, emits a readable report, and
+creates Gaussian input. GUI orchestration, RDKit/SMILES, DVR and
+post-processing remain Python responsibilities.
 
 ## Other Fortran Areas
 
@@ -33,4 +39,3 @@ ignored by git.
 
 Generated compiler logs such as `error` files are not source and should not be
 committed.
-

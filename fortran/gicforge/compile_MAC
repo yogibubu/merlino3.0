@@ -4,7 +4,7 @@ set -euo pipefail
 FC="${FC:-gfortran}"
 SDK_LIB="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
 BUILD_DIR="build"
-LOG="$BUILD_DIR/prova_build.log"
+LOG="$BUILD_DIR/gicforge_build.log"
 
 mkdir -p "$BUILD_DIR"
 rm -f "$LOG"
@@ -15,8 +15,9 @@ rm -f "$LOG"
   -L"$SDK_LIB" \
   dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f \
   pcsgeo.f symang.f rates.f tools1.f tools2.f \
-  -o prova \
+  -o gicforge \
   >"$LOG" 2>&1
 
-cp prova ../../bin/prova.x
-echo "Built fortran/prova/prova and bin/prova.x"
+cp gicforge ../../bin/gicforge.x
+cp gicforge ../../bin/prova.x
+echo "Built fortran/gicforge/gicforge, bin/gicforge.x, and compatibility alias bin/prova.x"

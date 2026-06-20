@@ -41,7 +41,7 @@ The DVR Cremer-Pople labeling uses the same canonical sequence.
 
 ## Fortran
 
-The Fortran `prova` path already canonicalizes cycles in `mkcyc.f`:
+The Fortran `GICForge` path already canonicalizes cycles in `mkcyc.f`:
 
 - `CanCyc` rebuilds a bonded cycle and then applies the same Prelog-first
   rotation/direction rule used by Python.
@@ -50,7 +50,7 @@ The Fortran `prova` path already canonicalizes cycles in `mkcyc.f`:
 - `CyGND` builds ring puckering dihedrals from the canonical cycle.
 
 Therefore Fortran and Python now share the same deterministic ring order. If
-`IPrint > 0`, `prova` prints the input and canonical cycle numbering so
+`IPrint > 0`, GICForge prints the input and canonical cycle numbering so
 mismatches can be diagnosed directly.
 
 ## Practical Implication

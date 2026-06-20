@@ -9,7 +9,7 @@ handling is an optional labeling and post-processing layer.
 Included changes:
 - ring-puckering Gaussian GIC generation with inactive `RPck....` and active
   `QPck....`/`PhiP....`
-- Fortran `prova` output support for the same `QPck/PhiP` functional GICs
+- Fortran `GICForge` output support for the same `QPck/PhiP` functional GICs
 - Python arbitrary-ring GIC generation, tested through seven-membered rings
 - vendored runtime copy under `puckering_dvr/`
 - dedicated GUI DVR window for Gaussian scan/path logs

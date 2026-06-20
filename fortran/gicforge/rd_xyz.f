@@ -1,6 +1,6 @@
       subroutine read_xyz(fname, natoms, ian, c, IOut, IERR)
 c
-c     Robust XYZ reader for PROVA (Fortran77)
+c     Robust XYZ reader for GICForge (Fortran77)
 c
 c     INPUT:
 c       fname   - XYZ file name
@@ -115,4 +115,3 @@ c     --- Error handling ---
       return
 
       end
-

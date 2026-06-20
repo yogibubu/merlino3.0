@@ -10,7 +10,7 @@ class GaussianViewer(QMainWindow):
     """
     Full-window viewer for Gaussian outputs:
     - gauout.log
-    - prova.fchk (generated via formchk)
+    - gicforge.fchk/prova.fchk (generated via formchk)
     """
 
     def __init__(self, workdir: Path, parent=None):
@@ -21,8 +21,11 @@ class GaussianViewer(QMainWindow):
         self.resize(1100, 850)
 
         # ---------------- formchk ----------------
-        chk = self.workdir / "prova.chk"
-        fchk = self.workdir / "prova.fchk"
+        chk = self.workdir / "gicforge.chk"
+        fchk = self.workdir / "gicforge.fchk"
+        if not chk.exists():
+            chk = self.workdir / "prova.chk"
+            fchk = self.workdir / "prova.fchk"
 
         if chk.exists() and not fchk.exists():
             try:
@@ -35,7 +38,7 @@ class GaussianViewer(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "formchk failed",
-                    f"Could not generate prova.fchk:\n{e}",
+                    f"Could not generate {fchk.name}:\n{e}",
                 )
 
         tabs = QTabWidget()
@@ -52,9 +55,9 @@ class GaussianViewer(QMainWindow):
                 edit.setPlainText(f"{log_name} not found")
             tabs.addTab(edit, log_name)
 
-        # ---------------- prova.fchk ----------------
+        # ---------------- formatted checkpoint ----------------
         fchk_edit = QTextEdit()
         fchk_edit.setReadOnly(True)
         if fchk.exists():
             fchk_edit.setPlainText(fchk.read_text())
-        tabs.addTab(fchk_edit, "prova.fchk")
+        tabs.addTab(fchk_edit, fchk.name)

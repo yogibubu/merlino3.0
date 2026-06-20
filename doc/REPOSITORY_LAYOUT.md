@@ -17,7 +17,7 @@ the top-level README. New implementation files should not be added at root.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
   generation, and test suite.
 - `puckering_dvr/`: DVR analysis backend for completed Gaussian outputs.
-- `fortran/`: Fortran backends. Active PROVA is `fortran/prova`; other
+- `fortran/`: Fortran backends. Active GICForge is `fortran/gicforge`; other
   subfolders are specialized or legacy numerical modules.
 
 ## Generated And Local Files
@@ -42,7 +42,8 @@ Fortran sources are kept in fixed-form Fortran-compatible style. Build scripts
 should use `-std=legacy` and suppress compiler deprecation noise from historical
 constructs, while still failing on real compilation/link errors.
 
-`fortran/prova/compile_MAC` is the canonical PROVA build command. It updates:
+`fortran/gicforge/compile_MAC` is the canonical GICForge build command. It updates:
 
-- `fortran/prova/prova`
+- `fortran/gicforge/gicforge`
+- `bin/gicforge.x`
 - `bin/prova.x`

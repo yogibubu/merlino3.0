@@ -1,7 +1,7 @@
       subroutine read_ringin(nrings, rsize, ratoms,
      &                       maxrings, maxatoms)
 c
-c     Reads PROVA runtime file "ringin"
+c     Reads GICForge runtime file "ringin"
 c
 c     OUTPUT:
 c       nrings   - number of rings
@@ -84,4 +84,3 @@ c     --- Errors ---
       stop
 
       end
-

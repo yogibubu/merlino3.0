@@ -75,6 +75,10 @@ Repository layout:
 - struttura funzionale documentata in `README.md` e
   `doc/REPOSITORY_LAYOUT.md`
 - backend Fortran documentati in `doc/FORTRAN_BACKENDS.md`
+- il backend Fortran attivo si chiama `GICForge`: riceve cartesiane, costruisce
+  GIC ridondanti/non ridondanti, puo scrivere la matrice B, produce output
+  leggibile e input Gaussian; orchestrazione, RDKit, DVR e post-processing
+  restano in Python
 - note storiche root spostate in `doc/legacy/`
 - report voluminosi spostati in `doc/reports/`
 

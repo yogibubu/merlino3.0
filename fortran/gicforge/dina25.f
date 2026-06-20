@@ -901,7 +901,7 @@ C      write(IOut,'(A80)') CLine
    20  continue
       EndIf
       If(Kwd(1))  write(IOut,'('' SMILES    : SMILES by RdKIT'')') 
-      If(Kwd(36)) write(IOut,'('' RDSMI     : SMILES by Prova'')')       
+      If(Kwd(36)) write(IOut,'('' RDSMI     : SMILES by GICForge'')')       
       If(Kwd(34)) write(IOut,'('' RDXYZ     : Coords.from XYZ File'')')
       If(Kwd(35)) write(IOut,'('' RDFCHK    : Coords.from FCHK File'')')
       If(Kwd(2))  write(IOut,'('' G16       : Make G16 Input'')')
@@ -1998,7 +1998,7 @@ C     If(ITot.gt.0) FndDer=.true.
       Integer IOut,ModPCS,IDeriv(4) 
       Write(IOut,'(''%Nprocshared=8'')')
       Write(IOut,'(''%Mem=32GB'')')
-      Write(IOut,'(''%chk=prova.chk'')')
+      Write(IOut,'(''%chk=gicforge.chk'')')
       If(DoGNIC) then
        If(SyGNIC) then
         If(Ideriv(1).eq.1.and.IDeriv(2).eq.0) then

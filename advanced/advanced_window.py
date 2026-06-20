@@ -15,7 +15,7 @@ from PySide6.QtGui import QPixmap
 
 # Merlino / QM
 from advanced.provin_writer import ProvinWriter
-from advanced.launchers.prova_launcher import ProvaLauncher
+from advanced.launchers.gicforge_launcher import GICForgeLauncher
 from advanced.launchers.msr_launcher import MSRLauncher
 from advanced.launchers.gaussian_launcher import GaussianLauncher
 from advanced.launchers.vpt2_launcher import VPT2Launcher
@@ -25,7 +25,7 @@ from advanced.dvr_window import DVRWindow
 from advanced.kwd_spec import KWD_SPEC
 
 # Viewers
-from advanced.viewers.prova_viewer import ProvaViewer
+from advanced.viewers.gicforge_viewer import GICForgeViewer
 from advanced.viewers.gaussian_viewer import GaussianViewer
 
 
@@ -146,8 +146,8 @@ class AdvancedWindow(QMainWindow):
 
         layout.addWidget(kw_group)
 
-        self.run_prova_btn = QPushButton("Run preparation (prova)")
-        self.run_prova_btn.clicked.connect(lambda: AdvancedWindow.run_prova(self))
+        self.run_prova_btn = QPushButton("Run GICForge")
+        self.run_prova_btn.clicked.connect(lambda: AdvancedWindow.run_gicforge(self))
         layout.addWidget(self.run_prova_btn)
 
         self.run_mfit_btn = QPushButton("Prepare gauin.gjf (merlino_fit)")
@@ -216,8 +216,8 @@ class AdvancedWindow(QMainWindow):
             self.workdir / "xyzin": f"{self.project_name}.xyz",
             self.workdir / "gauin.gjf": f"{self.project_name}.gjf",
             self.workdir / "gauin": f"{self.project_name}.gjf",
-            self.workdir / "prova.chk": f"{self.project_name}.chk",
-            self.workdir / "prova.out": f"{self.project_name}.ncc",
+            self.workdir / "gicforge.chk": f"{self.project_name}.chk",
+            self.workdir / "gicforge.out": f"{self.project_name}.ncc",
         }
 
         log_candidates = []
@@ -281,7 +281,7 @@ class AdvancedWindow(QMainWindow):
 
         return charge, multiplicity
 
-    def _collect_prova_keywords(self) -> list[str]:
+    def _collect_gicforge_keywords(self) -> list[str]:
         keywords = []
         for kw, widget in self.kwd_widgets.items():
             if isinstance(widget, QCheckBox):
@@ -292,6 +292,9 @@ class AdvancedWindow(QMainWindow):
                 if val:
                     keywords.append(val)
         return keywords
+
+    def _collect_prova_keywords(self) -> list[str]:
+        return self._collect_gicforge_keywords()
 
     # ==================================================================
     # Survibfit panel
@@ -413,7 +416,7 @@ class AdvancedWindow(QMainWindow):
     # Actions
     # ==================================================================
 
-    def run_prova(self):
+    def run_gicforge(self):
         charge, multiplicity = self._read_charge_multiplicity()
 
         writer = ProvinWriter(
@@ -421,14 +424,14 @@ class AdvancedWindow(QMainWindow):
             title=self.project_dir.name,
             charge=charge,
             multiplicity=multiplicity,
-            keywords=self._collect_prova_keywords(),
+            keywords=self._collect_gicforge_keywords(),
         )
         writer.write()
 
-        result = ProvaLauncher(self.workdir).run()
+        result = GICForgeLauncher(self.workdir).run()
 
         if not result.success:
-            QMessageBox.critical(self, "prova failed", result.message)
+            QMessageBox.critical(self, "GICForge failed", result.message)
             return
 
         gauin = self.workdir / "gauin"
@@ -444,7 +447,7 @@ class AdvancedWindow(QMainWindow):
 
         self._export_project_files()
 
-        self.prova_viewer = ProvaViewer(
+        self.prova_viewer = GICForgeViewer(
             self.workdir,
             run_gaussian_callback=self.run_gaussian,
             parent=self,
@@ -452,6 +455,9 @@ class AdvancedWindow(QMainWindow):
         self.prova_viewer.show()
 
         QMessageBox.information(self, "Preparation OK", result.message)
+
+    def run_prova(self):
+        self.run_gicforge()
 
     def run_merlino_fit_prep(self):
         charge, multiplicity = self._read_charge_multiplicity()
@@ -523,7 +529,7 @@ class AdvancedWindow(QMainWindow):
             pass
         self._ensure_gaussian_route_keywords_in_file(gauin)
 
-        self.prova_viewer = ProvaViewer(
+        self.prova_viewer = GICForgeViewer(
             self.workdir,
             run_gaussian_callback=self.run_gaussian,
             parent=self,
