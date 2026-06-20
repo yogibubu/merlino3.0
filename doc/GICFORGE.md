@@ -138,3 +138,43 @@ Dependent rows are removed from their own family and the remaining arrays are
 compacted in place. This is intentionally analogous to the Python
 `prune_mode=svd/g` policy, but preserves strict Fortran77 implementation and
 does not combine heterogeneous coordinate types.
+
+## Python Symmetry Contract
+
+After the Fortran77 backend has written `gauin`, Merlino runs a deterministic
+GICForge post-check that assigns irreducible representations and writes:
+
+- `gauin.symm`
+- `gicsym`
+- `gic_symmetry_diagnostics.json`
+
+The number of final coordinates in each irrep is not chosen by the
+semiexperimental solver. It is computed first from the vibrational
+representation:
+
+```text
+Gamma_vib = Gamma_3N - Gamma_trans - Gamma_rot
+```
+
+For a non-linear molecule the sum of those counts must be `3N-6`. If the
+counts cannot be reached, the run fails. For Gaussian optimization,
+`gauin.symm` always writes the totally symmetric coordinates first, then a
+blank separator, then all other coordinates; the semiexperimental fit and
+geometry optimization use only the GICForge-assigned totally symmetric block.
+
+The post-check is intentionally reproducible:
+
+- symmetry operations are sorted in a canonical order before projection
+- numerical tolerances are centralized in `merlino_gic/gic_symmetry.py`
+- repeated runs on the same `gauin`/`xyzin` write byte-identical `gauin.symm`,
+  `gicsym` and diagnostics
+- `gicsym` records whether each coordinate came from a direct primitive
+  projection or from a Cartesian projection
+
+`gic_symmetry_diagnostics.json` contains `strict_clean`. When it is `true`, all
+symmetry-adapted coordinates were obtained directly from the GICForge primitive
+expressions. When it is `false`, at least one non-active diagnostic coordinate
+needed Cartesian reconstruction to complete the full irrep bookkeeping. That is
+a backend-quality flag: the next Fortran cleanup target is to make common
+systems strict-clean, while the operational A1 block remains deterministic and
+explicitly labeled.

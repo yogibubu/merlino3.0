@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import json
 
 import numpy as np
 
@@ -12,6 +13,13 @@ from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
 from merlino_fit.survibfit.symmetry_global import primitive_permutation
 from topology.elements import atomic_number, atomic_symbol
+
+
+SYMM_TOL = 1.0e-2
+SYMM_INERTIA_TOL = 1.0e-3
+ZERO_TOL = 1.0e-8
+RANK_TOL = 1.0e-7
+PRINT_TOL = 1.0e-6
 
 
 @dataclass(frozen=True)
@@ -33,8 +41,9 @@ def write_gic_symmetry_files(workdir: Path) -> None:
     prims, u_matrix = _primitive_basis(gics)
     oriented = _oriented_coords(atoms, coords)
     op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
-    sym_gics = _symmetry_adapted_gics(gics, prims, u_matrix, op_data, oriented)
+    sym_gics = _symmetry_adapted_gics(gics, prims, u_matrix, op_data, oriented, strict=False)
     _write_gicsym(run_dir / "gicsym", sym_gics)
+    _write_gic_symmetry_diagnostics(run_dir / "gic_symmetry_diagnostics.json", sym_gics, op_data, len(coords))
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
 
 
@@ -116,12 +125,12 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
     elements, _classes, permutations = symmetry_elements_from_geometry(
         symbols,
         oriented,
-        tol=1.0e-2,
+        tol=SYMM_TOL,
         max_n=6,
-        tol_H=1.0e-2,
+        tol_H=SYMM_TOL,
         ignore_isotopes=True,
         auto_max_n=True,
-        inertia_tol=1.0e-3,
+        inertia_tol=SYMM_INERTIA_TOL,
     )
     unique = []
     seen = set()
@@ -132,13 +141,14 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
         seen.add(mapped)
         unique.append((element[0], element[1], mapped, primitive_permutation(prims, mapped)))
     identity = tuple(range(len(atoms)))
-    return unique or [("E", np.eye(3), identity, primitive_permutation(prims, identity))]
+    op_data = unique or [("E", np.eye(3), identity, primitive_permutation(prims, identity))]
+    return _canonical_operation_order(op_data)
 
 
-def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray):
+def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, strict: bool = True):
     irreps = _irrep_characters([item[0] for item in op_data])
     if not irreps:
-        return [(gic.name, "A", u_matrix[:, idx]) for idx, gic in enumerate(gics)]
+        return [(gic.name, "A", "input", u_matrix[:, idx]) for idx, gic in enumerate(gics)]
     targets = _vibrational_irrep_counts(op_data, irreps, len(coords))
     b_primitive = b_matrix_analytic(prims, coords)
     source_rows = u_matrix.T @ b_primitive
@@ -155,27 +165,35 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray):
         for col, source_row in enumerate(source_rows):
             projected_row_raw = _project_cartesian_row(source_row, chars, cart_ops)
             projected_row = projected_row_raw @ vib_projector
-            if np.linalg.norm(projected_row) < 1.0e-8:
+            if np.linalg.norm(projected_row) < ZERO_TOL:
                 continue
             residual = _orthogonal_residual(projected_row, selected_rows[irrep])
             row_norm = np.linalg.norm(residual)
-            if row_norm < 1.0e-7:
+            if row_norm < RANK_TOL:
                 continue
             global_residual = _orthogonal_residual(projected_row, selected_global)
-            if np.linalg.norm(global_residual) < 1.0e-7:
+            if np.linalg.norm(global_residual) < RANK_TOL:
                 continue
             coeff = _project_column_to_irrep(u_matrix[:, col], chars, op_data)
             coeff_norm = np.linalg.norm(coeff)
-            if coeff_norm < 1.0e-8:
-                coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims)
+            source = "primitive_projection"
+            if coeff_norm < ZERO_TOL:
+                if strict:
+                    continue
+                coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims, mixed=False)
                 coeff_norm = np.linalg.norm(coeff)
-                if coeff_norm < 1.0e-8:
+                source = "cartesian_projection"
+                if coeff_norm < ZERO_TOL:
+                    coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims, mixed=True)
+                    coeff_norm = np.linalg.norm(coeff)
+                    source = "cartesian_mixed_projection"
+                if coeff_norm < ZERO_TOL:
                     continue
             coeff /= coeff_norm
             selected_rows[irrep].append(residual / row_norm)
             selected_global.append(global_residual / np.linalg.norm(global_residual))
             kind = _dominant_kind(u_matrix[:, col], prims)
-            adapted.append((_next_name(irrep, kind, used_names), irrep, coeff))
+            adapted.append((_next_name(irrep, kind, used_names), irrep, source, coeff))
             if len(selected_rows[irrep]) == target:
                 break
         if len(selected_rows[irrep]) != target:
@@ -186,6 +204,21 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray):
     if counts != targets:
         raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
     return adapted
+
+
+def _canonical_operation_order(op_data):
+    labels = [item[0] for item in op_data]
+    if len(op_data) == 4 and any(label.startswith("C2") for label in labels) and sum(label.startswith("sigma") for label in labels) == 2:
+        order = {"E": 0, "C2": 1, "sigma_xz": 2, "sigma_xy": 3}
+
+        def key(item):
+            label = item[0]
+            if label.startswith("C2"):
+                return (order["C2"], label)
+            return (order.get(label, 99), label)
+
+        return sorted(op_data, key=key)
+    return sorted(op_data, key=lambda item: (0 if item[0] == "E" else 1, item[0]))
 
 
 def _cartesian_operation(rotation: np.ndarray, mapping: tuple[int, ...], natoms: int) -> np.ndarray:
@@ -228,14 +261,14 @@ def _vibrational_projector(coords: np.ndarray) -> np.ndarray:
 
 
 def _cartesian_row_to_coeff(
-    row: np.ndarray, b_primitive: np.ndarray, source_coeff: np.ndarray, prims: list[Primitive]
+    row: np.ndarray, b_primitive: np.ndarray, source_coeff: np.ndarray, prims: list[Primitive], mixed: bool
 ) -> np.ndarray:
     kind = _dominant_kind(source_coeff, prims)
-    idxs = [idx for idx, prim in enumerate(prims) if prim.kind == kind]
+    idxs = list(range(len(prims))) if mixed else [idx for idx, prim in enumerate(prims) if prim.kind == kind]
     coeff = _least_squares_coeff(row, b_primitive, idxs)
-    if np.linalg.norm(coeff @ b_primitive - row) > 1.0e-5 * max(1.0, np.linalg.norm(row)):
-        coeff = _least_squares_coeff(row, b_primitive, list(range(len(prims))))
-    return coeff
+    if np.linalg.norm(coeff @ b_primitive - row) <= 1.0e-5 * max(1.0, np.linalg.norm(row)):
+        return coeff
+    return np.zeros(b_primitive.shape[0], dtype=float)
 
 
 def _least_squares_coeff(row: np.ndarray, b_primitive: np.ndarray, idxs: list[int]) -> np.ndarray:
@@ -280,16 +313,13 @@ def _irrep_characters(labels: list[str]) -> list[tuple[str, np.ndarray]]:
     if len(labels) == 2:
         return [("A", np.array([1.0, 1.0])), ("B", np.array([1.0, -1.0]))]
     if len(labels) == 4 and any(label.startswith("C2") for label in labels) and sum(label.startswith("sigma") for label in labels) == 2:
-        chars = []
-        for label in labels:
-            if label == "E":
-                chars.append((1.0, 1.0, 1.0, 1.0))
-            elif label.startswith("C2"):
-                chars.append((1.0, 1.0, -1.0, -1.0))
-            elif label == "sigma_xz":
-                chars.append((1.0, -1.0, 1.0, -1.0))
-            else:
-                chars.append((1.0, -1.0, -1.0, 1.0))
+        char_by_label = {
+            "E": (1.0, 1.0, 1.0, 1.0),
+            "C2": (1.0, 1.0, -1.0, -1.0),
+            "sigma_xz": (1.0, -1.0, 1.0, -1.0),
+            "sigma_xy": (1.0, -1.0, -1.0, 1.0),
+        }
+        chars = [char_by_label["C2" if label.startswith("C2") else label] for label in labels]
         arr = np.array(chars, dtype=float)
         return [(name, arr[:, i]) for i, name in enumerate(("A1", "A2", "B1", "B2"))]
     return []
@@ -332,10 +362,36 @@ def _next_name(irrep: str, kind: str, used: dict[str, int]) -> str:
 
 
 def _write_gicsym(path: Path, sym_gics) -> None:
-    lines = ["name,irrep"]
-    for name, irrep, _column in sym_gics:
-        lines.append(f"{name},{irrep}")
+    lines = ["name,irrep,source"]
+    for name, irrep, source, _column in sym_gics:
+        lines.append(f"{name},{irrep},{source}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int) -> None:
+    irreps = _irrep_characters([item[0] for item in op_data])
+    targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
+    counts: dict[str, int] = {}
+    sources: dict[str, int] = {}
+    for _name, irrep, source, _column in sym_gics:
+        counts[irrep] = counts.get(irrep, 0) + 1
+        sources[source] = sources.get(source, 0) + 1
+    payload = {
+        "schema": "merlino.gic_symmetry.v1",
+        "operation_order": [item[0] for item in op_data],
+        "targets": targets,
+        "counts": counts,
+        "sources": sources,
+        "strict_clean": sources.get("cartesian_projection", 0) == 0
+        and sources.get("cartesian_mixed_projection", 0) == 0,
+        "tolerances": {
+            "symmetry": SYMM_TOL,
+            "inertia": SYMM_INERTIA_TOL,
+            "zero": ZERO_TOL,
+            "rank": RANK_TOL,
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[Primitive]) -> None:
@@ -345,11 +401,11 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
     out = list(prefix)
     a1 = [item for item in sym_gics if item[1] in {"A1", "A", "Ag", "A'"}]
     other = [item for item in sym_gics if item not in a1]
-    for name, _irrep, column in a1:
+    for name, _irrep, _source, column in a1:
         out.append(_format_gic_line(name, column, prims))
     if other:
         out.append("")
-    for name, _irrep, column in other:
+    for name, _irrep, _source, column in other:
         out.append(_format_gic_line(name, column, prims))
     target.write_text("\n".join(out) + "\n", encoding="utf-8")
 
@@ -357,7 +413,7 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
 def _format_gic_line(name: str, column: np.ndarray, prims: list[Primitive]) -> str:
     parts = []
     for coeff, primitive in zip(column, prims):
-        if abs(coeff) < 1.0e-5:
+        if abs(coeff) < PRINT_TOL:
             continue
         parts.append((coeff, _primitive_expression(primitive)))
     expr = _join_terms(parts)

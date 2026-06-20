@@ -10,7 +10,17 @@ from merlino_fortran import resolve_backend
 from .gic_symmetry import write_gic_symmetry_files
 
 
-GICFORGE_OUTPUTS = ("gicforge.out", "provout", "gauin", "gauin.symm", "gicsym", "msrin", "VPT2in", "bmat.out")
+GICFORGE_OUTPUTS = (
+    "gicforge.out",
+    "provout",
+    "gauin",
+    "gauin.symm",
+    "gicsym",
+    "gic_symmetry_diagnostics.json",
+    "msrin",
+    "VPT2in",
+    "bmat.out",
+)
 
 
 class GICForgeError(RuntimeError):
