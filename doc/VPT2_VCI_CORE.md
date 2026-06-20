@@ -75,6 +75,9 @@ computed by Merlino.
 
 - active-mode selection and frequency windows
 - harmonic basis energy cutoff and maximum basis size
+- minimum/maximum quanta for each mode
+- minimum/maximum total quanta for one-, two-, three- and four-mode excitation
+  classes
 - cubic/quartic force-constant pruning
 - optional block separation by mode symmetry labels
 - coefficient threshold for reporting dominant basis-state contributions

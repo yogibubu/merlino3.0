@@ -62,6 +62,69 @@ def test_vpt2_vci_source_compiles_to_objects():
     assert (root / "fortran" / "vpt2_vci" / "build" / "davidson_core.o").exists()
 
 
+def test_vpt2_vci_fortran_controlled_basis_runtime(tmp_path):
+    if shutil.which("gfortran") is None:
+        pytest.skip("gfortran is not available")
+    root = repo_root(Path(__file__))
+    driver = tmp_path / "test_basis.f"
+    driver.write_text(
+        """      Program TestBasis
+      Integer Basis(100,3),QMin(3),QMax(3),CMin(4),CMax(4)
+      Integer NState,Info,I,Tot,NExc,Bad
+      QMin(1)=0
+      QMin(2)=0
+      QMin(3)=0
+      QMax(1)=3
+      QMax(2)=2
+      QMax(3)=1
+      CMin(1)=1
+      CMax(1)=2
+      CMin(2)=2
+      CMax(2)=3
+      CMin(3)=3
+      CMax(3)=3
+      CMin(4)=-1
+      CMax(4)=-1
+      Call M4VCIBasisCtl(3,4,100,QMin,QMax,CMin,CMax,
+     $                   NState,Basis,Info)
+      If(Info.ne.0) Stop 10
+      If(NState.ne.14) Stop 11
+      Bad=0
+      Do 30 I=1,NState
+         If(Basis(I,2).gt.2) Bad=1
+         If(Basis(I,3).gt.1) Bad=1
+         Tot=Basis(I,1)+Basis(I,2)+Basis(I,3)
+         NExc=0
+         If(Basis(I,1).gt.0) NExc=NExc+1
+         If(Basis(I,2).gt.0) NExc=NExc+1
+         If(Basis(I,3).gt.0) NExc=NExc+1
+         If(NExc.eq.1 .and. Tot.gt.2) Bad=1
+         If(NExc.eq.2 .and. Tot.gt.3) Bad=1
+         If(NExc.eq.3 .and. Tot.ne.3) Bad=1
+30    Continue
+      If(Bad.ne.0) Stop 12
+      End
+""",
+        encoding="utf-8",
+    )
+    exe = tmp_path / "test_basis"
+    subprocess.run(
+        [
+            "gfortran",
+            "-std=legacy",
+            "-ffixed-form",
+            str(driver),
+            str(root / "fortran" / "vpt2_vci" / "vci_core.f"),
+            "-o",
+            str(exe),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+
+
 def test_project_state_is_created_and_reloaded(tmp_path):
     state = ensure_project_state(tmp_path)
     assert state.workdir == tmp_path

@@ -27,6 +27,9 @@ class VCIOptions:
     frequency_max_cm: float | None = None
     basis_energy_cutoff_cm: float | None = None
     max_basis_states: int | None = None
+    mode_min_quanta: tuple[int, ...] | None = None
+    mode_max_quanta: tuple[int, ...] | None = None
+    excitation_class_limits: dict[int, tuple[int, int | None]] = field(default_factory=dict)
     force_constant_threshold_cm: float = 0.0
     mode_symmetries: tuple[str, ...] | None = None
     separate_symmetry_blocks: bool = False
@@ -47,6 +50,24 @@ class VCIOptions:
             raise ValueError("basis_energy_cutoff_cm must be positive")
         if self.max_basis_states is not None and self.max_basis_states < 1:
             raise ValueError("max_basis_states must be positive")
+        if self.mode_min_quanta is not None and any(q < 0 for q in self.mode_min_quanta):
+            raise ValueError("mode_min_quanta cannot contain negative values")
+        if self.mode_max_quanta is not None and any(q < 0 for q in self.mode_max_quanta):
+            raise ValueError("mode_max_quanta cannot contain negative values")
+        if self.mode_min_quanta is not None and self.mode_max_quanta is not None:
+            if len(self.mode_min_quanta) != len(self.mode_max_quanta):
+                raise ValueError("mode_min_quanta and mode_max_quanta must have the same length")
+            for qmin, qmax in zip(self.mode_min_quanta, self.mode_max_quanta):
+                if qmin > qmax:
+                    raise ValueError("mode_min_quanta cannot exceed mode_max_quanta")
+        for n_modes, limits in self.excitation_class_limits.items():
+            if n_modes < 1 or n_modes > 4:
+                raise ValueError("excitation_class_limits keys must be in 1..4")
+            qmin, qmax = limits
+            if qmin < 0:
+                raise ValueError("excitation class minimum cannot be negative")
+            if qmax is not None and qmax < qmin:
+                raise ValueError("excitation class maximum cannot be below minimum")
         if self.force_constant_threshold_cm < 0.0:
             raise ValueError("force_constant_threshold_cm must be non-negative")
         if self.coefficient_threshold < 0.0:
@@ -91,15 +112,34 @@ def generate_vibrational_basis(
     frequencies_cm: np.ndarray | None = None,
     energy_cutoff_cm: float | None = None,
     max_basis_states: int | None = None,
+    mode_min_quanta: tuple[int, ...] | None = None,
+    mode_max_quanta: tuple[int, ...] | None = None,
+    excitation_class_limits: dict[int, tuple[int, int | None]] | None = None,
 ) -> tuple[tuple[int, ...], ...]:
     """Generate product harmonic-oscillator states with total quanta cutoff."""
     if n_modes < 1 or max_quanta < 0:
         raise ValueError("n_modes must be positive and max_quanta non-negative")
+    if mode_min_quanta is not None and len(mode_min_quanta) != n_modes:
+        raise ValueError("mode_min_quanta length must match n_modes")
+    if mode_max_quanta is not None and len(mode_max_quanta) != n_modes:
+        raise ValueError("mode_max_quanta length must match n_modes")
     freqs = None if frequencies_cm is None else np.asarray(frequencies_cm, dtype=float)
     states = []
     for state in product(range(max_quanta + 1), repeat=n_modes):
         if sum(state) > max_quanta:
             continue
+        if mode_min_quanta is not None and any(q < qmin for q, qmin in zip(state, mode_min_quanta)):
+            continue
+        if mode_max_quanta is not None and any(q > qmax for q, qmax in zip(state, mode_max_quanta)):
+            continue
+        n_excited = sum(1 for q in state if q > 0)
+        if n_excited > 0 and excitation_class_limits and n_excited in excitation_class_limits:
+            class_min, class_max = excitation_class_limits[n_excited]
+            total_quanta = sum(state)
+            if total_quanta < class_min:
+                continue
+            if class_max is not None and total_quanta > class_max:
+                continue
         if freqs is not None and energy_cutoff_cm is not None and float(np.dot(freqs, state)) > energy_cutoff_cm:
             continue
         states.append(state)
@@ -168,6 +208,27 @@ def _selected_force_field(force_field: QuarticForceField, options: VCIOptions) -
     )
 
 
+def _selected_quanta_limits(
+    force_field: QuarticForceField,
+    options: VCIOptions,
+) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
+    freqs = np.asarray(force_field.harmonic_frequencies_cm, dtype=float)
+    selected = list(range(len(freqs))) if options.active_modes is None else list(options.active_modes)
+    if options.frequency_min_cm is not None:
+        selected = [idx for idx in selected if freqs[idx] >= options.frequency_min_cm]
+    if options.frequency_max_cm is not None:
+        selected = [idx for idx in selected if freqs[idx] <= options.frequency_max_cm]
+
+    def select(values: tuple[int, ...] | None) -> tuple[int, ...] | None:
+        if values is None:
+            return None
+        if len(values) != len(freqs):
+            raise ValueError("Per-mode quanta limits must match the original mode count")
+        return tuple(values[idx] for idx in selected)
+
+    return select(options.mode_min_quanta), select(options.mode_max_quanta)
+
+
 def _selected_mode_symmetries(force_field: QuarticForceField, options: VCIOptions) -> tuple[str, ...] | None:
     if options.mode_symmetries is None:
         return None
@@ -210,6 +271,7 @@ def build_vci_hamiltonian(
     """
     opts = options or VCIOptions()
     opts.validate()
+    mode_min, mode_max = _selected_quanta_limits(force_field, opts)
     force_field = _selected_force_field(force_field, opts)
     freqs = np.asarray(force_field.harmonic_frequencies_cm, dtype=float)
     if np.any(freqs <= 0.0):
@@ -221,6 +283,9 @@ def build_vci_hamiltonian(
         freqs,
         opts.basis_energy_cutoff_cm,
         opts.max_basis_states,
+        mode_min,
+        mode_max,
+        opts.excitation_class_limits,
     )
     max_n = max(max(state) for state in basis)
     operator_max_n = max_n + 4

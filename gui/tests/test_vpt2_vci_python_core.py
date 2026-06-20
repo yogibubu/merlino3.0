@@ -174,6 +174,28 @@ def test_vci_basis_cutoff_frequency_window_pruning_blocks_and_contributions():
     assert result.state_contributions[1].dominant_basis_states[0][0] == (1,)
 
 
+def test_vci_per_mode_and_excitation_class_limits():
+    basis = generate_vibrational_basis(
+        3,
+        max_quanta=4,
+        frequencies_cm=np.array([100.0, 200.0, 300.0]),
+        mode_max_quanta=(3, 2, 1),
+        excitation_class_limits={
+            1: (1, 2),
+            2: (2, 3),
+            3: (3, 3),
+        },
+    )
+
+    assert (0, 0, 0) in basis
+    assert (3, 0, 0) not in basis
+    assert (2, 2, 0) not in basis
+    assert (2, 1, 0) in basis
+    assert (1, 1, 1) in basis
+    assert (2, 1, 1) not in basis
+    assert all(state[1] <= 2 and state[2] <= 1 for state in basis)
+
+
 def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
     path = __import__("pathlib").Path("gui/tests/gaussian/h2o.fchk")
     canonical = hessian_input_from_gaussian_fchk(path)

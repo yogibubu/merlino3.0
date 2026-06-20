@@ -7,6 +7,9 @@ VPT2/VCI backend. They are not copied from GDV.
 - `gf_core.f`: small symmetric Jacobi kernel and a Wilson-GF helper for already
   independent coordinates.
 - `vci_core.f`: product-basis generation and dense small-space VCI helpers.
+  - `M4VCIBasis` keeps the simple total-quanta basis contract.
+  - `M4VCIBasisCtl` adds per-mode min/max quanta and min/max total quanta for
+    one-, two-, three- and four-mode excitation classes.
 - `davidson_core.f`: independent Davidson support routines based only on
   residual vectors, diagonals and orthogonalization.
 
