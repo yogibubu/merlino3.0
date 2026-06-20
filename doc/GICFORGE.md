@@ -6,7 +6,8 @@ GICForge is the active Fortran77 geometry backend formerly called `prova`.
 
 GICForge is intentionally narrow:
 
-- read Cartesian molecular input from the Merlino working directory
+- read Cartesian molecular input only from `xyzin` in the Merlino working
+  directory
 - determine the molecular point group through the linked Fortran `symm.f`
   symmetry engine
 - build topology, redundant GICs and non-redundant GICs
@@ -24,6 +25,23 @@ GICForge is intentionally narrow:
 Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
 checks and user-facing workflow logic.
+
+## Input Contract
+
+GICForge no longer selects among geometry readers. The only molecular geometry
+input is the XYZ-format file named `xyzin` in the run directory. The `provin`
+file is still used for calculation keywords, title, charge and multiplicity,
+but it must not contain Cartesian coordinates, Z-matrices or FCHK geometry
+instructions.
+
+Unsupported legacy geometry paths:
+
+- FCHK geometry input
+- Z-matrix input from `provin`
+- Cartesian coordinates embedded in `provin`
+- `BLDZ`/`WRTZ` Z-matrix build/write workflow
+
+`RDXYZ` is therefore implicit and is no longer a user-facing keyword.
 
 ## Build
 

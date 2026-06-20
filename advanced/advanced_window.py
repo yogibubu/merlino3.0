@@ -111,12 +111,6 @@ class AdvancedWindow(QMainWindow):
                 self.kwd_widgets["GNIC"] = gnic_cb
                 row.addWidget(gnic_cb)
 
-                rdxyz_cb = QCheckBox("RDXYZ")
-                rdxyz_cb.setChecked(True)
-                rdxyz_cb.setEnabled(False)
-                self.kwd_widgets["RDXYZ"] = rdxyz_cb
-                row.addWidget(rdxyz_cb)
-
                 for kw in ["ONEDIH", "BDPCS3"]:
                     cb = QCheckBox(kw)
                     self.kwd_widgets[kw] = cb

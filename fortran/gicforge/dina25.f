@@ -39,10 +39,10 @@ CENZO
       Logical Linear,ImpDih,DoVolt,DoGDV,PrtPic,SyGNIC,DoBPCS,Clean
       Logical DoEck,Do1Dih,DoNorm,DVibRot,InvDst,LConn,DoSySt,Aver
       Logical DoBMat,DoMW,Inv1,DoScan,DoRig,RIgB,RigA,RigL,RigD,RigO
-      Logical DoneC,DoB1,DoVCI,DoDVR,DoFit,RdData,DoGNIC,DoZMAt,RdIsot
-      Logical WrZMat,RdSMI,DoG16,DoColl,DoGor,DoSpin
+      Logical DoneC,DoB1,DoVCI,DoDVR,DoFit,RdData,DoGNIC,RdIsot
+      Logical RdSMI,DoG16,DoColl,DoGor,DoSpin
       Logical RdB0,RdB0Er,RdVib,RdDvEr,RdEle,RdDeEr
-      Logical RdXYZ,RdFChk,TstAng,TTest,Error,DoVMSR,PrtVal
+      Logical TstAng,TTest,Error,DoVMSR,PrtVal
       Dimension IEl(0:MaxEl)
       Dimension IScr(MxScr) 
       Dimension Scr(MxScr)
@@ -154,8 +154,6 @@ C     RdSMI=Kwd(1)
       DoBMat=Kwd(19)
       DoScan=Kwd(20)
       DoRig=Kwd(21)
-      DoZMat=Kwd(22)
-      WrZMat=Kwd(23)
       RdIsot=Kwd(24)
       DoFit=Kwd(25)
       DoVCI=Kwd(26)
@@ -166,8 +164,6 @@ C     RdSMI=Kwd(1)
       Clean=Kwd(31)
       DVIBRot=Kwd(32)
       Loose=Kwd(33)
-      RdXYZ=Kwd(34)
-      RdFChk=Kwd(35)
       RdSMI=Kwd(36)
       DoVMSR=Kwd(37)
       If(RdSMI) Loose=.True.
@@ -864,10 +860,6 @@ C the default is to normalize GNICs
         Kwd(20)=.True.
        ElseIf(Test(1:5).eq.'RIGID') then
         Kwd(21)=.True.
-       ElseIf(Test(1:4).eq.'BLDZ') then
-        Kwd(22)=.True. 
-       ElseIf(Test(1:4).eq.'WRTZ') then
-        Kwd(23)=.True.
        ElseIf(Test(1:6).eq.'SEMIEX') then
         Kwd(24)=.True.
        ElseIf(Test(1:6).eq.'FITPOT') then
@@ -884,10 +876,6 @@ C the default is to normalize GNICs
         Kwd(37)=.true.
        ElseIf(Test(1:5).eq.'LOOSE') then
         Kwd(33)=.true.
-       ElseIf(Test(1:5).eq.'RDXYZ') then
-        Kwd(34)=.true.
-       ElseIf(Test(1:6).eq.'RDFCHK') then
-        Kwd(35)=.true.
        ElseIf(Test(1:5).eq.'RDSMI') then
         Kwd(36)=.true.
        ElseIf(Test(1:3).eq.'OPT') then
@@ -919,8 +907,6 @@ C      write(IOut,'(A80)') CLine
       EndIf
       If(Kwd(1))  write(IOut,'('' SMILES    : SMILES by RdKIT'')') 
       If(Kwd(36)) write(IOut,'('' RDSMI     : SMILES by GICForge'')')       
-      If(Kwd(34)) write(IOut,'('' RDXYZ     : Coords.from XYZ File'')')
-      If(Kwd(35)) write(IOut,'('' RDFCHK    : Coords.from FCHK File'')')
       If(Kwd(2))  write(IOut,'('' G16       : Make G16 Input'')')
       If(Kwd(3))  write(IOut,'('' GDV       : Make GDV Input'')')
       If(Kwd(4))  write(IOut,'('' CUBIC     : Freq=Cubic(GDV) and'',
@@ -954,9 +940,6 @@ C      write(IOut,'(A80)') CLine
       If(Kwd(20)) write(IOut,'('' SCAN      : Scan for Soft DOF'')')
       If(Kwd(21)) write(IOut,'('' RIGID     : Freeze Hard Modes'',
      $  '' in Scan'')')
-      If(Kwd(22)) write(IOut,'('' BLDZ      : Build ZMAT from'',
-     $  '' Input XYZ'')') 
-      If(Kwd(23)) write(IOut,'('' WRTZ      : Write ZMAT for MSR'')')
       If(Kwd(24)) write(IOut,'('' SEMIEX    : Read Isotopes and '',
      $ ''make MSR input (requires ZMAt)'')')
       If(Kwd(32)) write(IOut,'('' DVIBROT   : Read Vibr.Corr. to'', 

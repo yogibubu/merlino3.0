@@ -1,5 +1,4 @@
 #DEFAULT 
- RDXYZ     : Read XYZ File
  GDV       : Make G26 Input
  ECKART    : Enforce Eckart Orientation
  GNIC      : Make Generalized  Natural Internal Coords.

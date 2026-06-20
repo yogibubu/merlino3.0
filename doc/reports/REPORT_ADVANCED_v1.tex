@@ -46,10 +46,10 @@ Gaussian runs lasting several hours.
 \begin{itemize}[nosep]
   \item Automatic generation of \texttt{provin} from \texttt{xyzin}.
   \item Charge and multiplicity read directly from \texttt{xyzin}.
-  \item Mandatory keywords:
+  \item Mandatory preparation mode:
     \begin{itemize}[nosep]
       \item \texttt{GNIC}
-      \item \texttt{RDXYZ}
+      \item Cartesian geometry is always read from \texttt{xyzin}; \texttt{RDXYZ} is implicit.
     \end{itemize}
   \item Optional keywords:
     \begin{itemize}[nosep]
@@ -173,4 +173,3 @@ advanced quantum-chemical workflows in Merlino~2.1 and is suitable for routine
 scientific work.
 
 \end{document}
-

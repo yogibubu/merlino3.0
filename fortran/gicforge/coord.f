@@ -16,7 +16,7 @@ C I/O
       Dimension IScr(*),Scr(*)
 C Local
       Logical DoBPCS,DoHBnd,DoEck,TstAng,TTest,Error,AllHB,JoinFr,Linear
-      Logical DoZMat,Aver,OK,Clean,RdXYZ,RdFChk
+      Logical Aver,OK,Clean
       Character*2 AtSymb(MxAt)
       Character*2 SymAt(MxAt),IAnEl2
       Character*20 StrInp,SL,SA,SD
@@ -63,11 +63,8 @@ C Set defaults and starting values
       DoBPCS = KWd(13)
       JoinFr = KWd(16)
       DoHBnd = KWd(17)
-      DoZMat = Kwd(22)
       RdIsot = Kwd(24)
       Clean  = Kwd(31)
-      RdXYZ  = Kwd(34)
-      RdFChk = Kwd(35)
       NAtoms = 0
       NFrag  = 0
       IAt    = 0
@@ -86,110 +83,51 @@ C Set defaults and starting values
       Linear = .False.
       call AClear(3,CInp)
       call IClear(4,IZIZ)
+C Read Cartesian coordinates.  GICForge is deliberately xyz-only for
+C molecular geometry: "provin" controls the run, but never carries geometry.
+C Do not add silent fallbacks to FCHK, Z-matrix, or stdin coordinates here.
       OK = .False.
-C Possibly Read XYZ File
-      If(RdXYZ) then
-       INQUIRE( FILE='xyzin', EXIST=OK ) 
-       If(.not.OK) then
-        write(IOut,'('' File XYZIN does not exist'')')
-        Stop
-       Else
-        InFil=8
-        OPEN(InFil,FILE='xyzin',STATUS='OLD')
-        Read(InFil,*) NAtoms
-        write(IOut,'(/,'' Cartesian Coordinates from XYZ File for'',
-     $    I5,'' Atoms'',/)') NAtoms
-        Read(InFil,*) LinScr
-CENZO
-        CALL FndGrp(LinScr, GROUP0, SMILES, GROUP)          
-        IF (GROUP .EQ. ' ') THEN
-          GROUP0='C1' 
-          GROUP='c1'
-        END IF
-        write(IOut,'('' Group ='',A4)') GROUP0
-        write(IOut,'('' SMILES ='',A72)') SMILES
-CENZO
-        Do 10 IAt=1,NAtoms
-         Call LlinCl(LinScr)
-         Read(InFil,'(A80)') LinScr
-         Call RdCart(IOut,IPrint,IAt-1,LinScr,NValue,IAnI,IsotI,IFragI,
-     $     CInp)
-         If(NValue.ne.0) then
-          IAn(IAt)=IAnI
-          Isot(IAt)=IsotI
-          IFrag(IAt)=IFragI
-          If(IFragI.gt.NFrag) NFrag=IFragI
-          Call AMove(3,CInp,C(1,IAt))
-         Else
-          Write(IOut,'('' Error for Atom'',I5)') IAt
-         EndIf
-   10   Continue
-        Close(InFil)
-        goto 50
-       EndIf
+      INQUIRE( FILE='xyzin', EXIST=OK )
+      If(.not.OK) then
+       write(IOut,'('' File XYZIN does not exist'')')
+       Stop
       EndIf
-C Possibly Read FChk File
-      If(RdFChk) then
-       INQUIRE( FILE='fchkin', EXIST=OK)
-       If(.not.OK) then
-        write(IOut,'('' File XYZIN does not exist'')')
-        Stop
-       Else
-        InFil=8
-        OPEN(InFil,FILE='fchkin',STATUS='OLD')
-        call FChkRd(InFil,IOut,Thresh,NAtoms,IAn,PhyCon,C)   
-        write(IOut,'(/,'' Cartesian Coordinates from FCHK File for'',
-     $    I5,'' Atoms'',/)') NAtoms
-        close(InFil)
-        NFrag=1
-        do 12 IAt=1,NAtoms
-         IFrag(IAt)=1
-         ISot(IAt)=0
-   12   Continue
-        goto 50
-       EndIf
-      EndIf
-C Read from the Input Stream
-      call LlinCl(LinScr)
-      read(In,'(A80)') LinScr
-      call SubStr(LinScr,10,IStart,Nvalue)
-      if(NValue.eq.0) then 
-       write(IOut,'(/,'' No Coordinates Found'')')
-       STOP
-      ElseIf(NValue.gt.6) then
-       write(IOut,'(/,'' Too Many Items for Coordinates'')')
-       STOP
-      ElseIf(NValue.eq.1) then 
-C Read Z-matrix
-       write(IOut,'(/,'' Z-Matrix from the Input Stream '')')
-       call NewRdZ(In,IOut,IPunch,IPrint,MaxNZ,NAtoms,NZ,Kwd,DoBPCS,
-     $   LinScr,AtSymb,IAn,IAnZ,Isot,MapZat,IScr,C,CZ,Scr,NSpec)
-        goto 50 
-      EndIf
-C Read Cartesian Coordinates from input stream  
-   20 If(IAt.gt.0) then
-       call LlinCl(LinScr)
-       read(In,'(A80)') LinScr
-      EndIf
-      Call Aclear(3,CInp) 
-      Call RdCart(IOut,IPrint,IAt,LinScr,NValue,IAnI,IsotI,IFragI,CInp)
-      If(NValue.ne.0) then 
-       IAn(IAt)=IAnI
-       Isot(IAt)=IsotI
-       IFrag(IAt)=IFragI
-       If(IFragI.gt.NFrag) NFrag=IFragI
-       Call AMove(3,CInp,C(1,IAt))
-       go to 20
-      EndIf
-      NAtoms = IAt 
-      if(NAtoms.le.1) then
+      InFil=8
+      OPEN(InFil,FILE='xyzin',STATUS='OLD')
+      Read(InFil,*) NAtoms
+      If(NAtoms.le.1) then
        write(IOut,'(/'' Less than 2 Atoms: STOP'')')
        STOP
-      else
-       Write(IOut,'(/,''Cartesian Coordinates from the Input'',
-     $'' stream for'',I5,'' Atoms'',/)') NAtoms 
-      endif
-   50 continue
+      EndIf
+      write(IOut,'(/,'' Cartesian Coordinates from XYZ File for'',
+     $ I5,'' Atoms'',/)') NAtoms
+      Read(InFil,*) LinScr
+CENZO
+      CALL FndGrp(LinScr, GROUP0, SMILES, GROUP)
+      IF (GROUP .EQ. ' ') THEN
+       GROUP0='C1'
+       GROUP='c1'
+      END IF
+      write(IOut,'('' Group ='',A4)') GROUP0
+      write(IOut,'('' SMILES ='',A72)') SMILES
+CENZO
+      Do 10 IAt=1,NAtoms
+       Call LlinCl(LinScr)
+       Read(InFil,'(A80)') LinScr
+       Call RdCart(IOut,IPrint,IAt-1,LinScr,NValue,IAnI,IsotI,IFragI,
+     $  CInp)
+       If(NValue.ne.0) then
+        IAn(IAt)=IAnI
+        Isot(IAt)=IsotI
+        IFrag(IAt)=IFragI
+        If(IFragI.gt.NFrag) NFrag=IFragI
+        Call AMove(3,CInp,C(1,IAt))
+       Else
+        Write(IOut,'('' Error for Atom'',I5)') IAt
+        STOP
+       EndIf
+   10 Continue
+      Close(InFil)
 C Enhanced connectivity generation
 C      call GenCBx(IOut,IPrint,IAlg,IToAng,DLimI,MxBnd,NAtoms,IAn,C,
 C    $   NBond,IBond,IBType,IP2Box,IndTab,IndBox,IBox,IBoxSt)   
@@ -313,9 +251,6 @@ C Compute rotational parameters
       AvPMom=AvPMom**(1.0D0/3.0D0)
       AvPMoB=AvPMoB**(1.0d0/3.0d0)
       Call RotCon(IOut,IPrint,Linear,NAtoms,PhyCon,PMomB,RotGHz,RTemp)
-C Possibly Build Z-Matrix
-      If(DoZMat) Call CtoZ(IOut,IPrint,MxBnd,NAtoms,IAn,NBond,IBond,IZ,
-     $  LBL,LAlpha,LBeta,IAnZ,C,EAN,CZ,EANZ,BL,Alpha,Beta,Scr,IScr)
       Return
       End
 *Deck RdCart

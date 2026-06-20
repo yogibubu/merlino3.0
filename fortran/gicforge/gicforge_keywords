@@ -22,8 +22,6 @@
  BMAT      : Build B Matrix
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan
- BLDZ      : Build ZMAT from Input XYZ
- WRTZ      : Write ZMAT for MSR
  ISOTOP    : Read Isotopic Subst.
  DVIBROT   : Read Vibr.Corr. to Rot.Const.
  FITPOT    : 1D-Polynomial Fit
