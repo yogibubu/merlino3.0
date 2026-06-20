@@ -23,7 +23,13 @@ C find cycles
      $  NDih,NBond,IBond,IAtomD,NCyc,NAtC,ICAt,IAtCyc)
       If(IPrint.gt.0) write(IOut,'(/,'' The Molecule has'',I3,
      $  '' Cycles'')')NCyc
-C Set canonical or symmetrical atom numbering
+C Set canonical atom numbering.
+C Merlino convention: cyclic order starts from the lowest input atom
+C index and follows the direction selected by the ring canonicalizer.
+C Ring-puckering GICs generated later by CyGND use this order.
+C Do not call SymCyc here: a symmetry-based shift changes the phase
+C origin and would make the Fortran and Python QPck/PhiP conventions
+C diverge for otherwise identical rings.
       do 10 icyc = 1, NCyc
        if(IPrint.gt.0) write(IOut,'(/,I2,''-Membered Cycle'')')
      $   NAtC(ICyc)
@@ -33,10 +39,6 @@ C Set canonical or symmetrical atom numbering
        call CanCyc(IOut,IPrint,ReNumb,MxBnd,MxAtCy,NAtC(ICyc),
      $   ICAt(1,ICyc),NBond,IBond)
        if(ReNumb.and.IPrint.gt.0) write(IOut,'('' Canonical'',
-     $   '' Numbering'',10I5)') (ICAt(i,ICyc),i=1,NAtC(ICyc))
-       call SymCyc(IOut,IPrint,ReNumb,MxBnd,MxAtCy,ICyc,NAtC,ICAt,
-     $ NBond,IBond,EAn)
-       if(ReNumb.and.IPrint.gt.0) write(IOut,'('' Symmetric'',
      $   '' Numbering'',10I5)') (ICAt(i,ICyc),i=1,NAtC(ICyc))
    10 continue
 C find atoms common to 2 or 3 cycles
@@ -902,4 +904,3 @@ c  40  continue
 c  30 continue
       return
       end
-

@@ -4,14 +4,22 @@ from survibfit.puckering_gaussian import (
     angular_step_to_target,
     auto_ring_indices,
     build_gjf_links,
+    canonical_ring_indices,
     four_ring_target_gic,
     parse_ring_indices,
     puckering_state,
+    ring_puckering_gic_lines,
 )
 
 
 def test_parse_ring_indices_validates():
     assert parse_ring_indices("1,2,3,4,5", 8) == [0, 1, 2, 3, 4]
+
+
+def test_ring_numbering_is_canonical_under_rotation_and_reversal():
+    assert canonical_ring_indices([2, 3, 4, 0, 1]) == [0, 1, 2, 3, 4]
+    assert canonical_ring_indices([3, 2, 1, 0, 4]) == [0, 1, 2, 3, 4]
+    assert ring_puckering_gic_lines([2, 3, 4, 0, 1]) == ring_puckering_gic_lines([3, 2, 1, 0, 4])
 
 
 def test_five_ring_gic_contains_q_and_phi():

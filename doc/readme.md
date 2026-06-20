@@ -123,6 +123,8 @@ Nota di architettura:
   mass-weighted lungo il percorso ottimizzato.
 - Se sono presenti `QPck....`/`PhiP....`, il profilo conserva le coordinate GIC
   Gaussian e, se richiesto, scrive il bridge verso componenti Cremer-Pople.
+- La numerazione canonica degli anelli è documentata in
+  `doc/RING_NUMBERING_CONVENTION.md`.
 
 ---
 

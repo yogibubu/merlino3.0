@@ -33,6 +33,9 @@ def orientation_block(coords):
 
 def test_gaussian_gic_values_are_profiled_and_mapped_to_cp(tmp_path):
     dvr = load_mw_path_dvr()
+    assert dvr.canonical_ring_indices([2, 3, 4, 0, 1]) == [0, 1, 2, 3, 4]
+    assert dvr.canonical_ring_indices([3, 2, 1, 0, 4]) == [0, 1, 2, 3, 4]
+
     theta = np.linspace(0.0, 2.0 * np.pi, 5, endpoint=False)
     base = np.column_stack([np.cos(theta), np.sin(theta), np.zeros(5)])
     coords1 = base.copy()

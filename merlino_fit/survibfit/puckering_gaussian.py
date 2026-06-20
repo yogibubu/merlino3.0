@@ -53,10 +53,30 @@ def parse_ring_indices(text: str, natoms: int) -> list[int]:
         raise ValueError("--ring contains an atom index outside the molecular geometry")
     if len(set(indices)) != len(indices):
         raise ValueError("--ring contains duplicated atom indices")
-    return indices
+    return canonical_ring_indices(indices)
+
+
+def canonical_ring_indices(ring_indices: list[int]) -> list[int]:
+    """Return the Merlino canonical cyclic numbering for a ring.
+
+    The first atom is the lowest input atom index.  The direction is chosen so
+    the second atom is the lower of the two cyclic neighbours.  This removes
+    arbitrary DFS/RDKit traversal choices while preserving the ring topology.
+    """
+    indices = list(ring_indices)
+    if len(indices) < 4:
+        raise ValueError("A canonical ring needs at least 4 atoms")
+    if len(set(indices)) != len(indices):
+        raise ValueError("A canonical ring cannot contain duplicated atoms")
+    n = len(indices)
+    start = min(range(n), key=lambda i: indices[i])
+    forward = [indices[(start + i) % n] for i in range(n)]
+    backward = [indices[(start - i) % n] for i in range(n)]
+    return forward if forward[1] <= backward[1] else backward
 
 
 def ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -> np.ndarray:
+    ring_indices = canonical_ring_indices(ring_indices)
     ring = coords[ring_indices]
     size = len(ring_indices)
     return np.array(
@@ -72,6 +92,7 @@ def five_ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -
 
 
 def four_ring_pucker_torsion(coords: np.ndarray, ring_indices: list[int]) -> float:
+    ring_indices = canonical_ring_indices(ring_indices)
     ring = coords[ring_indices]
     return dihedral(ring[1], ring[2], ring[3], ring[0])
 
@@ -162,6 +183,7 @@ def gic_linear_expression(coefficients: np.ndarray, names: list[str]) -> str:
 
 
 def ring_gic_torsion_lines(ring_indices: list[int]) -> tuple[list[str], list[str]]:
+    ring_indices = canonical_ring_indices(ring_indices)
     atom = [index + 1 for index in ring_indices]
     size = len(atom)
     names = [f"T{i + 1:03d}" for i in range(size)]
@@ -179,6 +201,7 @@ def five_ring_gic_torsion_lines(ring_indices: list[int]) -> tuple[list[str], lis
 
 
 def ring_puckering_component_lines(ring_indices: list[int]) -> tuple[list[str], list[tuple[str, str, str, int]]]:
+    ring_indices = canonical_ring_indices(ring_indices)
     ring_size = len(ring_indices)
     torsion_lines, torsion_names = ring_gic_torsion_lines(ring_indices)
     lines = list(torsion_lines)
@@ -198,6 +221,7 @@ def ring_puckering_component_lines(ring_indices: list[int]) -> tuple[list[str], 
 
 
 def ring_puckering_gic_lines(ring_indices: list[int]) -> list[str]:
+    ring_indices = canonical_ring_indices(ring_indices)
     if len(ring_indices) == 4:
         atom = [index + 1 for index in ring_indices]
         return [
@@ -226,6 +250,7 @@ def ring_functional_target_gic(
     target_phi_deg: float,
     current_phi_deg: float,
 ) -> tuple[list[str], float]:
+    ring_indices = canonical_ring_indices(ring_indices)
     if len(ring_indices) == 4:
         return four_ring_target_gic(ring_indices, target_phi_deg, current_phi_deg)
     component_lines, modes = ring_puckering_component_lines(ring_indices)
@@ -252,6 +277,7 @@ def five_ring_functional_target_gic(
 
 
 def ring_scan_to_zero_gic(ring_indices: list[int], target_phi_deg: float) -> list[str]:
+    ring_indices = canonical_ring_indices(ring_indices)
     if len(ring_indices) == 4:
         raise ValueError("scan-to-zero requires a paired puckering mode")
     component_lines, modes = ring_puckering_component_lines(ring_indices)
@@ -278,6 +304,7 @@ def four_ring_target_gic(
     target_deg: float,
     current_deg: float,
 ) -> tuple[list[str], float]:
+    ring_indices = canonical_ring_indices(ring_indices)
     atom = [index + 1 for index in ring_indices]
     step_deg = target_deg - current_deg
     step_rad = math.radians(step_deg)
@@ -378,7 +405,7 @@ def auto_ring_indices(atoms: list[str], coords_angstrom: np.ndarray) -> list[int
     _cg, _dg, ringset = build_topology(coords_angstrom / 0.52917721092, z_numbers)
     if ringset is None:
         raise ValueError("No rings detected in molecular geometry")
-    candidates = [list(ring.atoms) for ring in ringset if len(ring.atoms) >= 4]
+    candidates = [canonical_ring_indices(list(ring.atoms)) for ring in ringset if len(ring.atoms) >= 4]
     if not candidates:
         raise ValueError("No ring with at least 4 atoms detected in molecular geometry")
     candidates.sort(key=lambda ring: (len(ring), ring))

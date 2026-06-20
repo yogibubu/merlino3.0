@@ -64,6 +64,9 @@ Path DVR e Puckering Gaussian:
   di puckering
 - quando il log contiene `QPck/PhiP`, il profilo può scrivere il bridge verso
   componenti Cremer-Pople generalizzate
+- convenzione di numerazione anelli fissata in
+  `doc/RING_NUMBERING_CONVENTION.md`: primo atomo = indice input più basso,
+  direzione = vicino con indice più basso
 
 Verifiche minime fatte
 ---------------------

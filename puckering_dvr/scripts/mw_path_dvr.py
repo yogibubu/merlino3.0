@@ -990,7 +990,22 @@ def dihedral(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> 
     return math.atan2(y, x)
 
 
+def canonical_ring_indices(ring_indices: list[int]) -> list[int]:
+    """Return Merlino's deterministic cyclic ring numbering."""
+    indices = list(ring_indices)
+    if len(indices) < 4:
+        raise ValueError("A canonical ring needs at least 4 atoms")
+    if len(set(indices)) != len(indices):
+        raise ValueError("A canonical ring cannot contain duplicated atoms")
+    n = len(indices)
+    start = min(range(n), key=lambda i: indices[i])
+    forward = [indices[(start + i) % n] for i in range(n)]
+    backward = [indices[(start - i) % n] for i in range(n)]
+    return forward if forward[1] <= backward[1] else backward
+
+
 def five_ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -> np.ndarray:
+    ring_indices = canonical_ring_indices(ring_indices)
     ring = coords[ring_indices]
     return np.array(
         [
@@ -1005,6 +1020,7 @@ def five_ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -
 
 
 def four_ring_pucker_torsion(coords: np.ndarray, ring_indices: list[int]) -> float:
+    ring_indices = canonical_ring_indices(ring_indices)
     ring = coords[ring_indices]
     return dihedral(ring[1], ring[2], ring[3], ring[0])
 
@@ -1081,6 +1097,7 @@ def cremer_pople_mode_values(coords: np.ndarray, ring_indices: list[int]) -> dic
     ring geometry. Odd rings have paired modes m=2..(N-1)/2; even rings have
     paired modes m=2..N/2-1 plus the special unpaired m=N/2 coordinate.
     """
+    ring_indices = canonical_ring_indices(ring_indices)
     ring_size = len(ring_indices)
     if ring_size < 4:
         raise ValueError("Cremer-Pople labels require a ring with at least four atoms")
@@ -1453,11 +1470,13 @@ def gic_linear_expression(coefficients: np.ndarray, names: list[str]) -> str:
 
 def parse_ring_indices(text: str, natoms: int) -> list[int]:
     indices = [int(item.strip()) - 1 for item in text.split(",") if item.strip()]
-    if len(indices) not in (4, 5):
-        raise ValueError("--ring must contain four or five comma-separated one-based atom indices")
+    if len(indices) < 4:
+        raise ValueError("--ring must contain at least four comma-separated one-based atom indices")
     if min(indices) < 0 or max(indices) >= natoms:
         raise ValueError("--ring contains an atom index outside the molecular geometry")
-    return indices
+    if len(set(indices)) != len(indices):
+        raise ValueError("--ring contains duplicated atom indices")
+    return canonical_ring_indices(indices)
 
 
 def find_energy_key(structures: list[Structure], requested: str | None) -> str:
@@ -6355,6 +6374,11 @@ def write_gaussian_phi_scan(source: SourceData, args: argparse.Namespace) -> Non
         raise ValueError(f"--structure-index selects missing structure {args.structure_index}")
     structure = source.structures[structure_index]
     ring_indices = parse_ring_indices(args.ring, len(structure.atoms))
+    if len(ring_indices) not in (4, 5):
+        raise ValueError(
+            "--prepare-gaussian in puckering_dvr supports four- and five-membered rings; "
+            "use the Merlino/merlino_fit Gaussian GIC generator for larger rings."
+        )
     start_pucker_label = args.start_pucker_label
     if start_pucker_label is None and source.path.suffix.lower() == ".xyz":
         start_pucker_label = "E1"
