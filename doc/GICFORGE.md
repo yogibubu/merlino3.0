@@ -8,6 +8,9 @@ GICForge is intentionally narrow:
 
 - read Cartesian molecular input from the Merlino working directory
 - build topology, redundant GICs and non-redundant GICs
+- remove residual linear dependencies by coordinate-type blocks, so stretches,
+  bends, linear bends, torsions and out-of-plane coordinates are never mixed
+  during the final rank pruning
 - canonicalize ring atom numbering with the same Prelog-first convention used
   by Python
 - optionally build/write the B matrix used for geometry-parameter changes
@@ -34,3 +37,20 @@ The build creates:
 
 The source remains fixed-form Fortran77/legacy-compatible Fortran.
 
+## Residual Redundancy Pruning
+
+After the ordinary GIC construction, GICForge calls `PruneGICBlocks` before
+writing Gaussian input. The routine builds the B matrix for the current GIC
+candidates and applies a modified Gram-Schmidt rank test separately to each
+coordinate family:
+
+- stretch
+- bend
+- linear bend
+- torsion, including ring puckering and butterfly coordinates
+- out-of-plane
+
+Dependent rows are removed from their own family and the remaining arrays are
+compacted in place. This is intentionally analogous to the Python
+`prune_mode=svd/g` policy, but preserves strict Fortran77 implementation and
+does not combine heterogeneous coordinate types.

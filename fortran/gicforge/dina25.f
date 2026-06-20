@@ -624,6 +624,12 @@ C Out of Plane
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
+      call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NLen,NAng,
+     $  NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,IAtomB,
+     $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
+     $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
+     $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
+     $  ValTO,C,BMat,Scr)
       if(DoVolt) close(ipunch)
 C Gaussian Input
       if(DoG16.or.DoGDV) then

@@ -14,7 +14,7 @@ rm -f "$LOG"
   -w \
   -L"$SDK_LIB" \
   dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f \
-  pcsgeo.f symang.f rates.f tools1.f tools2.f \
+  gicprune.f pcsgeo.f symang.f rates.f tools1.f tools2.f \
   -o gicforge \
   >"$LOG" 2>&1
 
