@@ -99,7 +99,7 @@ C Do not add silent fallbacks to FCHK, Z-matrix, or stdin coordinates here.
       EndIf
       write(IOut,'(/,'' Cartesian Coordinates from XYZ File for'',
      $ I5,'' Atoms'',/)') NAtoms
-      Read(InFil,*) LinScr
+      Read(InFil,'(A80)') LinScr
       CALL FndGrp(LinScr, GROUP0, GROUP)
       IF (GROUP .EQ. ' ') THEN
        GROUP0='C1'

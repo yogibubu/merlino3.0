@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import numpy as np
@@ -369,7 +371,8 @@ def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
     )
 
     assert result.parameters[0].active is False
-    assert any(parameter.active for parameter in result.parameters)
+    assert not any(parameter.active for parameter in result.parameters)
+    assert result.diagnostics.convergence_reason == "no_active_totally_symmetric_parameters"
 
 
 def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
@@ -400,7 +403,7 @@ def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
             (observation,),
             parameter_classes=(
                 ParameterClassConstraint("OH_stretches", ("bond(1,2)", "bond(1,3)"), "shared"),
-                ParameterClassConstraint("HOH_bend", ("angle(2,1,3)",), "fixed"),
+                ParameterClassConstraint("antisymmetric_stretch", ("GIC002",), "fixed"),
             ),
         ),
         max_iter=1,
@@ -408,7 +411,7 @@ def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
     )
 
     shared = [parameter for parameter in result.parameters if parameter.parameter_class == "OH_stretches"]
-    fixed = [parameter for parameter in result.parameters if parameter.parameter_class == "HOH_bend"]
+    fixed = [parameter for parameter in result.parameters if parameter.parameter_class == "antisymmetric_stretch"]
 
     assert shared
     assert all(parameter.active for parameter in shared)
@@ -548,43 +551,61 @@ def test_semiexperimental_gic_preview_keeps_angstrom_topology_for_cyclopentadien
     assert any("dihedral" in label for label in preview.gic_labels)
 
 
-def test_semiexperimental_fit_can_use_gicforge_readallgic(tmp_path):
+def test_semiexperimental_fit_always_uses_iterative_gicforge(tmp_path, monkeypatch):
     atoms = ["O", "H", "H"]
     coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
     xyz = tmp_path / "water.xyz"
     xyz.write_text(
-        "\n".join(["3", "water", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        "\n".join(["3", "", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
         + "\n",
         encoding="utf-8",
     )
-    gauin = tmp_path / "gauin"
-    gauin.write_text(
-        "\n".join(
-            [
-                " Stre0001=[ 0.7071*R(  1,  2)+0.7071*R(  1,  3)]",
-                " Stre0002=[ 0.7071*R(  1,  2)-0.7071*R(  1,  3)]",
-                " SymD0001 =[ 1.00000*A(  2,  1,  3)]",
-            ]
+    calls = []
+
+    def fake_run_gicforge(workdir):
+        workdir = Path(workdir)
+        xyzin_lines = (workdir / "xyzin").read_text(encoding="utf-8").splitlines()
+        assert xyzin_lines[1] == ""
+        gauin = workdir / "gauin"
+        gauin.write_text(
+            "\n".join(
+                [
+                    " Stre0001=[ 0.7071*R(  1,  2)+0.7071*R(  1,  3)]",
+                    " Stre0002=[ 0.7071*R(  1,  2)-0.7071*R(  1,  3)]",
+                    " SymD0001 =[ 1.00000*A(  2,  1,  3)]",
+                    " LAng0001 = L(  2,  1,  3,  0, -1)",
+                    " OuPl0001 = U(  2,  1,  3,  2)",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        calls.append(workdir)
+        return SimpleNamespace(files={"gauin": gauin})
+
+    monkeypatch.setattr("merlino_semiexp.fit.run_gicforge", fake_run_gicforge)
     observation = IsotopologueObservation(
         "parent",
         RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
     )
 
     result = fit_semiexperimental_geometry(
-        SemiexperimentalFitRequest(xyz, (observation,), gicforge_gauin=gauin),
+        SemiexperimentalFitRequest(xyz, (observation,)),
         max_iter=1,
         outdir=tmp_path / "run",
     )
 
     manifest = json.loads((tmp_path / "run" / "semiexp_manifest.json").read_text(encoding="utf-8"))
-    assert all(parameter.name.startswith("GICForge") for parameter in result.parameters)
-    assert result.b_matrix.shape[0] == 3
-    assert manifest["backend"]["coordinate_model"] == "gicforge-readallgic"
-    assert manifest["parameters"]["coordinate_generation"]["primitive_source"] == "GICForge ReadAllGIC"
+    assert calls
+    assert all("GICForge" in parameter.name for parameter in result.parameters)
+    assert any(parameter.active for parameter in result.parameters)
+    assert any(not parameter.active for parameter in result.parameters)
+    assert any("LAng" in label for label in result.gic_labels)
+    assert any("OuPl" in label for label in result.gic_labels)
+    assert result.b_matrix.shape[0] == 5
+    assert manifest["backend"]["coordinate_model"] == "gicforge-iterative-readallgic"
+    assert "GICForge ReadAllGIC" in manifest["parameters"]["coordinate_generation"]["primitive_source"]
+    assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "totally symmetric GICForge coordinates only"
 
 
 def test_semiexperimental_validation_flags_bad_classes_and_isotopes(tmp_path):

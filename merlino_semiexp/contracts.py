@@ -122,13 +122,10 @@ class SemiexperimentalFitRequest:
     rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
     qm_predicates: tuple[QMParameterPredicate, ...] = ()
     parameter_classes: tuple[ParameterClassConstraint, ...] = ()
-    gicforge_gauin: Path | None = None
 
     def validate(self) -> None:
         if not self.observations:
             raise ValueError("Semiexperimental fit needs at least one isotopologue")
-        if self.gicforge_gauin is not None and not Path(self.gicforge_gauin).exists():
-            raise ValueError(f"GICForge gauin file not found: {self.gicforge_gauin}")
         labels = [item.label for item in self.observations]
         if len(set(labels)) != len(labels):
             raise ValueError("Duplicate isotopologue labels are not allowed")
