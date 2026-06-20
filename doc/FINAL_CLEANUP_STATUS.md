@@ -40,14 +40,17 @@
   `/Users/vincenzobarone/Desktop/puckering_dvr_github`.
 - The imported copy excludes source `.git`, legacy zip package, and
   bibliography PDFs.
-- Advanced GUI now exposes `Path DVR – Gaussian scan analysis`.
-- The panel runs `puckering_dvr/scripts/mw_path_dvr.py` on any Gaussian
+- The main toolbar exposes a dedicated `DVR` window.
+- The window runs `puckering_dvr/scripts/mw_path_dvr.py` on any Gaussian
   optimized scan/path log and writes DVR outputs/figures under the selected
   working directories.
+- The window can select the newest Gaussian log, run a lightweight preflight,
+  launch Gaussian from `gauin.gjf`, chain Gaussian -> DVR, preview DVR results,
+  and write a diagnostic `*_dvr_run_manifest.json`.
 - Ring puckering labels are optional: Gaussian `QPck/PhiP` values are preserved
   as `gic_*` columns and can be mapped to generalized Cremer-Pople components.
 - The intended sequence is:
-  `merlino-set` -> `merlino-run` -> generate/run Gaussian -> run Puckering DVR.
+  `merlino-set` -> `merlino-run` -> generate Gaussian -> run Gaussian -> DVR.
 
 ## Validation Snapshot
 - `merlino_fit/tests`: 60 passed

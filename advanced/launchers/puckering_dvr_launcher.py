@@ -40,6 +40,30 @@ class PuckeringDVRLauncher(QObject):
             self.finished.emit(False, f"Path DVR backend not found: {self.script}")
             return
 
+        args = self.build_path_analysis_args(
+            log_path,
+            outdir,
+            figdir,
+            prefix,
+            boundary,
+            solver,
+            compute_rotconst=compute_rotconst,
+            label_cremer_pople=label_cremer_pople,
+        )
+        self._start_process(sys.executable, args)
+
+    def build_path_analysis_args(
+        self,
+        log_path: Path,
+        outdir: Path,
+        figdir: Path,
+        prefix: str,
+        boundary: str,
+        solver: str,
+        compute_rotconst: bool = True,
+        label_cremer_pople: bool = True,
+        check_only: bool = False,
+    ) -> list[str]:
         args = [
             str(self.script),
             "--gaussian-log",
@@ -61,8 +85,9 @@ class PuckeringDVRLauncher(QObject):
             args.append("--compute-rotconst")
         if label_cremer_pople:
             args.append("--label-cremer-pople")
-
-        self._start_process(sys.executable, args)
+        if check_only:
+            args.append("--check-only")
+        return args
 
     def _start_process(self, executable: str, args: list[str]):
         self.process.setWorkingDirectory(str(self.dvr_root))

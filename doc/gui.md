@@ -304,6 +304,22 @@ backend `puckering_dvr/scripts/mw_path_dvr.py`. It does not generate Gaussian
 inputs or scan paths; those remain part of the Merlino/`merlino_fit` Gaussian
 preparation workflow.
 
+Operational controls:
+
+- `Use Latest Gaussian Log` selects the newest `.log`/`.out` file in the
+  Merlino work directory.
+- `Preflight / Preview` checks that the selected Gaussian file contains
+  optimized geometries, energies or scan markers, and optional puckering GIC
+  values.
+- `Run Gaussian` starts Gaussian from the current `gauin.gjf`/`gauin`.
+- `Run Gaussian Then DVR` runs Gaussian, selects the resulting log, previews it,
+  and then starts the DVR analysis.
+- `Refresh Results` previews the produced `*_summary.txt`, `*_levels.csv`,
+  profile CSV and figures for the selected prefix.
+- Each DVR run writes `*_dvr_run_manifest.json` with the exact command, Python
+  executable, selected log, SHA256 checksum, output paths and Hamiltonian
+  settings.
+
 Default DVR settings:
 
 - Gaussian log: `working/gauin.log`
@@ -316,18 +332,12 @@ Default DVR settings:
 
 GUI testing policy
 
-The GUI is not tested via automated frameworks.
+Core GUI widgets are covered by focused Qt tests under `gui/tests`. Full
+interactive workflows are still checked manually with:
 
-Testing is performed manually by:
-
+```bash
 python app.py
-
-
-This is a deliberate choice to:
-
-avoid brittle Qt event tests
-
-keep test suite fast and deterministic
+```
 
 focus automated tests on scientific correctness
 

@@ -58,10 +58,13 @@ Path DVR e Puckering Gaussian:
   `QPck....`/`PhiP....`
 - implementazione parallela Python e Fortran per il blocco Gaussian GIC
 - copia runtime del workflow DVR in `puckering_dvr/`
-- pannello GUI Advanced `Path DVR – Gaussian scan analysis` collegato al
+- finestra GUI dedicata `DVR` collegata al
   backend `puckering_dvr/scripts/mw_path_dvr.py`
 - il backend DVR legge qualunque scan/path Gaussian ottimizzato, non solo scan
   di puckering
+- la finestra DVR seleziona l'ultimo log Gaussian, fa preflight, puo lanciare
+  Gaussian da `gauin.gjf`, puo concatenare Gaussian -> DVR, mostra summary,
+  livelli e figure, e salva un manifesto diagnostico del run
 - quando il log contiene `QPck/PhiP`, il profilo può scrivere il bridge verso
   componenti Cremer-Pople generalizzate
 - convenzione di numerazione anelli fissata in
@@ -119,7 +122,7 @@ Come riprendere
 6) Per il flusso puckering:
    - generare l'input Gaussian dalla GUI Advanced o dal backend Python/Fortran
    - eseguire Gaussian sullo scan `QPck/PhiP`
-   - usare il pannello `Path DVR – Gaussian scan analysis` per leggere il log e
+   - usare la finestra `DVR` per leggere il log e
      produrre livelli, profili e figure DVR
    - per scan non puckering usare lo stesso pannello lasciando disattivata
      l'etichettatura Cremer-Pople

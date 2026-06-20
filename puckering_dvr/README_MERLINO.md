@@ -28,14 +28,24 @@ merlino-run
 3. In Advanced Calculations:
 
 - generate the Gaussian input from the current `xyzin`
-- run Gaussian
-- run `Path DVR – Gaussian scan analysis`
+
+4. In the toolbar `DVR` window:
+
+- run Gaussian from `gauin.gjf`, or select an already completed Gaussian log
+- run preflight/preview
+- run DVR
+- inspect the summary, levels CSV, profile CSV and figures
 
 The DVR panel reads any Gaussian log containing optimized scan/path structures.
 The scanned coordinate does not have to be puckering: the Hamiltonian coordinate
 is always the mass-weighted Cartesian path length built from consecutive
 optimized geometries. Ring/Cremer-Pople labels are optional post-processing
 columns.
+
+Each GUI DVR run writes `*_dvr_run_manifest.json` beside the DVR output files.
+The manifest records the exact command line, Python executable, selected
+Gaussian log, SHA256 checksum, output directories, prefix, boundary condition,
+solver and labeling flags.
 
 ## Command-Line Equivalent
 

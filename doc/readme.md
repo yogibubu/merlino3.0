@@ -116,9 +116,13 @@ Nota di architettura:
 - La GUI Advanced genera input Gaussian con coordinate GIC di anello.
 - Le coordinate `RPck....` sono inattive; `QPck....` e `PhiP....` sono le
   coordinate effettivamente usate nello scan/ottimizzazione Gaussian.
-- Dopo Gaussian, il pannello Advanced `Path DVR – Gaussian scan analysis`
+- Dopo Gaussian, la finestra toolbar `DVR`
   legge qualunque log con uno scan/percorsi ottimizzati e avvia
   `puckering_dvr/scripts/mw_path_dvr.py`.
+- La finestra `DVR` puo selezionare automaticamente il log Gaussian piu
+  recente, fare un preflight, lanciare Gaussian da `gauin.gjf`, concatenare
+  Gaussian -> DVR, mostrare summary/livelli/figure e salvare un manifesto
+  diagnostico `*_dvr_run_manifest.json`.
 - Il backend DVR non dipende dal puckering: usa sempre la distanza cartesiana
   mass-weighted lungo il percorso ottimizzato.
 - Se sono presenti `QPck....`/`PhiP....`, il profilo conserva le coordinate GIC

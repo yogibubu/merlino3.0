@@ -92,6 +92,49 @@ def test_build_gjf_links_uses_prelog_atom_order():
     assert "T001(Inactive)=D(4,3,2,1)" in text
 
 
+def test_python_prelog_matches_fortran_priority_model():
+    ring = [3, 4, 0, 1, 2]
+    atomic_numbers = [6, 6, 6, 8, 6, 17, 1]
+    adjacency = [
+        {1, 4, 6},
+        {0, 2},
+        {1, 3, 5},
+        {2, 4},
+        {0, 3},
+        {2},
+        {0},
+    ]
+
+    def fortran_priority(atom_index, candidate):
+        ring_set = set(candidate)
+        exocyclic = sorted(
+            (atomic_numbers[nbr] for nbr in adjacency[atom_index] if nbr not in ring_set),
+            reverse=True,
+        )
+        return (
+            float(atomic_numbers[atom_index]),
+            float(len(adjacency[atom_index])),
+            *[float(value) for value in exocyclic],
+            float(-atom_index),
+        )
+
+    def fortran_best(indices):
+        candidates = []
+        n = len(indices)
+        for start in range(n):
+            candidates.append([indices[(start + i) % n] for i in range(n)])
+            candidates.append([indices[(start - i) % n] for i in range(n)])
+        return max(candidates, key=lambda candidate: tuple(fortran_priority(i, candidate) for i in candidate))
+
+    for candidate in (
+        ring,
+        list(reversed(ring)),
+        [0, 1, 2, 3, 4],
+        [2, 1, 0, 4, 3],
+    ):
+        assert prelog_canonical_ring_indices(candidate, atomic_numbers, adjacency) == fortran_best(candidate)
+
+
 def test_four_ring_gic_contains_q_and_phi():
     lines, step_deg = four_ring_target_gic([0, 1, 2, 3], 15.0, -5.0)
     text = "\n".join(lines)

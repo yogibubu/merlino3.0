@@ -12,7 +12,9 @@ Included changes:
 - Fortran `prova` output support for the same `QPck/PhiP` functional GICs
 - Python arbitrary-ring GIC generation, tested through seven-membered rings
 - vendored runtime copy under `puckering_dvr/`
-- Advanced GUI launcher for DVR analysis of Gaussian scan/path logs
+- dedicated GUI DVR window for Gaussian scan/path logs
+- DVR preflight, latest-log selection, Gaussian -> DVR chaining, result
+  preview, and run manifest diagnostics
 - Gaussian GIC value parsing into `gic_*` output columns
 - optional fitted bridge from Gaussian `QPck/PhiP` components to generalized
   Cremer-Pople components
@@ -42,8 +44,10 @@ merlino-run
 1. Build or load the molecule in Merlino.
 2. Open Advanced Calculations.
 3. Generate the Gaussian input with ring GICs.
-4. Run Gaussian.
-5. Run `Path DVR – Gaussian scan analysis` on the resulting log.
+4. Open the toolbar `DVR` window.
+5. Run Gaussian from `gauin.gjf` or select an already completed Gaussian log.
+6. Run preflight/preview.
+7. Run DVR and inspect the summary, levels CSV, profile CSV and figures.
 
 For non-puckering Gaussian scans, leave Cremer-Pople labeling disabled. The DVR
 still uses the mass-weighted Cartesian path and does not require any ring
@@ -87,6 +91,7 @@ Run from the repository root:
 source ~/.bashrc
 merlino-run-check
 python -m py_compile advanced/advanced_window.py advanced/launchers/puckering_dvr_launcher.py
+python -m py_compile advanced/dvr_window.py advanced/launchers/gaussian_launcher.py
 python -m py_compile merlino_fit/survibfit/puckering_gaussian.py merlino_fit/survibfit/cli.py
 python puckering_dvr/scripts/mw_path_dvr.py --help
 PYTHONPATH=merlino_fit python -m pytest -q merlino_fit/tests/test_puckering_gaussian.py
