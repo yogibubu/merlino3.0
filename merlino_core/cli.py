@@ -89,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
     semiexp.add_argument("--observations", type=Path, required=True, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
+    semiexp.add_argument("--gicforge-gauin", type=Path, help="Use GICForge ReadAllGIC coordinates from this gauin file")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
     semiexp.add_argument("--max-iter", type=int, default=12, help="Maximum LM iterations; default is conservative for semiexp fits")
@@ -228,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
             rotational_components=args.rotational_components,
             qm_predicates=_parse_qm_predicates(args.qm_predicate),
             parameter_classes=_parse_parameter_classes(args.parameter_class),
+            gicforge_gauin=args.gicforge_gauin,
         )
         result = fit_semiexperimental_geometry(
             request,

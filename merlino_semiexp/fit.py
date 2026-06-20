@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import csv
 from io import StringIO
+import re
 
 import numpy as np
 
@@ -17,7 +18,7 @@ from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic, build_topology, primitives_from_topology, zeff_from_topology
-from merlino_fit.survibfit.primitives import eval_primitives
+from merlino_fit.survibfit.primitives import Primitive, eval_primitives
 from merlino_fit.survibfit.transforms import build_u
 from merlino_vpt2_vci.internal_gf import gic_labels_from_u, primitive_label
 
@@ -133,7 +134,7 @@ def fit_semiexperimental_geometry(
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _validate_observations(request.observations, len(atoms))
 
-    prims, u_matrix, labels = _gic_model(coords, z_numbers)
+    prims, u_matrix, labels = _gic_model(coords, z_numbers, request)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
     active_mask = _active_mask(labels, request.fixed_parameters)
     if not np.any(active_mask):
@@ -145,7 +146,7 @@ def fit_semiexperimental_geometry(
     convergence_reason = "max_iter"
     previous_objective = None
     for iteration in range(1, max_iter + 1):
-        prims, u_matrix, labels = _gic_model(coords, z_numbers)
+        prims, u_matrix, labels = _gic_model(coords, z_numbers, request)
         active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
         q = _gic_values(prims, u_matrix, coords)
         calc = _measurement_vector(atoms, coords, request, q, labels, measurement_model)
@@ -207,7 +208,7 @@ def fit_semiexperimental_geometry(
     else:
         iteration = max_iter
 
-    prims, u_matrix, labels = _gic_model(coords, z_numbers)
+    prims, u_matrix, labels = _gic_model(coords, z_numbers, request)
     active_mask = _active_mask(labels, request.fixed_parameters, request.parameter_classes)
     q_final = _gic_values(prims, u_matrix, coords)
     bq = u_matrix.T @ b_matrix_analytic(prims, coords)
@@ -320,11 +321,28 @@ def write_semiexperimental_outputs(
     hessian_csv.write_text(_matrix_csv(active_names, hessian), encoding="utf-8")
     hessian_eigs_csv.write_text(_eigenvalues_csv(hessian_eigenvalues), encoding="utf-8")
     diagnostics_csv.write_text(_diagnostics_csv(diagnostics), encoding="utf-8")
+    manifest_inputs = {"initial_geometry": request.initial_geometry}
+    if request.gicforge_gauin is not None:
+        manifest_inputs["gicforge_gauin"] = request.gicforge_gauin
+    coordinate_generation = {
+        "primitive_source": "automatic topology",
+        "reduction": "non-redundant GIC transform",
+        "symmetry": "automatic point-group based, homogeneous coordinate blocks",
+        "ring_coordinates": "endocyclic dihedral and valence-angle combinations",
+    }
+    if request.gicforge_gauin is not None:
+        coordinate_generation = {
+            "primitive_source": "GICForge ReadAllGIC",
+            "reduction": "GICForge non-redundant coordinate set",
+            "symmetry": "GICForge/symm.f same-type coordinate symmetrization",
+            "ring_coordinates": "GICForge ring deformation and puckering coordinates",
+            "gicforge_gauin": str(request.gicforge_gauin),
+        }
     manifest = build_run_manifest(
         workflow="semiexperimental_geometry",
         status="completed",
         run_dir=outdir,
-        inputs={"initial_geometry": request.initial_geometry},
+        inputs=manifest_inputs,
         outputs={
             "geometry": xyz,
             "parameters": params,
@@ -357,16 +375,11 @@ def write_semiexperimental_outputs(
             "condition_number": diagnostics.condition_number if diagnostics else None,
             "weighted_rms": diagnostics.weighted_rms if diagnostics else None,
             "reduced_chi_square": diagnostics.reduced_chi_square if diagnostics else None,
-            "coordinate_generation": {
-                "primitive_source": "automatic topology",
-                "reduction": "non-redundant GIC transform",
-                "symmetry": "automatic point-group based, homogeneous coordinate blocks",
-                "ring_coordinates": "endocyclic dihedral and valence-angle combinations",
-            },
+            "coordinate_generation": coordinate_generation,
         },
         backend={
             "solver": "python-orchestrated",
-            "coordinate_model": "merlino-gic",
+            "coordinate_model": "gicforge-readallgic" if request.gicforge_gauin is not None else "merlino-gic",
             "b_matrix": "analytic",
             "fortran77_role": "validated numerical kernels only",
             "fortran77_source": "fortran/semiexp/semiexp_core.f",
@@ -474,7 +487,13 @@ def _diagnostics_csv(diagnostics: SemiexperimentalFitDiagnostics | None) -> str:
     return stream.getvalue()
 
 
-def _gic_model(coords: np.ndarray, z_numbers: np.ndarray):
+def _gic_model(
+    coords: np.ndarray,
+    z_numbers: np.ndarray,
+    request: SemiexperimentalFitRequest | None = None,
+):
+    if request is not None and request.gicforge_gauin is not None:
+        return _gicforge_gic_model(Path(request.gicforge_gauin))
     prims = primitives_from_topology(coords, z_numbers, np.deg2rad(170.0), coords_units="angstrom")
     _, _, ringset = build_topology(coords, z_numbers, coords_units="angstrom")
     priority = zeff_from_topology(coords, z_numbers, coords_units="angstrom")
@@ -493,6 +512,72 @@ def _gic_model(coords: np.ndarray, z_numbers: np.ndarray):
     labels = gic_labels_from_u(u_matrix, primitive_labels, threshold=0.20)
     labels = tuple(f"GIC{idx + 1:03d} {label}" for idx, label in enumerate(labels))
     return prims, u_matrix, labels
+
+
+def _gicforge_gic_model(gauin: Path):
+    prims: list[Primitive] = []
+    prim_index: dict[Primitive, int] = {}
+    columns: list[np.ndarray] = []
+    labels: list[str] = []
+    for raw in Path(gauin).read_text(encoding="utf-8", errors="replace").splitlines():
+        parsed = _parse_gicforge_line(raw)
+        if parsed is None:
+            continue
+        name, terms, expression = parsed
+        column = np.zeros(len(prims), dtype=float)
+        for coeff, primitive in terms:
+            if primitive not in prim_index:
+                prim_index[primitive] = len(prims)
+                prims.append(primitive)
+                column = np.pad(column, (0, 1))
+                for idx, existing in enumerate(columns):
+                    columns[idx] = np.pad(existing, (0, 1))
+            column[prim_index[primitive]] += coeff
+        labels.append(f"GICForge {name} {expression}")
+        columns.append(column)
+    if not columns:
+        raise ScientificValidationError(f"No linear GICForge coordinates found in {gauin}")
+    u_matrix = np.column_stack(columns)
+    return prims, u_matrix, tuple(labels)
+
+
+def _parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], str] | None:
+    stripped = line.strip()
+    if not stripped or "=" not in stripped:
+        return None
+    name = stripped.split("=", 1)[0].strip()
+    if not _is_gicforge_linear_name(name):
+        return None
+    rhs = stripped.split("=", 1)[1].strip()
+    terms: list[tuple[float, Primitive]] = []
+    number = r"[+-]?\s*(?:\d+(?:\.\d*)?|\.\d+)(?:[EDed][+-]?\d+)?"
+    for match in re.finditer(rf"({number})\s*\*\s*([RAD])\(([^)]*)\)", rhs):
+        coeff = float(match.group(1).replace(" ", "").replace("D", "E").replace("d", "e"))
+        primitive = _gicforge_primitive(match.group(2), match.group(3))
+        terms.append((coeff, primitive))
+    if not terms:
+        simple = re.search(r"\b([RAD])\(([^)]*)\)", rhs)
+        if simple:
+            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2))))
+    if not terms:
+        return None
+    return name.replace("(Inactive)", "").strip(), terms, rhs
+
+
+def _is_gicforge_linear_name(name: str) -> bool:
+    clean = name.replace("(Inactive)", "").strip()
+    return clean.startswith(("Stre", "SymD", "Rock", "Scis", "RDef", "RPck", "ImpD", "Tors"))
+
+
+def _gicforge_primitive(kind: str, atoms_text: str) -> Primitive:
+    atoms = tuple(int(item.strip()) - 1 for item in atoms_text.split(",") if item.strip())
+    if kind == "R" and len(atoms) == 2:
+        return Primitive("bond", atoms)
+    if kind == "A" and len(atoms) == 3:
+        return Primitive("angle", atoms)
+    if kind == "D" and len(atoms) == 4:
+        return Primitive("dihedral", atoms)
+    raise ScientificValidationError(f"Unsupported GICForge primitive {kind}({atoms_text})")
 
 
 def _gic_values(prims: object, u_matrix: np.ndarray, coords: np.ndarray) -> np.ndarray:
@@ -613,7 +698,7 @@ def _line_search_update(
     for scale in (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625):
         candidate = _displace_along_gics(coords, prims, u_matrix, scale * dq)
         try:
-            _gic_model(candidate, z_numbers)
+            _gic_model(candidate, z_numbers, request)
         except Exception:
             continue
         q_candidate = _gic_values(prims, u_matrix, candidate)

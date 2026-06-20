@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 import numpy as np
 
@@ -544,6 +546,45 @@ def test_semiexperimental_gic_preview_keeps_angstrom_topology_for_cyclopentadien
 
     assert preview.gic_labels
     assert any("dihedral" in label for label in preview.gic_labels)
+
+
+def test_semiexperimental_fit_can_use_gicforge_readallgic(tmp_path):
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(["3", "water", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    gauin = tmp_path / "gauin"
+    gauin.write_text(
+        "\n".join(
+            [
+                " Stre0001=[ 0.7071*R(  1,  2)+0.7071*R(  1,  3)]",
+                " Stre0002=[ 0.7071*R(  1,  2)-0.7071*R(  1,  3)]",
+                " SymD0001 =[ 1.00000*A(  2,  1,  3)]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, (observation,), gicforge_gauin=gauin),
+        max_iter=1,
+        outdir=tmp_path / "run",
+    )
+
+    manifest = json.loads((tmp_path / "run" / "semiexp_manifest.json").read_text(encoding="utf-8"))
+    assert all(parameter.name.startswith("GICForge") for parameter in result.parameters)
+    assert result.b_matrix.shape[0] == 3
+    assert manifest["backend"]["coordinate_model"] == "gicforge-readallgic"
+    assert manifest["parameters"]["coordinate_generation"]["primitive_source"] == "GICForge ReadAllGIC"
 
 
 def test_semiexperimental_validation_flags_bad_classes_and_isotopes(tmp_path):
