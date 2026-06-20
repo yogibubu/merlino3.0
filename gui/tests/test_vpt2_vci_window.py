@@ -84,3 +84,36 @@ def test_vpt2_vci_window_runs_comparison_from_indexed_qff(tmp_path, qtbot):
     assert "Modes used in input force field: 2" in text
     assert "VCI basis size" in text
     assert "1000." in text
+
+
+@pytest.mark.usefixtures("qtbot")
+def test_vpt2_vci_window_exports_report_and_roundtrips_preset(tmp_path, qtbot):
+    window = VPT2VCIWindow(tmp_path, tmp_path)
+    qtbot.addWidget(window)
+    window.output_text.setPlainText("sample report")
+    report_path = tmp_path / "report.txt"
+
+    written = window.export_report(report_path, show_message=False)
+
+    assert written == report_path
+    assert report_path.read_text(encoding="utf-8") == "sample report\n"
+
+    window.max_quanta_edit.setText("4")
+    window.roots_edit.setText("5")
+    window.active_modes_edit.setText("1,3")
+    window.force_threshold_edit.setText("0.5")
+    preset_path = tmp_path / "preset.json"
+
+    saved = window.save_preset(preset_path, show_message=False)
+    window.max_quanta_edit.setText("1")
+    window.roots_edit.setText("1")
+    window.active_modes_edit.setText("")
+    window.force_threshold_edit.setText("0.0")
+    loaded = window.load_preset(preset_path, show_message=False)
+
+    assert saved == preset_path
+    assert loaded == preset_path
+    assert window.max_quanta_edit.text() == "4"
+    assert window.roots_edit.text() == "5"
+    assert window.active_modes_edit.text() == "1,3"
+    assert window.force_threshold_edit.text() == "0.5"

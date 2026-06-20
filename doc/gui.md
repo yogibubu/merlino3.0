@@ -343,9 +343,13 @@ The window has two independent actions:
 - `Run VPT2 / VCI` reads either a canonical indexed QFF text file or the
   current FCHK adapter, applies mode/cutoff/pruning settings, and reports a
   VPT2/VCI energy comparison plus dominant VCI contributions.
+- `Export Report` writes the current text report to disk.
+- `Save Preset` and `Load Preset` store/reload paths and VCI basis/pruning
+  settings as JSON.
 
 The GUI does not contain scientific algorithms. It only validates paths and
-formats reports; the numerical work remains in `merlino_vpt2_vci`.
+dispatches report export/preset actions; the numerical work and report
+formatting remain in `merlino_vpt2_vci`.
 
 GUI testing policy
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-import numpy as np
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -19,12 +19,9 @@ from PySide6.QtWidgets import (
 
 from merlino_vpt2_vci import (
     VCIOptions,
-    anharmonic_input_from_gaussian_fchk,
-    compare_vpt2_vci,
-    force_field_from_anharmonic_input,
-    gf_from_hessian_input_with_merlino_gics,
-    hessian_input_from_gaussian_fchk,
-    read_indexed_qff_text,
+    load_force_field,
+    run_gf_report_from_fchk,
+    run_vpt2_vci_report,
 )
 
 
@@ -156,6 +153,15 @@ class VPT2VCIWindow(QMainWindow):
         clear_button = QPushButton("Clear Output")
         clear_button.clicked.connect(self.output_text.clear)
         actions.addWidget(clear_button)
+        export_button = QPushButton("Export Report")
+        export_button.clicked.connect(self.export_report)
+        actions.addWidget(export_button)
+        save_preset_button = QPushButton("Save Preset")
+        save_preset_button.clicked.connect(self.save_preset)
+        actions.addWidget(save_preset_button)
+        load_preset_button = QPushButton("Load Preset")
+        load_preset_button.clicked.connect(self.load_preset)
+        actions.addWidget(load_preset_button)
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.close)
         actions.addWidget(close_button)
@@ -167,9 +173,8 @@ class VPT2VCIWindow(QMainWindow):
     def run_gf(self, *, show_message: bool = True) -> None:
         try:
             fchk_path = self._required_existing_path(self.fchk_edit.text(), "FCHK")
-            hessian_input = hessian_input_from_gaussian_fchk(fchk_path)
-            result = gf_from_hessian_input_with_merlino_gics(hessian_input)
-            self.output_text.setPlainText(self._format_gf_report(fchk_path, result))
+            report = run_gf_report_from_fchk(fchk_path)
+            self.output_text.setPlainText(report.text)
         except Exception as exc:
             self._fail("GF / PED failed", exc, show_message)
 
@@ -178,108 +183,122 @@ class VPT2VCIWindow(QMainWindow):
             qff = self._load_force_field()
             max_quanta = self._parse_int(self.max_quanta_edit.text(), "Max total quanta", minimum=0)
             roots = self._parse_int(self.roots_edit.text(), "Roots", minimum=1)
-            options = VCIOptions(
-                active_modes=self._parse_active_modes(),
-                frequency_min_cm=self._parse_optional_float(self.freq_min_edit.text(), "Freq min cm-1"),
-                frequency_max_cm=self._parse_optional_float(self.freq_max_edit.text(), "Freq max cm-1"),
-                basis_energy_cutoff_cm=self._parse_optional_float(self.basis_cutoff_edit.text(), "Basis cutoff cm-1"),
-                mode_max_quanta=self._parse_optional_int_tuple(self.mode_max_edit.text(), "Mode max quanta"),
-                excitation_class_limits=self._parse_class_limits(),
-                force_constant_threshold_cm=self._parse_optional_float(
-                    self.force_threshold_edit.text(), "Force threshold cm-1", default=0.0
-                ),
-            )
-            comparison = compare_vpt2_vci(qff, max_quanta=max_quanta, n_roots=roots, options=options)
-            self.output_text.setPlainText(self._format_vpt2_vci_report(qff, comparison))
+            report = run_vpt2_vci_report(qff, max_quanta=max_quanta, roots=roots, options=self._vci_options())
+            self.output_text.setPlainText(report.text)
         except Exception as exc:
             self._fail("VPT2 / VCI failed", exc, show_message)
 
     def _load_force_field(self):
         qff_path = self._optional_existing_path(self.qff_edit.text())
         fchk_path = self._optional_existing_path(self.fchk_edit.text())
+        return load_force_field(fchk_path=fchk_path, qff_path=qff_path)
 
-        frequencies = None
-        if fchk_path is not None:
-            anharmonic_input = anharmonic_input_from_gaussian_fchk(fchk_path)
-            frequencies = (
-                anharmonic_input.anharmonic_frequencies_cm
-                if anharmonic_input.anharmonic_frequencies_cm.size
-                else anharmonic_input.harmonic_frequencies_cm
-            )
-        if qff_path is not None:
-            return read_indexed_qff_text(qff_path, frequencies)
-        if fchk_path is not None:
-            return force_field_from_anharmonic_input(anharmonic_input)
-        raise FileNotFoundError("Provide an existing FCHK file or indexed QFF text file")
-
-    def _format_gf_report(self, fchk_path: Path, result) -> str:
-        lines = [
-            "GF/PED from Merlino non-redundant GICs",
-            f"Source FCHK: {fchk_path}",
-            f"GIC count: {len(result.gic_labels)}",
-            "",
-            "Frequencies (cm-1):",
-        ]
-        for idx, freq in enumerate(result.frequencies_cm, start=1):
-            lines.append(f"  mode {idx:3d}: {freq:12.3f}")
-
-        lines.extend(["", "GIC labels:"])
-        for idx, label in enumerate(result.gic_labels, start=1):
-            lines.append(f"  GIC{idx:03d}: {label}")
-
-        lines.extend(["", "PED (%) rows=GIC cols=modes:"])
-        header = "          " + " ".join(f"M{idx:02d}" for idx in range(1, len(result.frequencies_cm) + 1))
-        lines.append(header)
-        for idx, row in enumerate(result.ped.values, start=1):
-            values = " ".join(f"{value:7.2f}" for value in row)
-            lines.append(f"  GIC{idx:03d} {values}")
-        return "\n".join(lines)
-
-    def _format_vpt2_vci_report(self, qff, comparison) -> str:
-        lines = [
-            "VPT2/VCI comparison on canonical Merlino QFF",
-            f"Modes used in input force field: {len(qff.harmonic_frequencies_cm)}",
-            f"Cubic terms: {len(qff.cubic_cm)}",
-            f"Quartic terms: {len(qff.quartic_cm)}",
-            f"VCI basis size: {len(comparison.vci.basis)}",
-            "Input harmonic frequencies (cm-1): "
-            + ", ".join(f"{value:.3f}" for value in qff.harmonic_frequencies_cm),
-            "",
-            "Root     VPT2 abs      VCI abs        d_abs     VPT2 exc      VCI exc        d_exc",
-        ]
-        n = min(
-            len(comparison.vpt2.energies_cm),
-            len(comparison.vci.energies_cm),
-            len(comparison.energy_differences_cm),
+    def _vci_options(self) -> VCIOptions:
+        return VCIOptions(
+            active_modes=self._parse_active_modes(),
+            frequency_min_cm=self._parse_optional_float(self.freq_min_edit.text(), "Freq min cm-1"),
+            frequency_max_cm=self._parse_optional_float(self.freq_max_edit.text(), "Freq max cm-1"),
+            basis_energy_cutoff_cm=self._parse_optional_float(self.basis_cutoff_edit.text(), "Basis cutoff cm-1"),
+            mode_max_quanta=self._parse_optional_int_tuple(self.mode_max_edit.text(), "Mode max quanta"),
+            excitation_class_limits=self._parse_class_limits(),
+            force_constant_threshold_cm=self._parse_optional_float(
+                self.force_threshold_edit.text(), "Force threshold cm-1", default=0.0
+            ),
         )
-        for idx in range(n):
-            lines.append(
-                f"{idx + 1:4d} "
-                f"{comparison.vpt2.energies_cm[idx]:12.4f} "
-                f"{comparison.vci.energies_cm[idx]:12.4f} "
-                f"{comparison.energy_differences_cm[idx]:10.4f} "
-                f"{comparison.vpt2.excitation_energies_cm[idx]:12.4f} "
-                f"{comparison.vci.excitation_energies_cm[idx]:12.4f} "
-                f"{comparison.excitation_differences_cm[idx]:10.4f}"
+
+    def export_report(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
+        text = self.output_text.toPlainText()
+        if not text.strip():
+            if show_message:
+                QMessageBox.warning(self, "GF / VPT2-VCI", "No report to export.")
+            return None
+        if path is None:
+            selected, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export GF / VPT2-VCI report",
+                str(self.workdir / "vpt2_vci_report.txt"),
+                "Text files (*.txt);;All files (*)",
             )
+            if not selected:
+                return None
+            path = Path(selected)
+        path = Path(path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
+        if show_message:
+            QMessageBox.information(self, "GF / VPT2-VCI", f"Report written: {path}")
+        return path
 
-        if comparison.vci.blocks:
-            lines.extend(["", "Symmetry blocks:"])
-            for block in comparison.vci.blocks:
-                lines.append(f"  {block.label}: states={len(block.basis_indices)} roots={block.n_roots}")
+    def save_preset(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
+        if path is None:
+            selected, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save VPT2/VCI preset",
+                str(self.workdir / "vpt2_vci_preset.json"),
+                "JSON files (*.json);;All files (*)",
+            )
+            if not selected:
+                return None
+            path = Path(selected)
+        path = Path(path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self._settings_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if show_message:
+            QMessageBox.information(self, "GF / VPT2-VCI", f"Preset written: {path}")
+        return path
 
-        if comparison.vci.state_contributions:
-            lines.extend(["", "Dominant VCI contributions:"])
-            for root, contribution in enumerate(comparison.vci.state_contributions[:n], start=1):
-                pieces = [
-                    f"{state}:{coeff:+.3f}"
-                    for state, coeff in contribution.dominant_basis_states[:4]
-                ]
-                lines.append(
-                    f"  root {root:3d}: <n>={np.array2string(contribution.mode_quanta, precision=3)} "
-                    + ", ".join(pieces)
-                )
-        return "\n".join(lines)
+    def load_preset(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
+        if path is None:
+            selected, _ = QFileDialog.getOpenFileName(
+                self,
+                "Load VPT2/VCI preset",
+                str(self.workdir),
+                "JSON files (*.json);;All files (*)",
+            )
+            if not selected:
+                return None
+            path = Path(selected)
+        path = Path(path).expanduser()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Preset root must be a JSON object")
+        self._apply_settings_dict(data)
+        if show_message:
+            QMessageBox.information(self, "GF / VPT2-VCI", f"Preset loaded: {path}")
+        return path
+
+    def _settings_dict(self) -> dict[str, str]:
+        return {
+            "fchk_path": self.fchk_edit.text(),
+            "qff_path": self.qff_edit.text(),
+            "max_quanta": self.max_quanta_edit.text(),
+            "roots": self.roots_edit.text(),
+            "active_modes": self.active_modes_edit.text(),
+            "frequency_min_cm": self.freq_min_edit.text(),
+            "frequency_max_cm": self.freq_max_edit.text(),
+            "basis_cutoff_cm": self.basis_cutoff_edit.text(),
+            "force_threshold_cm": self.force_threshold_edit.text(),
+            "mode_max_quanta": self.mode_max_edit.text(),
+            "class_limits": self.class_limits_edit.text(),
+        }
+
+    def _apply_settings_dict(self, data: dict[str, object]) -> None:
+        mapping = {
+            "fchk_path": self.fchk_edit,
+            "qff_path": self.qff_edit,
+            "max_quanta": self.max_quanta_edit,
+            "roots": self.roots_edit,
+            "active_modes": self.active_modes_edit,
+            "frequency_min_cm": self.freq_min_edit,
+            "frequency_max_cm": self.freq_max_edit,
+            "basis_cutoff_cm": self.basis_cutoff_edit,
+            "force_threshold_cm": self.force_threshold_edit,
+            "mode_max_quanta": self.mode_max_edit,
+            "class_limits": self.class_limits_edit,
+        }
+        for key, widget in mapping.items():
+            if key in data:
+                widget.setText("" if data[key] is None else str(data[key]))
 
     def _browse_fchk(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Select FCHK", str(self.workdir), "FCHK files (*.fchk *.fch);;All files (*)")

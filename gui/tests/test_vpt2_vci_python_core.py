@@ -13,9 +13,12 @@ from merlino_vpt2_vci import (
     gf_from_hessian_input_with_merlino_gics,
     hessian_input_from_gaussian_fchk,
     lower_to_symmetric,
+    load_force_field,
     read_gaussian_fchk_qff,
     read_indexed_qff_text,
+    run_gf_report_from_fchk,
     run_python_vci_from_gaussian_fchk,
+    run_vpt2_vci_report,
     solve_vci,
     solve_vci_from_anharmonic_input,
     solve_vpt2_from_anharmonic_input,
@@ -252,3 +255,29 @@ def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
     assert np.allclose(result.ped.values.sum(axis=0), np.full(3, 100.0))
     assert np.allclose(result.frequencies_cm, [2169.878, 4141.256, 4392.363], atol=1.0e-3)
     assert np.allclose(adapter_result.frequencies_cm, result.frequencies_cm)
+
+
+def test_gui_service_reports_are_independent_from_qt(tmp_path):
+    fchk = __import__("pathlib").Path("gui/tests/gaussian/h2o.fchk")
+    gf_report = run_gf_report_from_fchk(fchk)
+
+    assert "GF/PED from Merlino non-redundant GICs" in gf_report.text
+    assert gf_report.result.ped.values.shape == (3, 3)
+
+    qff_file = tmp_path / "field.qff"
+    qff_file.write_text(
+        "\n".join(
+            [
+                "FREQ 1 1000.0",
+                "FREQ 2 1500.0",
+                "QUARTIC 1 1 1 1 0.8",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    qff = load_force_field(qff_path=qff_file)
+    report = run_vpt2_vci_report(qff, max_quanta=2, roots=3, options=VCIOptions(active_modes=(0, 1)))
+
+    assert "VPT2/VCI comparison" in report.text
+    assert len(report.comparison.vci.basis) >= 3
