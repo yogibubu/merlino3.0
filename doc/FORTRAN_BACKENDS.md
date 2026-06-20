@@ -71,5 +71,19 @@ GF harmonic frequencies and internal-coordinate normal modes. It is the
 harmonic internal-coordinate layer that the later anharmonic VPT2/VCI workflow
 will build on.
 
+## GDV VPT2/VCI Reference Sources
+
+The active GDV reference sources are inventoried, not copied wholesale:
+
+- `gdv_j32p/gdv/l717.F`: VCI/VPT2 decks, including `VCIDrv`, `VCIGen`,
+  `VCIInt`, `VCIPT2` and `VCIVar`.
+- `gdv_j32p/gdv/dinautil.F`: anharmonic RWF and harmonic/internal-coordinate
+  support, including `AnhFIO`, `DNICGF`, `DNICFq` and `VPT2En`.
+- `gdv_j32p/gdv/utilnz.F`: large utility source containing `NHDiag`, the
+  Davidson/subspace diagonalization source to extract for large VCI spaces.
+
+See `doc/GDV_VPT2_VCI_SOURCE_MAP.md` before extracting standalone Merlino4
+Fortran kernels.
+
 The `fortran/` root is intentionally documentation-only. Generated compiler
 logs such as `error` files are not source and should not be committed.

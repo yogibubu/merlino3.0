@@ -56,6 +56,8 @@ class VPT2VCIInventory:
     """Current VPT2/VCI backend status discovered in the Merlino4 tree."""
 
     harmonic_internal_source: Path | None
+    gdv_vci_driver_source: Path | None
+    gdv_davidson_source: Path | None
     active_fortran_sources: tuple[Path, ...]
     davidson_backend: Path | None
     notes: tuple[str, ...]
@@ -65,15 +67,22 @@ def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
     """Record active VPT2/VCI kernels available in Merlino4."""
     root = Path(repo_root)
     harmonic_internal = root / "fortran" / "harmonic_internal" / "gf.f"
+    gdv_root = Path.home() / "gdv_j32p" / "gdv"
+    gdv_vci_driver = gdv_root / "l717.F"
+    gdv_davidson = gdv_root / "utilnz.F"
     source_dir = root / "fortran" / "vpt2_vci"
     sources = tuple(sorted(source_dir.glob("*.f"))) if source_dir.exists() else ()
     davidson = source_dir / "davidson.f"
     notes = [
         "Harmonic internal-coordinate GF analysis is available through gf.f.",
-        "The anharmonic VPT2/VCI backend and Davidson diagonalizer still have to be integrated.",
+        "GDV l717.F contains the current VPT2/VCI driver decks.",
+        "GDV utilnz.F contains NHDiag, the current Davidson/subspace diagonalization source.",
+        "The Merlino4 standalone anharmonic VPT2/VCI backend still has to be extracted.",
     ]
     return VPT2VCIInventory(
         harmonic_internal_source=harmonic_internal if harmonic_internal.exists() else None,
+        gdv_vci_driver_source=gdv_vci_driver if gdv_vci_driver.exists() else None,
+        gdv_davidson_source=gdv_davidson if gdv_davidson.exists() else None,
         active_fortran_sources=sources,
         davidson_backend=davidson if davidson.exists() else None,
         notes=tuple(notes),

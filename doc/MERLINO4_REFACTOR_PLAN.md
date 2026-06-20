@@ -164,7 +164,8 @@ Implementation rule:
 6. Move Gaussian parsing/writing into `merlino_gaussian`.
 7. Move DVR workflow orchestration into `merlino_dvr`.
 8. Inventory existing harmonic/anharmonic Fortran code and define normalized
-   input and output files.
+   input and output files. The current source map is
+   `doc/GDV_VPT2_VCI_SOURCE_MAP.md`.
 9. Add the semiexperimental geometry data model and least-squares interface.
 10. Rewire GUI controllers to call service interfaces.
 11. Remove compatibility wrappers only after tests cover the new imports.
