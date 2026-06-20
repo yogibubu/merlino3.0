@@ -516,6 +516,36 @@ def test_semiexperimental_validation_and_conditioning_preview(tmp_path):
     assert "condition number" in conditioning.text
 
 
+def test_semiexperimental_gic_preview_keeps_angstrom_topology_for_cyclopentadiene(tmp_path):
+    xyz = tmp_path / "cyclopentadiene.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "11",
+                "cyclopentadiene MSR geometry",
+                "C 0.0000000648 1.21099405 -0.0000437769",
+                "C 1.16966652 0.34210493 0.0000360217",
+                "C -1.16966649 0.34210505 0.0000319263",
+                "C 0.731740874 -0.975616979 -0.0000177892",
+                "C -0.731740976 -0.975616904 -0.0000203515",
+                "H 2.26478781 0.374863776 0.0001274146",
+                "H -2.26478777 0.374864010 0.0001200854",
+                "H 1.26945754 -1.92001108 0.0000062677",
+                "H -1.26945774 -1.92001095 0.0000018591",
+                "H 0.0000585394 1.87871494 -0.8689120000",
+                "H -0.0000583448 1.87871720 0.8688227060",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    preview = preview_semiexperimental_gics(xyz)
+
+    assert preview.gic_labels
+    assert any("dihedral" in label for label in preview.gic_labels)
+
+
 def test_semiexperimental_validation_flags_bad_classes_and_isotopes(tmp_path):
     xyz = tmp_path / "water.xyz"
     xyz.write_text(

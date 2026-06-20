@@ -16,7 +16,7 @@ from geometry.isotopes_table import get_default_isotope, get_isotope
 from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
-from merlino_fit.survibfit.pipeline import b_matrix_analytic, build_topology, primitives_from_topology
+from merlino_fit.survibfit.pipeline import b_matrix_analytic, build_topology, primitives_from_topology, zeff_from_topology
 from merlino_fit.survibfit.primitives import eval_primitives
 from merlino_fit.survibfit.transforms import build_u
 from merlino_vpt2_vci.internal_gf import gic_labels_from_u, primitive_label
@@ -477,7 +477,16 @@ def _diagnostics_csv(diagnostics: SemiexperimentalFitDiagnostics | None) -> str:
 def _gic_model(coords: np.ndarray, z_numbers: np.ndarray):
     prims = primitives_from_topology(coords, z_numbers, np.deg2rad(170.0), coords_units="angstrom")
     _, _, ringset = build_topology(coords, z_numbers, coords_units="angstrom")
-    u_matrix = build_u(prims, coords, Z=z_numbers, ringset=ringset, tol=1.0e-8, fd_step=1.0e-4)
+    priority = zeff_from_topology(coords, z_numbers, coords_units="angstrom")
+    u_matrix = build_u(
+        prims,
+        coords,
+        Z=z_numbers,
+        ringset=ringset,
+        tol=1.0e-8,
+        fd_step=1.0e-4,
+        dihedral_priority=priority,
+    )
     if u_matrix.size == 0:
         raise ScientificValidationError("Merlino did not generate non-redundant GICs")
     primitive_labels = tuple(primitive_label(p) for p in prims)
