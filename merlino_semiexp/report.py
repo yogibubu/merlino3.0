@@ -243,6 +243,8 @@ def write_semiexperimental_html_report(
         _classes_table(request.parameter_classes),
         "<h2>GIC Parameters</h2>",
         _parameters_table(result),
+        "<h2>Final Cartesian Geometry Parameters</h2>",
+        _geometry_parameters_table(result),
         "<h2>Residuals</h2>",
         _residuals_table(result),
         "<h2>Kraitchman Comparison</h2>",
@@ -422,6 +424,25 @@ def _parameters_table(result: SemiexperimentalFitResult) -> str:
         rows.append(
             f"<tr><td>{escape(item.name)}</td><td>{item.value:.10g}</td><td>{item.sigma:.10g}</td>"
             f"<td>{int(item.active)}</td><td>{escape(item.parameter_class)}</td></tr>"
+        )
+    rows.append("</table>")
+    return "\n".join(rows)
+
+
+def _geometry_parameters_table(result: SemiexperimentalFitResult) -> str:
+    if not result.geometry_parameters:
+        return "<p>No final bond/angle table available.</p>"
+    rows = [
+        "<table><tr><th>Kind</th><th>Label</th><th>Atoms</th><th>Symbols</th>"
+        "<th>Bond length / Angstrom</th><th>Angle / degree</th></tr>"
+    ]
+    for item in result.geometry_parameters:
+        rows.append(
+            f"<tr><td>{escape(item.kind)}</td><td>{escape(item.label)}</td>"
+            f"<td>{'-'.join(str(idx) for idx in item.atom_indices)}</td>"
+            f"<td>{escape('-'.join(item.atom_symbols))}</td>"
+            f"<td>{'' if item.value_angstrom is None else f'{item.value_angstrom:.8f}'}</td>"
+            f"<td>{'' if item.value_degree is None else f'{item.value_degree:.6f}'}</td></tr>"
         )
     rows.append("</table>")
     return "\n".join(rows)

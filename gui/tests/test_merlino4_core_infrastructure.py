@@ -206,6 +206,7 @@ def test_merlino_cli_semiexp(tmp_path):
 
     assert (outdir / "semiexp_geometry.xyz").exists()
     assert (outdir / "semiexp_parameters.csv").exists()
+    assert (outdir / "semiexp_geometry_parameters.csv").exists()
     assert (outdir / "semiexp_residuals.csv").exists()
     assert (outdir / "semiexp_covariance.csv").exists()
     assert (outdir / "semiexp_hessian.csv").exists()
@@ -217,8 +218,14 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["backend"]["fortran77_role"] == "validated numerical kernels only"
     assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
     assert manifest["outputs"]["latex_tables"] == str(outdir / "semiexp_tables.tex")
+    assert manifest["outputs"]["geometry_parameters"] == str(outdir / "semiexp_geometry_parameters.csv")
     assert manifest["parameters"]["coordinate_generation"]["reduction"].startswith("primitive stretches")
     assert manifest["parameters"]["n_gic_parameters"] >= 1
+    geometry_text = (outdir / "semiexp_geometry_parameters.csv").read_text(encoding="utf-8")
+    assert "value_angstrom" in geometry_text
+    assert "value_degree" in geometry_text
+    assert "\nbond," in geometry_text
+    assert "\nangle," in geometry_text
 
 
 def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):

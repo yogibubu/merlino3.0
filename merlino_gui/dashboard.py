@@ -629,6 +629,7 @@ def _expected_workflow_files(workflow_id: str, workdir: Path) -> dict[str, Path]
         return {
             "geometry": workdir / "semiexp_geometry.xyz",
             "parameters": workdir / "semiexp_parameters.csv",
+            "geometry_parameters": workdir / "semiexp_geometry_parameters.csv",
             "report": workdir / "semiexp_report.html",
         }
     if workflow_id == "gic":

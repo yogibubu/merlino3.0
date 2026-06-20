@@ -17,6 +17,7 @@ from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_gic import run_gicforge
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from topology.elements import atomic_symbol
+from merlino_fit.topology.pipeline import build_topology_objects
 from merlino_fit.survibfit.modify_geom import read_xyz, write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
@@ -50,6 +51,16 @@ class SemiexperimentalResidual:
     observed_equilibrium_MHz: float
     calculated_MHz: float
     residual_MHz: float
+
+
+@dataclass(frozen=True)
+class SemiexperimentalGeometryParameter:
+    kind: str
+    label: str
+    atom_indices: tuple[int, ...]
+    atom_symbols: tuple[str, ...]
+    value_angstrom: float | None = None
+    value_degree: float | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +125,7 @@ class SemiexperimentalFitResult:
     initial_coordinates_angstrom: np.ndarray
     final_coordinates_angstrom: np.ndarray
     parameters: tuple[SemiexperimentalParameter, ...]
+    geometry_parameters: tuple[SemiexperimentalGeometryParameter, ...]
     residuals: tuple[SemiexperimentalResidual, ...]
     kraitchman: tuple[KraitchmanComparison, ...]
     kraitchman_seed: KraitchmanSeedResult | None
@@ -272,6 +284,7 @@ def fit_semiexperimental_geometry(
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
+    geometry_parameters = _geometry_parameters(atoms, coords)
     kraitchman_rows = kraitchman_comparison(atoms, coords, request.observations)
     kraitchman_seed = kraitchman_seed_geometry(atoms, coords, request.observations, kraitchman_rows)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
@@ -285,6 +298,7 @@ def fit_semiexperimental_geometry(
             parameters,
             residual_rows,
             kraitchman_rows,
+            geometry_parameters=geometry_parameters,
             kraitchman_seed=kraitchman_seed,
             effective_parameter_names=reduced_names,
             covariance=covariance,
@@ -299,6 +313,7 @@ def fit_semiexperimental_geometry(
         initial_coordinates_angstrom=np.asarray(coords0, dtype=float),
         final_coordinates_angstrom=coords,
         parameters=parameters,
+        geometry_parameters=geometry_parameters,
         residuals=residual_rows,
         kraitchman=kraitchman_rows,
         kraitchman_seed=kraitchman_seed,
@@ -325,6 +340,7 @@ def write_semiexperimental_outputs(
     parameters: tuple[SemiexperimentalParameter, ...],
     residuals: tuple[SemiexperimentalResidual, ...],
     kraitchman: tuple[KraitchmanComparison, ...] = (),
+    geometry_parameters: tuple[SemiexperimentalGeometryParameter, ...] | None = None,
     kraitchman_seed: KraitchmanSeedResult | None = None,
     effective_parameter_names: tuple[str, ...] = (),
     covariance: np.ndarray | None = None,
@@ -337,6 +353,7 @@ def write_semiexperimental_outputs(
     outdir.mkdir(parents=True, exist_ok=True)
     xyz = outdir / "semiexp_geometry.xyz"
     params = outdir / "semiexp_parameters.csv"
+    geometry_params = outdir / "semiexp_geometry_parameters.csv"
     residual_csv = outdir / "semiexp_residuals.csv"
     kraitchman_csv = outdir / "semiexp_kraitchman.csv"
     kraitchman_xyz = outdir / "semiexp_kraitchman_geometry.xyz"
@@ -346,8 +363,10 @@ def write_semiexperimental_outputs(
     hessian_eigs_csv = outdir / "semiexp_hessian_eigenvalues.csv"
     diagnostics_csv = outdir / "semiexp_diagnostics.csv"
     active_names = effective_parameter_names or _effective_parameter_names(parameters)
+    geometry_rows = geometry_parameters if geometry_parameters is not None else _geometry_parameters(atoms, coords)
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
+    geometry_params.write_text(geometry_parameters_csv(geometry_rows), encoding="utf-8")
     residual_csv.write_text(residuals_csv(residuals), encoding="utf-8")
     kraitchman_csv.write_text(kraitchman_csv_rows(kraitchman), encoding="utf-8")
     if kraitchman_seed is not None:
@@ -374,6 +393,7 @@ def write_semiexperimental_outputs(
     outputs = {
         "geometry": xyz,
         "parameters": params,
+        "geometry_parameters": geometry_params,
         "residuals": residual_csv,
         "kraitchman": kraitchman_csv,
         "covariance": covariance_csv,
@@ -440,6 +460,22 @@ def parameters_csv(parameters: tuple[SemiexperimentalParameter, ...]) -> str:
     return stream.getvalue()
 
 
+def geometry_parameters_csv(parameters: tuple[SemiexperimentalGeometryParameter, ...]) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["kind", "label", "atoms", "symbols", "value_angstrom", "value_degree"])
+    for item in parameters:
+        writer.writerow([
+            item.kind,
+            item.label,
+            "-".join(str(idx) for idx in item.atom_indices),
+            "-".join(item.atom_symbols),
+            "" if item.value_angstrom is None else f"{item.value_angstrom:.12g}",
+            "" if item.value_degree is None else f"{item.value_degree:.12g}",
+        ])
+    return stream.getvalue()
+
+
 def _effective_parameter_names(parameters: tuple[SemiexperimentalParameter, ...]) -> tuple[str, ...]:
     names: list[str] = []
     seen: set[str] = set()
@@ -466,6 +502,60 @@ def residuals_csv(residuals: tuple[SemiexperimentalResidual, ...]) -> str:
             f"{r.residual_MHz:.12g}",
         ])
     return stream.getvalue()
+
+
+def _geometry_parameters(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+) -> tuple[SemiexperimentalGeometryParameter, ...]:
+    coords = np.asarray(coords, dtype=float)
+    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+    try:
+        _continuous, graph, _ringset, _synthons, _aromaticity = build_topology_objects(coords, z_numbers)
+    except Exception as exc:
+        raise ScientificValidationError(f"Cannot build final geometry parameter table: {exc}") from exc
+
+    rows: list[SemiexperimentalGeometryParameter] = []
+    for i, j in sorted(tuple(sorted(pair)) for pair in graph.bonds):
+        label = f"R({i + 1},{j + 1})"
+        symbols = (str(atoms[i]), str(atoms[j]))
+        rows.append(
+            SemiexperimentalGeometryParameter(
+                "bond",
+                label,
+                (i + 1, j + 1),
+                symbols,
+                value_angstrom=float(np.linalg.norm(coords[i] - coords[j])),
+            )
+        )
+
+    for center in range(len(atoms)):
+        neighbors = sorted(graph.adjacency[center])
+        for pos, left in enumerate(neighbors):
+            for right in neighbors[pos + 1 :]:
+                label = f"A({left + 1},{center + 1},{right + 1})"
+                symbols = (str(atoms[left]), str(atoms[center]), str(atoms[right]))
+                rows.append(
+                    SemiexperimentalGeometryParameter(
+                        "angle",
+                        label,
+                        (left + 1, center + 1, right + 1),
+                        symbols,
+                        value_degree=_angle_degree(coords[left], coords[center], coords[right]),
+                    )
+                )
+    return tuple(rows)
+
+
+def _angle_degree(left: np.ndarray, center: np.ndarray, right: np.ndarray) -> float:
+    v1 = np.asarray(left, dtype=float) - np.asarray(center, dtype=float)
+    v2 = np.asarray(right, dtype=float) - np.asarray(center, dtype=float)
+    n1 = np.linalg.norm(v1)
+    n2 = np.linalg.norm(v2)
+    if n1 <= 0.0 or n2 <= 0.0:
+        return float("nan")
+    cosine = float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))
+    return float(np.degrees(np.arccos(cosine)))
 
 
 def kraitchman_csv_rows(rows: tuple[KraitchmanComparison, ...]) -> str:

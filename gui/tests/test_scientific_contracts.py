@@ -264,8 +264,11 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
         "max_iter",
     }
     assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
+    assert any(item.kind == "bond" and item.value_angstrom is not None for item in result.geometry_parameters)
+    assert any(item.kind == "angle" and item.value_degree is not None for item in result.geometry_parameters)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_geometry_parameters.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_residuals.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_covariance.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_correlation.csv").exists()
@@ -492,7 +495,9 @@ def test_semiexperimental_gic_preview_and_html_report(tmp_path):
     assert preview.rows
     assert {row.kind for row in preview.rows}.issubset({"bond", "angle", "dihedral", "out_of_plane", "linear_bend", "ring", "mixed"})
     assert any(item.mode in {"shared", "fixed"} for item in preview.suggested_classes)
-    assert "Merlino Semiexperimental Geometry Report" in report.read_text(encoding="utf-8")
+    report_text = report.read_text(encoding="utf-8")
+    assert "Merlino Semiexperimental Geometry Report" in report_text
+    assert "Final Cartesian Geometry Parameters" in report_text
     tables = semiexperimental_latex_tables(result)
     assert {"parameters", "residuals", "kraitchman"} == set(tables)
     assert "\\begin{tabular}" in tables["parameters"]

@@ -338,11 +338,15 @@ The output directory contains:
 
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
-  classes, fitted GICs, residuals and Kraitchman comparison.
+  classes, fitted GICs, final Cartesian bond lengths/angles, residuals and
+  Kraitchman comparison.
 - `semiexp_tables.tex`: paper-ready LaTeX tabular fragments for parameters,
   residuals and Kraitchman comparison.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
+- `semiexp_geometry_parameters.csv`: final Cartesian geometry interpreted as
+  ordinary structural parameters. Bond lengths are reported in Angstrom and
+  valence angles in degrees, with atom indices and element labels.
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
   selected observable. Units are MHz for rotational constants, amu Angstrom^2
   for moments of inertia and native GIC units for QM predicates.
