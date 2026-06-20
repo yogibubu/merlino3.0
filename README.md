@@ -1,8 +1,14 @@
-# Merlino 3.0
+# Merlino 4.0
 
-Merlino 3.0 is organized by functional area. Keep runtime entry points at the
-repository root and put implementation code, legacy material, reports, and local
-outputs in their dedicated folders.
+Merlino 4.0 starts from the closed Merlino 3.0 baseline and is the workspace for
+the structural refactor. Merlino 3.0 remains frozen; new architecture work
+happens here.
+
+The first goal is to separate GUI, geometry/topology, Gaussian/GIC generation,
+Fortran backends, DVR and data handling behind stable interfaces so each area
+can evolve independently.
+
+See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 
 ## Main Entry Points
 
@@ -34,7 +40,7 @@ outputs in their dedicated folders.
 
 ## Validation
 
-Run:
+Run the inherited validation suite:
 
 ```bash
 PYTHON=python ./freeze_check.sh
@@ -50,3 +56,12 @@ cd fortran/gicforge
 The Fortran compile script uses legacy-compatible flags and writes build logs
 under `fortran/gicforge/build/`; it updates `fortran/gicforge/gicforge`,
 `bin/gicforge.x`, and the compatibility alias `bin/prova.x`.
+
+For the Fortran DVR backend:
+
+```bash
+cd fortran/dvr
+./compile_MAC
+```
+
+The DVR build writes `bin/path_dvr.x`.
