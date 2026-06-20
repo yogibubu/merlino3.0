@@ -657,12 +657,13 @@ def _primitive_alias(primitive: Primitive) -> str:
 
 
 def _gicforge_a1_mask(labels: tuple[str, ...]) -> np.ndarray:
-    mask = []
+    irreps = []
     for label in labels:
         match = re.search(r"\birrep=([A-Za-z0-9'\"+-]+)", label)
-        irrep = match.group(1) if match else ""
-        mask.append(irrep in {"A1", "A", "Ag", "A'"})
-    return np.array(mask, dtype=bool)
+        irreps.append(match.group(1) if match else None)
+    if not any(irrep is not None for irrep in irreps):
+        return np.ones(len(labels), dtype=bool)
+    return np.array([irrep in {"A1", "A", "Ag", "A'"} for irrep in irreps], dtype=bool)
 
 
 def _gic_values(prims: object, u_matrix: np.ndarray, coords: np.ndarray) -> np.ndarray:

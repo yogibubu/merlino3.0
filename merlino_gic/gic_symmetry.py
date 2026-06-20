@@ -7,6 +7,7 @@ import re
 import numpy as np
 
 from merlino_fit.survibfit.modify_geom import read_xyz
+from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
 from merlino_fit.survibfit.symmetry_global import primitive_permutation
@@ -30,8 +31,9 @@ def write_gic_symmetry_files(workdir: Path) -> None:
     if not gics:
         return
     prims, u_matrix = _primitive_basis(gics)
-    op_data = _operation_data(atoms, coords, prims)
-    sym_gics = _symmetry_adapted_gics(gics, prims, u_matrix, op_data)
+    oriented = _oriented_coords(atoms, coords)
+    op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
+    sym_gics = _symmetry_adapted_gics(gics, prims, u_matrix, op_data, oriented)
     _write_gicsym(run_dir / "gicsym", sym_gics)
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
 
@@ -102,10 +104,15 @@ def _primitive_basis(gics: list[GICLine]) -> tuple[list[Primitive], np.ndarray]:
     return prims, np.column_stack(columns)
 
 
-def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]):
+def _oriented_coords(atoms: list[str], coords: np.ndarray) -> np.ndarray:
+    z_numbers = np.array([atomic_number(atom) for atom in atoms], dtype=int)
+    return orient_coords(coords, weights=z_numbers)
+
+
+def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive], already_oriented: bool = False):
     z_numbers = np.array([atomic_number(atom) for atom in atoms], dtype=int)
     symbols = [atomic_symbol(int(z)) for z in z_numbers]
-    oriented = orient_coords(coords, weights=z_numbers)
+    oriented = coords if already_oriented else orient_coords(coords, weights=z_numbers)
     elements, _classes, permutations = symmetry_elements_from_geometry(
         symbols,
         oriented,
@@ -123,47 +130,141 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
         if mapped in seen:
             continue
         seen.add(mapped)
-        unique.append((element[0], mapped, primitive_permutation(prims, mapped)))
-    return unique or [("E", tuple(range(len(atoms))), primitive_permutation(prims, tuple(range(len(atoms)))))]
+        unique.append((element[0], element[1], mapped, primitive_permutation(prims, mapped)))
+    identity = tuple(range(len(atoms)))
+    return unique or [("E", np.eye(3), identity, primitive_permutation(prims, identity))]
 
 
-def _symmetry_adapted_gics(gics, prims, u_matrix, op_data):
+def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray):
     irreps = _irrep_characters([item[0] for item in op_data])
     if not irreps:
         return [(gic.name, "A", u_matrix[:, idx]) for idx, gic in enumerate(gics)]
+    targets = _vibrational_irrep_counts(op_data, irreps, len(coords))
+    b_primitive = b_matrix_analytic(prims, coords)
+    source_rows = u_matrix.T @ b_primitive
+    vib_projector = _vibrational_projector(coords)
+    cart_ops = [_cartesian_operation(rotation, mapping, len(coords)) for _label, rotation, mapping, _prim_op in op_data]
     adapted = []
     used_names: dict[str, int] = {}
-    for kind in _kind_order(prims):
-        idxs = np.array([i for i, prim in enumerate(prims) if prim.kind == kind], dtype=int)
-        block = u_matrix[idxs, :]
-        for irrep, chars in irreps:
-            basis: list[np.ndarray] = []
-            for col in range(block.shape[1]):
-                projected = np.zeros(block.shape[0], dtype=float)
-                source = u_matrix[:, col]
-                for op_index, (_label, _mapping, (perm_idx, sign)) in enumerate(op_data):
-                    transformed = np.zeros_like(source)
-                    for src, dst in enumerate(perm_idx):
-                        transformed[dst] += sign[src] * source[src]
-                    projected += chars[op_index] * transformed[idxs]
-                projected /= float(len(op_data))
-                if np.linalg.norm(projected) < 1.0e-8:
+    selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
+    selected_global: list[np.ndarray] = []
+    for irrep, chars in irreps:
+        target = targets.get(irrep, 0)
+        if target <= 0:
+            continue
+        for col, source_row in enumerate(source_rows):
+            projected_row_raw = _project_cartesian_row(source_row, chars, cart_ops)
+            projected_row = projected_row_raw @ vib_projector
+            if np.linalg.norm(projected_row) < 1.0e-8:
+                continue
+            residual = _orthogonal_residual(projected_row, selected_rows[irrep])
+            row_norm = np.linalg.norm(residual)
+            if row_norm < 1.0e-7:
+                continue
+            global_residual = _orthogonal_residual(projected_row, selected_global)
+            if np.linalg.norm(global_residual) < 1.0e-7:
+                continue
+            coeff = _project_column_to_irrep(u_matrix[:, col], chars, op_data)
+            coeff_norm = np.linalg.norm(coeff)
+            if coeff_norm < 1.0e-8:
+                coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims)
+                coeff_norm = np.linalg.norm(coeff)
+                if coeff_norm < 1.0e-8:
                     continue
-                projected = _orthogonal_residual(projected, basis)
-                norm = np.linalg.norm(projected)
-                if norm < 1.0e-7:
-                    continue
-                basis.append(projected / norm)
-                full = np.zeros(len(prims), dtype=float)
-                full[idxs] = basis[-1]
-                adapted.append((_next_name(irrep, kind, used_names), irrep, full))
+            coeff /= coeff_norm
+            selected_rows[irrep].append(residual / row_norm)
+            selected_global.append(global_residual / np.linalg.norm(global_residual))
+            kind = _dominant_kind(u_matrix[:, col], prims)
+            adapted.append((_next_name(irrep, kind, used_names), irrep, coeff))
+            if len(selected_rows[irrep]) == target:
+                break
+        if len(selected_rows[irrep]) != target:
+            raise RuntimeError(
+                f"GIC symmetry reduction generated {len(selected_rows[irrep])} {irrep} coordinates; expected {target}"
+            )
+    counts = {irrep: len(rows) for irrep, rows in selected_rows.items()}
+    if counts != targets:
+        raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
     return adapted
 
 
-def _kind_order(prims: list[Primitive]) -> list[str]:
-    order = ["bond", "angle", "linear_bend", "dihedral", "out_of_plane"]
-    present = {prim.kind for prim in prims}
-    return [kind for kind in order if kind in present]
+def _cartesian_operation(rotation: np.ndarray, mapping: tuple[int, ...], natoms: int) -> np.ndarray:
+    matrix = np.zeros((3 * natoms, 3 * natoms), dtype=float)
+    # The detector returns i -> j such that x_i matches R x_j; for row
+    # gradients this block form applies the same operation in the oriented
+    # Cartesian frame.
+    for i, j in enumerate(mapping):
+        matrix[3 * i : 3 * i + 3, 3 * j : 3 * j + 3] = rotation
+    return matrix
+
+
+def _project_cartesian_row(row: np.ndarray, chars: np.ndarray, cart_ops: list[np.ndarray]) -> np.ndarray:
+    projected = np.zeros_like(row)
+    for op_index, op_matrix in enumerate(cart_ops):
+        projected += chars[op_index] * (row @ op_matrix)
+    return projected / float(len(cart_ops))
+
+
+def _vibrational_projector(coords: np.ndarray) -> np.ndarray:
+    natoms = len(coords)
+    basis = []
+    for axis in range(3):
+        vec = np.zeros(3 * natoms, dtype=float)
+        vec[axis::3] = 1.0
+        basis.append(vec)
+    for axis in np.eye(3):
+        vec = np.array([component for coord in coords for component in np.cross(axis, coord)], dtype=float)
+        basis.append(vec)
+    ortho: list[np.ndarray] = []
+    for vec in basis:
+        residual = _orthogonal_residual(vec, ortho)
+        norm = np.linalg.norm(residual)
+        if norm > 1.0e-10:
+            ortho.append(residual / norm)
+    if not ortho:
+        return np.eye(3 * natoms, dtype=float)
+    q_matrix = np.vstack(ortho).T
+    return np.eye(3 * natoms, dtype=float) - q_matrix @ q_matrix.T
+
+
+def _cartesian_row_to_coeff(
+    row: np.ndarray, b_primitive: np.ndarray, source_coeff: np.ndarray, prims: list[Primitive]
+) -> np.ndarray:
+    kind = _dominant_kind(source_coeff, prims)
+    idxs = [idx for idx, prim in enumerate(prims) if prim.kind == kind]
+    coeff = _least_squares_coeff(row, b_primitive, idxs)
+    if np.linalg.norm(coeff @ b_primitive - row) > 1.0e-5 * max(1.0, np.linalg.norm(row)):
+        coeff = _least_squares_coeff(row, b_primitive, list(range(len(prims))))
+    return coeff
+
+
+def _least_squares_coeff(row: np.ndarray, b_primitive: np.ndarray, idxs: list[int]) -> np.ndarray:
+    coeff = np.zeros(b_primitive.shape[0], dtype=float)
+    if not idxs:
+        return coeff
+    sub_b = b_primitive[np.array(idxs, dtype=int), :]
+    values, *_ = np.linalg.lstsq(sub_b.T, row.T, rcond=1.0e-10)
+    coeff[np.array(idxs, dtype=int)] = values
+    return coeff
+
+
+def _project_column_to_irrep(source: np.ndarray, chars: np.ndarray, op_data) -> np.ndarray:
+    projected = np.zeros_like(source)
+    for op_index, (_label, _rotation, _mapping, (perm_idx, sign)) in enumerate(op_data):
+        transformed = np.zeros_like(source)
+        for src, dst in enumerate(perm_idx):
+            transformed[dst] += sign[src] * source[src]
+        projected += chars[op_index] * transformed
+    return projected / float(len(op_data))
+
+
+def _dominant_kind(column: np.ndarray, prims: list[Primitive]) -> str:
+    weights: dict[str, float] = {}
+    for coeff, prim in zip(column, prims):
+        weights[prim.kind] = weights.get(prim.kind, 0.0) + float(coeff * coeff)
+    if not weights:
+        return "gic"
+    return max(weights.items(), key=lambda item: item[1])[0]
 
 
 def _orthogonal_residual(vector: np.ndarray, basis: list[np.ndarray]) -> np.ndarray:
@@ -194,6 +295,29 @@ def _irrep_characters(labels: list[str]) -> list[tuple[str, np.ndarray]]:
     return []
 
 
+def _vibrational_irrep_counts(op_data, irreps: list[tuple[str, np.ndarray]], natoms: int) -> dict[str, int]:
+    gamma_3n = []
+    gamma_trans = []
+    gamma_rot = []
+    for _label, rotation, mapping, _primitive_op in op_data:
+        fixed = sum(1 for i, j in enumerate(mapping) if i == j)
+        trace = float(np.trace(rotation))
+        gamma_3n.append(fixed * trace)
+        gamma_trans.append(trace)
+        gamma_rot.append(float(np.linalg.det(rotation) * trace))
+    gamma_vib = np.array(gamma_3n) - np.array(gamma_trans) - np.array(gamma_rot)
+    counts = {}
+    group_order = float(len(op_data))
+    for irrep, chars in irreps:
+        value = int(round(float(np.dot(gamma_vib, chars)) / group_order))
+        counts[irrep] = max(value, 0)
+    if sum(counts.values()) != 3 * natoms - 6:
+        raise RuntimeError(
+            f"Vibrational irrep count mismatch: {counts} sums to {sum(counts.values())}, expected {3 * natoms - 6}"
+        )
+    return counts
+
+
 def _next_name(irrep: str, kind: str, used: dict[str, int]) -> str:
     prefix = {
         "bond": "Str",
@@ -219,7 +343,13 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
     first_gic = next((i for i, line in enumerate(lines) if _parse_gic_line(line) is not None), len(lines))
     prefix = lines[:first_gic]
     out = list(prefix)
-    for name, _irrep, column in sym_gics:
+    a1 = [item for item in sym_gics if item[1] in {"A1", "A", "Ag", "A'"}]
+    other = [item for item in sym_gics if item not in a1]
+    for name, _irrep, column in a1:
+        out.append(_format_gic_line(name, column, prims))
+    if other:
+        out.append("")
+    for name, _irrep, column in other:
         out.append(_format_gic_line(name, column, prims))
     target.write_text("\n".join(out) + "\n", encoding="utf-8")
 
@@ -227,7 +357,7 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
 def _format_gic_line(name: str, column: np.ndarray, prims: list[Primitive]) -> str:
     parts = []
     for coeff, primitive in zip(column, prims):
-        if abs(coeff) < 1.0e-8:
+        if abs(coeff) < 1.0e-5:
             continue
         parts.append((coeff, _primitive_expression(primitive)))
     expr = _join_terms(parts)

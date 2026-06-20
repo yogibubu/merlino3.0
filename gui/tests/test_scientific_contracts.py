@@ -415,7 +415,7 @@ def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
     assert shared
     assert all(parameter.active for parameter in shared)
     assert fixed and all(not parameter.active for parameter in fixed)
-    assert result.jacobian.shape[1] == 2
+    assert result.jacobian.shape[1] == 1
     params_text = (tmp_path / "semiexp_classes" / "semiexp_parameters.csv").read_text(encoding="utf-8")
     assert "parameter_class" in params_text
     assert "OH_stretches" in params_text
