@@ -14,7 +14,7 @@
  CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian
  BDPCS3    : Make BDPCS3 Bond Lengths
- SYMMALL   : Symmetrize GNICs
+ SYMMALL   : Symmetrize same-type GNIC blocks
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
  HBOND     : Make H-Bonds

@@ -10,6 +10,11 @@ C   - never mixes stretches with bends, torsions, linear bends, or OOPs
 C   - acts only on generic one-term coordinates (ITPV = 0)
 C   - leaves specialized ring/puckering/butterfly coordinates untouched
 C
+C  The driver currently calls this for stretches, bends, linear bends and
+C  torsions. OOP signatures are implemented here for completeness, but the
+C  GICForge driver keeps OOP primitives unchanged until the Gaussian writer
+C  supports OOP linear-combination output.
+C
 C  This mirrors the Python policy: group comparable primitives first, build
 C  sum/difference combinations inside each homogeneous block, then let the
 C  B-rank pruning remove any remaining dependencies.
@@ -40,11 +45,14 @@ C=======================================================================
        NG=1
        Group(1)=I
 
+C      Do not combine coordinates that are already semantic GICs.
+C      ITPV != 0 labels ring/puckering/butterfly/etc. coordinates.
        If(ITPV(I).ne.0.or.NTerm(I).ne.1) go to 100
 
        Do 20 J=I+1,NVar
         If(Used(J)) go to 20
         If(ITPV(J).ne.0.or.NTerm(J).ne.1) go to 20
+C       Frozen and active coordinates must not enter the same symmetry block.
         If(IFixG(J).ne.IFixG(I)) go to 20
         If(SameGICSig(MaxAtG,MaxTer,Itp,I,J,IAtom,IAn)) then
          NG=NG+1
@@ -54,6 +62,7 @@ C=======================================================================
    20  Continue
 
        If(NG.le.1) go to 100
+C      A symmetric sum over NG primitives needs NG terms in one GIC.
        If(NG.gt.MaxTer) then
         Write(IOut,'(''   '',A,'': same-type symmetry group of size '',
      $ I5,'' skipped; MaxTer too small.'')') Label,NG
@@ -74,7 +83,7 @@ C=======================================================================
    30  Continue
        If(Skip) go to 100
 
-C      Symmetric sum over all group members.
+C      First coordinate: totally symmetric normalized sum.
        IX=Group(1)
        NTerm(IX)=NG
        Den=DSqrt(DBLE(NG))
@@ -85,7 +94,8 @@ C      Symmetric sum over all group members.
    41   Continue
    40  Continue
 
-C      Adjacent orthonormal differences.
+C      Remaining coordinates: local orthonormal differences.  OrdRed and the
+C      final B-rank pruning decide which of these differences are independent.
        Do 60 IG=2,NG
         IX=Group(IG)
         NTerm(IX)=2

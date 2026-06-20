@@ -629,8 +629,9 @@ C Out of Plane
       Do 80 Ir=1,NOupl
        IFixO(Ir)=IFill
    80 Continue
-      If(SyGNIC) call SymOneGICBlock(IOut,'Out-of-plane',MxAtP,MxTrm,5,
-     $ NOupl,NTermO,IAtomO,ITVO,IFixO,IAn,CoefO)
+C     OOP combinations are not printed by PrtOut yet
+C     ("Combinations of Improper Dihedrals NYI"). Keep OOP primitives
+C     unchanged here; residual redundancies are still pruned by type below.
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
@@ -943,7 +944,8 @@ C      write(IOut,'(A80)') CLine
      $  '' Gaussian'')')
       If(Kwd(13)) write(IOut,'('' BDPCS3    : Make BDPCS3 Bond'',
      $  '' Lengths'')')
-      If(Kwd(14)) write(IOut,'('' SYMMALL   : Symmetrize GNICs'')')
+      If(Kwd(14)) write(IOut,'('' SYMMALL   : Symmetrize same-type '',
+     $ ''GNIC blocks'')')
       If(Kwd(15)) write(IOut,'('' FINDFR    : Find Fragments'')')
       If(Kwd(16)) write(IOut,'('' JOINFR    : Join Fragments'')')
       If(Kwd(17)) write(IOut,'('' HBOND     : Make H-Bonds'')')

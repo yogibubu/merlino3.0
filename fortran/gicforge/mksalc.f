@@ -892,9 +892,9 @@ C       Write(IOut,'(''IJKL='',I3)') IJKL
           write (IOUT,'(I3,'' Lin.Bending   '','' Prim:'',I3,4X,
      $     ''Atoms'',4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3,
      $     3X,A6)') IValG,IValR,I1,I2,I3,I4,Value,CoefP,LBL1
-         Else
+        Else
           write (IOUT,'(18X,'' Prim:'',I3,4X,''Atoms'',
-     $      3I4,8X,''Value='',F8.3,4X,'' Coeff.='',F8.3)')IValR,
+     $      4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3)')IValR,
      $      I1,I2,I3,I4,Value,CoefP
          EndIf
         ElseIf(ITp.eq.4) then 
@@ -1774,12 +1774,15 @@ C Set for MxVar=999
          endif
   110   continue
        endif
+       I5=IAtom(4,NTrmI,IVar)
        if(Coef(NTrmI,IVar).gt.0.d0) then
-        write(IOut,'(''+'',F6.4,''*L('',2(I3,'',''),I3,'')]'')')
-     $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),I4,I5
+        write(IOut,'(''+'',F6.4,''*L('',4(I3,'',''),I3,'')]'')')
+     $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),
+     $    I4,I5
        else
-        write(IOut,'(''-'',F6.4,''*L('',2(I3,'',''),I3,'')]'')')
-     $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),I4,I5
+        write(IOut,'(''-'',F6.4,''*L('',4(I3,'',''),I3,'')]'')')
+     $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),
+     $    I4,I5
        endif
   100 continue   
       return

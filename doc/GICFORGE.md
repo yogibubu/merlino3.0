@@ -55,19 +55,21 @@ for higher-level topology policy.
 
 ## Type-Local Symmetrization
 
-With `SYMMALL`, GICForge now calls `SymOneGICBlock` before `OrdRed` for each
-coordinate family:
+With `SYMMALL`, GICForge now calls `SymOneGICBlock` before `OrdRed` for these
+coordinate families:
 
 - stretch
 - bend
 - linear bend
 - torsion
-- out-of-plane
 
 The implementation is in `fortran/symmetry/gic_type_symmetry.f` and is called
 from `fortran/gicforge/dina25.f`. It only acts on generic one-term coordinates
 and only groups coordinates with the same family and compatible atomic-number
 signature. Specialized ring/puckering/butterfly coordinates are left unchanged.
+Out-of-plane signatures are implemented in the shared symmetry routine, but the
+driver does not invoke them yet because `PrtOut` still cannot serialize OOP
+linear combinations to Gaussian input.
 
 For each homogeneous group, the first GIC becomes the normalized symmetric sum
 and the following GICs become orthonormal adjacent differences. `OrdRed` and
