@@ -382,10 +382,10 @@ class AdvancedWindow(QMainWindow):
         layout.addWidget(group)
 
     # ==================================================================
-    # Puckering DVR panel
+    # Path DVR panel
     # ==================================================================
     def _build_puckering_dvr_panel(self, layout: QVBoxLayout):
-        group = QGroupBox("Puckering DVR – Gaussian scan analysis")
+        group = QGroupBox("Path DVR – Gaussian scan analysis")
         vbox = QVBoxLayout(group)
 
         row1 = QHBoxLayout()
@@ -435,11 +435,11 @@ class AdvancedWindow(QMainWindow):
         self.dvr_rotconst.setChecked(True)
         row5.addWidget(self.dvr_rotconst)
         self.dvr_cremer = QCheckBox("Label Cremer-Pople")
-        self.dvr_cremer.setChecked(True)
+        self.dvr_cremer.setChecked(False)
         row5.addWidget(self.dvr_cremer)
         vbox.addLayout(row5)
 
-        self.run_dvr_btn = QPushButton("Run Puckering DVR")
+        self.run_dvr_btn = QPushButton("Run Path DVR")
         self.run_dvr_btn.clicked.connect(lambda: AdvancedWindow.run_puckering_dvr(self))
         vbox.addWidget(self.run_dvr_btn)
 
@@ -932,10 +932,10 @@ class AdvancedWindow(QMainWindow):
 
     def _on_puckering_dvr_finished(self, success: bool, message: str):
         if success:
-            QMessageBox.information(self, "Puckering DVR", message)
+            QMessageBox.information(self, "Path DVR", message)
             self._export_project_files()
         else:
-            QMessageBox.critical(self, "Puckering DVR failed", message)
+            QMessageBox.critical(self, "Path DVR failed", message)
 
     def _browse_log(self):
         path, _ = QFileDialog.getOpenFileName(

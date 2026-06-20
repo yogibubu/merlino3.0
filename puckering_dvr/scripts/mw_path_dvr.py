@@ -127,6 +127,13 @@ class SourceData:
 
 
 @dataclass
+class GicToCremerPopleBridge:
+    mode_index: int
+    cp_mode: int
+    matrix: np.ndarray
+
+
+@dataclass
 class Grid1DModel:
     grid_au: np.ndarray
     potential_cm: np.ndarray
@@ -365,6 +372,7 @@ def read_gaussian_log(
     last_post_scf_energy: float | None = None
     last_rot_constants_ghz: tuple[float, float, float] | None = None
     last_dipole_debye: tuple[float, float, float] | None = None
+    last_gic_values: dict[str, float] = {}
     pending_optimized = False
     pending_scf_energy: float | None = None
     pending_post_scf_energy: float | None = None
@@ -398,6 +406,23 @@ def read_gaussian_log(
         r"(?:\s+out of\s+(\d+))?",
         re.IGNORECASE,
     )
+    gic_table_re = re.compile(
+        rf"!\s*([A-Za-z][A-Za-z0-9_]*?)\s+GIC-\d+\s+({gaussian_number})\b"
+    )
+    gic_step_re = re.compile(
+        rf"^\s*([A-Za-z][A-Za-z0-9_]*?)\s+"
+        rf"({gaussian_number})(?:\s+{gaussian_number}){{4}}\s+({gaussian_number})\s*$"
+    )
+
+    def gic_prop_key(name: str) -> str:
+        return f"gic_{name}"
+
+    def store_gic_value(name: str, value: float) -> None:
+        last_gic_values[gic_prop_key(name)] = value
+        # If Gaussian prints the final GIC table after the scan-point record,
+        # keep the selected scan structure synchronized with the latest values.
+        if scan_link_indices and preferred_scan_atoms is None:
+            scan_structures[scan_link_indices[-1]].props[gic_prop_key(name)] = value
 
     def selected_energy(
         scf_energy: float | None,
@@ -439,6 +464,7 @@ def read_gaussian_log(
             props["dipole_y_debye"] = muy
             props["dipole_z_debye"] = muz
             props["dipole_debye"] = math.sqrt(mux * mux + muy * muy + muz * muz)
+        props.update(last_gic_values)
         return props
 
     def scan_geometry() -> tuple[np.ndarray, list[str], np.ndarray]:
@@ -525,6 +551,14 @@ def read_gaussian_log(
             last_scf_energy = parse_float(match.group(1))
             last_post_scf_energy = None
             last_dipole_debye = None
+
+        match = gic_table_re.search(line)
+        if match:
+            store_gic_value(match.group(1), parse_float(match.group(2)))
+
+        match = gic_step_re.match(line)
+        if match:
+            store_gic_value(match.group(1), parse_float(match.group(3)))
 
         for match in eparen_re.finditer(line):
             label = match.group(1).strip().lower()
@@ -1040,6 +1074,129 @@ def cremer_pople_five_membered(
     return q2, phi2, cp_x, cp_y
 
 
+def cremer_pople_mode_values(coords: np.ndarray, ring_indices: list[int]) -> dict[str, float]:
+    """Return Cremer-Pople out-of-plane components for an arbitrary ring.
+
+    The coordinate frame is defined by the first harmonic plane of the current
+    ring geometry. Odd rings have paired modes m=2..(N-1)/2; even rings have
+    paired modes m=2..N/2-1 plus the special unpaired m=N/2 coordinate.
+    """
+    ring_size = len(ring_indices)
+    if ring_size < 4:
+        raise ValueError("Cremer-Pople labels require a ring with at least four atoms")
+
+    ring = coords[ring_indices]
+    center = np.mean(ring, axis=0)
+    j = np.arange(ring_size, dtype=float)
+    angle1 = 2.0 * math.pi * j / float(ring_size)
+    plane_x = np.sum(ring * np.cos(angle1)[:, None], axis=0)
+    plane_y = np.sum(ring * np.sin(angle1)[:, None], axis=0)
+    normal = np.cross(plane_x, plane_y)
+    norm = float(np.linalg.norm(normal))
+    if norm < 1.0e-12:
+        raise ValueError("Cannot define Cremer-Pople plane for the selected ring")
+    normal /= norm
+
+    z = (ring - center) @ normal
+    values: dict[str, float] = {}
+    for mode in range(2, (ring_size - 1) // 2 + 1):
+        angle = 2.0 * math.pi * float(mode) * j / float(ring_size)
+        cp_x = math.sqrt(2.0 / float(ring_size)) * float(np.sum(z * np.cos(angle)))
+        cp_y = -math.sqrt(2.0 / float(ring_size)) * float(np.sum(z * np.sin(angle)))
+        q = math.hypot(cp_x, cp_y)
+        phi = math.degrees(math.atan2(cp_y, cp_x)) % 360.0
+        values[f"CP_m{mode}_q_angstrom"] = q
+        values[f"CP_m{mode}_phi_deg"] = phi
+        values[f"CP_m{mode}_x_angstrom"] = cp_x
+        values[f"CP_m{mode}_y_angstrom"] = cp_y
+
+    if ring_size % 2 == 0:
+        mode = ring_size // 2
+        q = math.sqrt(1.0 / float(ring_size)) * float(np.sum(((-1.0) ** j) * z))
+        values[f"CP_m{mode}_q_angstrom"] = q
+    return values
+
+
+def gaussian_puckering_mode_values(props: dict[str, float]) -> dict[int, dict[str, float]]:
+    modes: dict[int, dict[str, float]] = {}
+    for key, value in props.items():
+        match = re.fullmatch(r"gic_QPck0*(\d+)", key)
+        if match:
+            modes.setdefault(int(match.group(1)), {})["q"] = float(value)
+            continue
+        match = re.fullmatch(r"gic_PhiP0*(\d+)", key)
+        if match:
+            phi_rad = float(value)
+            modes.setdefault(int(match.group(1)), {})["phi_rad"] = phi_rad
+            modes[int(match.group(1))]["phi_deg"] = math.degrees(phi_rad)
+    for values in modes.values():
+        if "q" in values and "phi_rad" in values:
+            q = values["q"]
+            phi = values["phi_rad"]
+            values["x"] = q * math.cos(phi)
+            values["y"] = q * math.sin(phi)
+    return modes
+
+
+def cp_paired_modes_for_ring(ring_size: int) -> list[int]:
+    if ring_size < 5:
+        return []
+    return list(range(2, (ring_size - 1) // 2 + 1))
+
+
+def fit_gic_to_cremer_pople_bridges(
+    structures: list[Structure],
+    cp_ring_indices: list[int] | None,
+) -> dict[int, GicToCremerPopleBridge]:
+    if cp_ring_indices is None:
+        return {}
+    cp_modes = cp_paired_modes_for_ring(len(cp_ring_indices))
+    bridges: dict[int, GicToCremerPopleBridge] = {}
+    for mode_index, cp_mode in enumerate(cp_modes, start=1):
+        gic_rows = []
+        cp_rows = []
+        for structure in structures:
+            gic = gaussian_puckering_mode_values(structure.props).get(mode_index)
+            if not gic or "x" not in gic or "y" not in gic:
+                continue
+            cp = cremer_pople_mode_values(structure.coords_angstrom, cp_ring_indices)
+            x_key = f"CP_m{cp_mode}_x_angstrom"
+            y_key = f"CP_m{cp_mode}_y_angstrom"
+            if x_key not in cp or y_key not in cp:
+                continue
+            gic_rows.append([gic["x"], gic["y"]])
+            cp_rows.append([cp[x_key], cp[y_key]])
+        if len(gic_rows) >= 2:
+            matrix, *_ = np.linalg.lstsq(np.asarray(gic_rows), np.asarray(cp_rows), rcond=None)
+            bridges[mode_index] = GicToCremerPopleBridge(
+                mode_index=mode_index,
+                cp_mode=cp_mode,
+                matrix=matrix,
+            )
+    return bridges
+
+
+def bridge_gic_to_cremer_pople_values(
+    props: dict[str, float],
+    bridges: dict[int, GicToCremerPopleBridge],
+) -> dict[str, float]:
+    values: dict[str, float] = {}
+    gic_modes = gaussian_puckering_mode_values(props)
+    for mode_index, bridge in bridges.items():
+        gic = gic_modes.get(mode_index)
+        if not gic or "x" not in gic or "y" not in gic:
+            continue
+        cp_x, cp_y = np.asarray([gic["x"], gic["y"]], dtype=float) @ bridge.matrix
+        q = math.hypot(float(cp_x), float(cp_y))
+        phi = math.degrees(math.atan2(float(cp_y), float(cp_x))) % 360.0
+        prefix = f"CP_from_GIC_m{bridge.cp_mode}"
+        values[f"{prefix}_q_angstrom"] = q
+        values[f"{prefix}_phi_deg"] = phi
+        values[f"{prefix}_x_angstrom"] = float(cp_x)
+        values[f"{prefix}_y_angstrom"] = float(cp_y)
+    return values
+
+
 def parse_five_ring_pucker_label(label: str) -> tuple[str, int, float]:
     """Return a target phase for five-membered-ring labels.
 
@@ -1375,6 +1532,8 @@ def scalar_property_keys(
                 for key in structures[0].props:
                     nkey = normalized_key(key)
                     if nkey == energy_norm or nkey in ENERGY_KEYS:
+                        continue
+                    if key.startswith("gic_"):
                         continue
                     try:
                         [float(structure.props[key]) for structure in structures]
@@ -4973,7 +5132,27 @@ def write_profile(
     energy_key: str,
     property_keys: list[str],
     cp_ring_indices: list[int] | None = None,
+    gic_to_cp_bridges: dict[int, GicToCremerPopleBridge] | None = None,
 ) -> None:
+    gic_keys = sorted(
+        {
+            key
+            for structure in structures
+            for key in structure.props
+            if key.startswith("gic_")
+        }
+    )
+    cp_keys: list[str] = []
+    if cp_ring_indices is not None:
+        cp_key_set = set()
+        bridge_key_set = set()
+        for structure in structures:
+            cp_key_set.update(cremer_pople_mode_values(structure.coords_angstrom, cp_ring_indices))
+            bridge_key_set.update(
+                bridge_gic_to_cremer_pople_values(structure.props, gic_to_cp_bridges or {})
+            )
+        cp_keys = sorted(cp_key_set) + sorted(bridge_key_set)
+
     header = [
         "point",
         "s_sqrtamu_angstrom",
@@ -4983,24 +5162,18 @@ def write_profile(
         energy_key,
         "relative_energy_cm-1",
     ]
-    if cp_ring_indices is not None:
-        header.extend(
-            [
-                "CP_q2_angstrom",
-                "CP_phi2_deg",
-                "CP_x_angstrom",
-                "CP_y_angstrom",
-            ]
-        )
+    header.extend(gic_keys)
+    header.extend(cp_keys)
     header.extend(property_keys)
     with path.open("w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
         for i, structure in enumerate(structures):
-            cp_values: list[float] = []
+            cp_values: dict[str, float] = {}
             if cp_ring_indices is not None:
-                cp_values = list(
-                    cremer_pople_five_membered(structure.coords_angstrom, cp_ring_indices)
+                cp_values.update(cremer_pople_mode_values(structure.coords_angstrom, cp_ring_indices))
+                cp_values.update(
+                    bridge_gic_to_cremer_pople_values(structure.props, gic_to_cp_bridges or {})
                 )
             writer.writerow(
                 [
@@ -5011,7 +5184,8 @@ def write_profile(
                     angular_residuals[i],
                     raw_energy[i],
                     rel_energy_cm[i],
-                    *cp_values,
+                    *[structure.props.get(key, "") for key in gic_keys],
+                    *[cp_values.get(key, "") for key in cp_keys],
                     *[structure.props.get(key, "") for key in property_keys],
                 ]
             )
@@ -5034,13 +5208,9 @@ def write_oriented_xyz(
                 f"s_au={s_au[i]:.12f} relative_energy_cm-1={rel_energy_cm[i]:.12f}"
             )
             if cp_ring_indices is not None:
-                q2, phi2, cp_x, cp_y = cremer_pople_five_membered(
-                    structure.coords_angstrom, cp_ring_indices
-                )
-                comment += (
-                    f" CP_q2_angstrom={q2:.12f} CP_phi2_deg={phi2:.12f}"
-                    f" CP_x_angstrom={cp_x:.12f} CP_y_angstrom={cp_y:.12f}"
-                )
+                cp_values = cremer_pople_mode_values(structure.coords_angstrom, cp_ring_indices)
+                for key in sorted(cp_values):
+                    comment += f" {key}={cp_values[key]:.12f}"
             handle.write(comment + "\n")
             for symbol, (x, y, z) in zip(structure.symbols, coords):
                 handle.write(f"{symbol:2s} {x:18.10f} {y:18.10f} {z:18.10f}\n")
@@ -5597,9 +5767,13 @@ def write_summary(
         f"Maximum Eckart angular residual: {np.max(angular_residuals):.8e} amu Angstrom^2",
         "Reduced mass of path coordinate: 1",
         (
-            f"Cremer-Pople labels: q2/phi2 from ring {args.ring}"
+            f"Cremer-Pople labels: generalized ring coordinates from ring {args.ring}"
             if args.label_cremer_pople
             else "Cremer-Pople labels: not written"
+        ),
+        (
+            "Gaussian GIC labels: written when present in the Gaussian log; "
+            "QPck/PhiP are mapped to Cremer-Pople components when possible."
         ),
         f"Properties: {', '.join(property_keys) if property_keys else 'none'}",
         (
@@ -6542,7 +6716,11 @@ def parse_args() -> argparse.Namespace:
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--xyz", type=Path, help="Multi-XYZ path file.")
-    source.add_argument("--gaussian-log", type=Path, help="Gaussian log with optimized path points.")
+    source.add_argument(
+        "--gaussian-log",
+        type=Path,
+        help="Gaussian log with optimized scan/path points; the scanned coordinate does not have to be puckering.",
+    )
     source.add_argument("--grid2d-csv", type=Path, help="Rectangular 2D grid CSV for product-basis analysis.")
     parser.add_argument(
         "--prepare-gaussian",
@@ -7114,15 +7292,17 @@ def parse_args() -> argparse.Namespace:
         "--ring",
         default="1,2,3,4,5",
         help=(
-            "One-based atom indices of a four- or five-membered ring, in Prelog cyclic order. "
-            "For five-membered rings phi=0 is the E1 envelope; for four-membered rings "
-            "atom 1 is the out-of-plane reference atom."
+            "One-based atom indices of a ring, in cyclic order, used only for ring-puckering "
+            "Gaussian input generation or optional Cremer-Pople labeling."
         ),
     )
     parser.add_argument(
         "--label-cremer-pople",
         action="store_true",
-        help="Write five-membered-ring Cremer-Pople q2/phi2 labels to profile outputs.",
+        help=(
+            "Write generalized Cremer-Pople labels from Cartesian geometries. If Gaussian "
+            "GIC QPck/PhiP values are present, also write the fitted GIC-to-Cremer-Pople map."
+        ),
     )
     parser.add_argument(
         "--start-pucker-label",
@@ -7320,8 +7500,9 @@ def run_1d_analysis(source: SourceData, args: argparse.Namespace) -> None:
     cp_ring_indices = None
     if args.label_cremer_pople:
         parsed_ring = parse_ring_indices(args.ring, len(structures[0].atoms))
-        if len(parsed_ring) == 5:
+        if len(parsed_ring) >= 4:
             cp_ring_indices = parsed_ring
+    gic_to_cp_bridges = fit_gic_to_cremer_pople_bridges(structures, cp_ring_indices)
     repeat = max(args.repeat, 1)
     n_grid = args.grid * repeat if args.boundary == "periodic" else args.grid
 
@@ -7409,6 +7590,7 @@ def run_1d_analysis(source: SourceData, args: argparse.Namespace) -> None:
         energy_key,
         property_keys,
         cp_ring_indices,
+        gic_to_cp_bridges,
     )
     write_oriented_xyz(
         args.outdir / f"{prefix}_oriented.xyz",

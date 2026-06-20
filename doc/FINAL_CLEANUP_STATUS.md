@@ -34,14 +34,17 @@
 - GUI test dependency installed in venv:
   - `pytest-qt`
 
-## Puckering DVR Integration
+## Path DVR / Puckering Integration
 - Runtime copy imported under `puckering_dvr/` from
   `/Users/vincenzobarone/Desktop/puckering_dvr_github`.
 - The imported copy excludes source `.git`, legacy zip package, and
   bibliography PDFs.
-- Advanced GUI now exposes `Puckering DVR – Gaussian scan analysis`.
-- The panel runs `puckering_dvr/scripts/mw_path_dvr.py` on a Gaussian log and
-  writes DVR outputs/figures under the selected working directories.
+- Advanced GUI now exposes `Path DVR – Gaussian scan analysis`.
+- The panel runs `puckering_dvr/scripts/mw_path_dvr.py` on any Gaussian
+  optimized scan/path log and writes DVR outputs/figures under the selected
+  working directories.
+- Ring puckering labels are optional: Gaussian `QPck/PhiP` values are preserved
+  as `gic_*` columns and can be mapped to generalized Cremer-Pople components.
 - The intended sequence is:
   `merlino-set` -> `merlino-run` -> generate/run Gaussian -> run Puckering DVR.
 

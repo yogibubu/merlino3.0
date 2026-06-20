@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 class PuckeringDVRLauncher(QObject):
     """
-    Asynchronous launcher for the vendored puckering_dvr workflow.
+    Asynchronous launcher for the vendored path-DVR workflow.
     """
 
     finished = Signal(bool, str)
@@ -37,7 +37,7 @@ class PuckeringDVRLauncher(QObject):
             self.finished.emit(False, f"Gaussian log not found: {log_path}")
             return
         if not self.script.exists():
-            self.finished.emit(False, f"puckering_dvr backend not found: {self.script}")
+            self.finished.emit(False, f"Path DVR backend not found: {self.script}")
             return
 
         args = [
@@ -84,15 +84,15 @@ class PuckeringDVRLauncher(QObject):
         stderr = bytes(self.process.readAllStandardError()).decode(errors="replace").strip()
         detail = "\n".join(part for part in (stdout, stderr) if part)
         if exit_code == 0:
-            msg = "Puckering DVR completed"
+            msg = "Path DVR completed"
             if detail:
                 msg += "\n\n" + detail
             self.finished.emit(True, msg)
         else:
-            msg = f"Puckering DVR failed (exit_code={exit_code})"
+            msg = f"Path DVR failed (exit_code={exit_code})"
             if detail:
                 msg += "\n\n" + detail
             self.finished.emit(False, msg)
 
     def _on_error(self, error):
-        self.finished.emit(False, f"Puckering DVR process error: {error}")
+        self.finished.emit(False, f"Path DVR process error: {error}")

@@ -16,4 +16,7 @@ QT_QPA_PLATFORM=offscreen "$PYTHON" -m pytest -q gui/tests
 echo "[freeze-check] running merlino_fit tests..."
 PYTHONPATH="$ROOT_DIR/merlino_fit" "$PYTHON" -m pytest -q merlino_fit/tests
 
+echo "[freeze-check] running puckering_dvr tests..."
+"$PYTHON" -m pytest -q puckering_dvr/tests
+
 echo "[freeze-check] OK"

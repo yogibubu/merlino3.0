@@ -3,17 +3,19 @@
 Merlino note: this is the vendored runtime copy used by Merlino 3.0. See
 `README_MERLINO.md` for the GUI/Advanced workflow and environment commands.
 
-This folder contains a small Python workflow for four- and five-membered-ring
-puckering scans and one-dimensional mass-weighted path Hamiltonian analysis.
+This folder contains a small Python workflow for Gaussian scan/path analysis
+with optional ring-puckering labels and one-dimensional mass-weighted path
+Hamiltonian analysis.
 
 For every one-dimensional production calculation, the Hamiltonian coordinate is
 the cumulative mass-weighted Cartesian distance along the optimized path. Scan
-labels such as torsional angles, puckering phases, or Cremer-Pople quantities
-are used only to build and label structures. Non-equally spaced path points are
-therefore handled by interpolating the potential as `V(s)` and using reduced
-mass equal to one. Before each distance increment is accumulated, consecutive
-geometries are translated to their centers of mass and locally Eckart-oriented
-to remove the rotational component of the displacement.
+labels such as torsional angles, Gaussian GIC values, puckering phases, or
+Cremer-Pople quantities are used only to build and label structures.
+Non-equally spaced path points are therefore handled by interpolating the
+potential as `V(s)` and using reduced mass equal to one. Before each distance
+increment is accumulated, consecutive geometries are translated to their centers
+of mass and locally Eckart-oriented to remove the rotational component of the
+displacement.
 
 ## Contents
 
@@ -88,7 +90,8 @@ g16 < examples/gaussian_inputs/erythrose_alpha_E2_dpcs3_phi_scan_10deg.gjf > exa
 
 ## Analyze a Completed Scan
 
-After Gaussian has finished:
+After Gaussian has finished, any optimized Gaussian scan/path log can be
+analyzed; the scanned coordinate does not have to be puckering:
 
 ```bash
 python3 scripts/mw_path_dvr.py \
@@ -102,6 +105,11 @@ python3 scripts/mw_path_dvr.py \
   --figdir examples/figs \
   --prefix erythrose_alpha_E2_dpcs3_phi_scan_10deg
 ```
+
+`--label-cremer-pople` is optional and should be used with `--ring` only when
+ring labels are wanted. If Gaussian printed `QPck....`/`PhiP....` GIC values,
+the profile includes raw `gic_*` columns and fitted `CP_from_GIC_*` bridge
+columns.
 
 Read `docs/mw_path_dvr_manual.md` for the phase convention, input options, and
 troubleshooting notes.

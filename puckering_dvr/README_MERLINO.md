@@ -29,11 +29,13 @@ merlino-run
 
 - generate the Gaussian input from the current `xyzin`
 - run Gaussian
-- run `Puckering DVR – Gaussian scan analysis`
+- run `Path DVR – Gaussian scan analysis`
 
-The DVR panel reads the Gaussian log, extracts the optimized scan structures,
-builds the mass-weighted path coordinate and writes levels, profiles and plots
-under the selected output directories.
+The DVR panel reads any Gaussian log containing optimized scan/path structures.
+The scanned coordinate does not have to be puckering: the Hamiltonian coordinate
+is always the mass-weighted Cartesian path length built from consecutive
+optimized geometries. Ring/Cremer-Pople labels are optional post-processing
+columns.
 
 ## Command-Line Equivalent
 
@@ -44,14 +46,18 @@ python puckering_dvr/scripts/mw_path_dvr.py \
   --boundary periodic \
   --solver fourier \
   --compute-rotconst \
-  --label-cremer-pople \
   --outdir working/puckering_dvr_outputs \
   --figdir working/puckering_dvr_figs \
   --prefix puckering_dvr
 ```
 
+Add `--label-cremer-pople --ring 1,2,3,4,5` only when the Gaussian scan is a
+ring-puckering scan and Cremer-Pople labels are wanted.
+
 For the Merlino ring-GIC path, Gaussian uses inactive `RPck....` coordinates
 and active `QPck....`/`PhiP....` coordinates. `PhiP` is interpreted as a phase
 angle and `QPck` as the torsional puckering amplitude used by the current GIC
-parametrization. The DVR post-processing can label the path with
-Cremer-Pople-like quantities when requested.
+parametrization. When those GIC values are present in the Gaussian log, the DVR
+profile writes the raw `gic_QPck....`/`gic_PhiP....` values and, if
+Cremer-Pople labeling is enabled, a fitted bridge from Gaussian puckering
+components to Cartesian Cremer-Pople components.

@@ -2,8 +2,9 @@
 
 ## Scope
 
-This checkpoint integrates the puckering DVR backend into the Merlino 3.0
-runtime flow.
+This checkpoint integrates the path-DVR backend into the Merlino 3.0 runtime
+flow. The DVR backend is generic for Gaussian scans; puckering/Cremer-Pople
+handling is an optional labeling and post-processing layer.
 
 Included changes:
 - ring-puckering Gaussian GIC generation with inactive `RPck....` and active
@@ -11,7 +12,10 @@ Included changes:
 - Fortran `prova` output support for the same `QPck/PhiP` functional GICs
 - Python arbitrary-ring GIC generation, tested through seven-membered rings
 - vendored runtime copy under `puckering_dvr/`
-- Advanced GUI launcher for DVR analysis of Gaussian logs
+- Advanced GUI launcher for DVR analysis of Gaussian scan/path logs
+- Gaussian GIC value parsing into `gic_*` output columns
+- optional fitted bridge from Gaussian `QPck/PhiP` components to generalized
+  Cremer-Pople components
 - environment checks updated for `scipy` and `matplotlib`
 
 ## Environment
@@ -39,7 +43,11 @@ merlino-run
 2. Open Advanced Calculations.
 3. Generate the Gaussian input with ring GICs.
 4. Run Gaussian.
-5. Run `Puckering DVR – Gaussian scan analysis` on the resulting log.
+5. Run `Path DVR – Gaussian scan analysis` on the resulting log.
+
+For non-puckering Gaussian scans, leave Cremer-Pople labeling disabled. The DVR
+still uses the mass-weighted Cartesian path and does not require any ring
+coordinate.
 
 The command-line equivalent is:
 

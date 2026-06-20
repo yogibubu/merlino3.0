@@ -53,13 +53,17 @@ Bridge DeltaVib / alpha:
 - supporta inversione del segno `alpha` per frequenze immaginarie e scrittura di `ΔVib` in `xyzin`
 - questo blocco va inteso come bridge temporaneo verso la linea principale `CeDiTT + alpha_resonances`
 
-Puckering Gaussian/DVR:
+Path DVR e Puckering Gaussian:
 - generazione GIC di anello con `RPck....` inattive e coordinate attive
   `QPck....`/`PhiP....`
 - implementazione parallela Python e Fortran per il blocco Gaussian GIC
 - copia runtime del workflow DVR in `puckering_dvr/`
-- pannello GUI Advanced `Puckering DVR – Gaussian scan analysis` collegato al
+- pannello GUI Advanced `Path DVR – Gaussian scan analysis` collegato al
   backend `puckering_dvr/scripts/mw_path_dvr.py`
+- il backend DVR legge qualunque scan/path Gaussian ottimizzato, non solo scan
+  di puckering
+- quando il log contiene `QPck/PhiP`, il profilo può scrivere il bridge verso
+  componenti Cremer-Pople generalizzate
 
 Verifiche minime fatte
 ---------------------
@@ -105,8 +109,10 @@ Come riprendere
 6) Per il flusso puckering:
    - generare l'input Gaussian dalla GUI Advanced o dal backend Python/Fortran
    - eseguire Gaussian sullo scan `QPck/PhiP`
-   - usare il pannello `Puckering DVR – Gaussian scan analysis` per leggere il
-     log e produrre livelli, profili e figure DVR
+   - usare il pannello `Path DVR – Gaussian scan analysis` per leggere il log e
+     produrre livelli, profili e figure DVR
+   - per scan non puckering usare lo stesso pannello lasciando disattivata
+     l'etichettatura Cremer-Pople
 
 Da sistemare dopo
 -----------------
