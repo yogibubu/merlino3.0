@@ -18,6 +18,7 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
     read_observations,
+    write_semiexperimental_html_report,
 )
 from merlino_vpt2_vci import (
     QuarticForceField,
@@ -234,7 +235,9 @@ def main(argv: list[str] | None = None) -> int:
             max_step=args.max_step,
             outdir=args.outdir,
         )
+        write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
         print(f"manifest: {result.manifest}")
+        print(f"report: {args.outdir / 'semiexp_report.html'}")
         print(f"rms_MHz: {result.rms_MHz:.8g}")
         print(f"iterations: {result.iterations}")
         print(f"stationary_point: {result.stationary_point}")

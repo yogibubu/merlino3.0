@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 
-from PySide6.QtCore import QProcess, Qt
-from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import QProcess, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -17,12 +17,16 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from merlino_semiexp import preview_semiexperimental_gics, read_observations
 
 from .manifest_browser import ManifestBrowserWindow
 from .workflow_registry import WorkflowSpec, default_workflows
@@ -211,6 +215,27 @@ class DashboardWindow(QMainWindow):
         self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
         form.addRow("Parameter classes:", self.semiexp_classes)
 
+        self.semiexp_iso_table = QTableWidget(0, 14)
+        self.semiexp_iso_table.setHorizontalHeaderLabels([
+            "label",
+            "substitutions",
+            "A_MHz",
+            "B_MHz",
+            "C_MHz",
+            "dvib_A",
+            "dvib_B",
+            "dvib_C",
+            "delec_A",
+            "delec_B",
+            "delec_C",
+            "sigma_A",
+            "sigma_B",
+            "sigma_C",
+        ])
+        self.semiexp_iso_table.setMaximumHeight(150)
+        layout.addWidget(QLabel("Isotopologue editor (optional, writes TOML):"))
+        layout.addWidget(self.semiexp_iso_table)
+
         self.semiexp_command = QTextEdit()
         self.semiexp_command.setReadOnly(True)
         self.semiexp_command.setMaximumHeight(90)
@@ -218,10 +243,26 @@ class DashboardWindow(QMainWindow):
         layout.addWidget(self.semiexp_command)
 
         buttons = QHBoxLayout()
+        add_iso_button = QPushButton("Add Isotopologue")
+        add_iso_button.clicked.connect(self.add_semiexp_isotopologue_row)
+        buttons.addWidget(add_iso_button)
+        save_iso_button = QPushButton("Save TOML")
+        save_iso_button.clicked.connect(self.save_semiexp_observations_toml)
+        buttons.addWidget(save_iso_button)
+        preview_gic_button = QPushButton("Preview GIC")
+        preview_gic_button.clicked.connect(self.preview_semiexp_gics)
+        buttons.addWidget(preview_gic_button)
+        suggest_classes_button = QPushButton("Suggest Classes")
+        suggest_classes_button.clicked.connect(self.suggest_semiexp_classes)
+        buttons.addWidget(suggest_classes_button)
+        open_report_button = QPushButton("Open Report")
+        open_report_button.clicked.connect(self.open_semiexp_report)
+        buttons.addWidget(open_report_button)
         self.semiexp_run_button = QPushButton("Run Semiexperimental Fit")
         self.semiexp_run_button.clicked.connect(self.run_semiexp_fit)
         buttons.addWidget(self.semiexp_run_button)
         layout.addLayout(buttons)
+        self.add_semiexp_isotopologue_row(label="parent")
         return panel
 
     def semiexp_command_args(self) -> list[str]:
@@ -274,6 +315,61 @@ class DashboardWindow(QMainWindow):
         self._append_semiexp_text("\nrunning...\n")
         self._semiexp_process.start()
 
+    def add_semiexp_isotopologue_row(self, checked: bool = False, *, label: str = "") -> None:
+        row = self.semiexp_iso_table.rowCount()
+        self.semiexp_iso_table.insertRow(row)
+        defaults = [label or f"iso{row + 1}", "", "", "", "", "0.0", "0.0", "0.0", "0.0", "0.0", "0.0", "", "", ""]
+        for col, value in enumerate(defaults):
+            self.semiexp_iso_table.setItem(row, col, QTableWidgetItem(value))
+
+    def save_semiexp_observations_toml(self) -> Path:
+        target_text = self.semiexp_observations.text().strip()
+        target = Path(target_text) if target_text else self.workdir / "isotopologues.toml"
+        if target.suffix.lower() != ".toml":
+            target = target.with_suffix(".toml")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(self._semiexp_table_toml(), encoding="utf-8")
+        self.semiexp_observations.setText(str(target))
+        self._append_semiexp_text(f"\nwrote observations: {target}\n")
+        return target
+
+    def preview_semiexp_gics(self) -> None:
+        xyz = self.semiexp_xyz.text().strip()
+        if not xyz:
+            self._append_semiexp_text("\nselect parent XYZ before GIC preview\n")
+            return
+        observations = ()
+        obs_path = self.semiexp_observations.text().strip()
+        if obs_path and Path(obs_path).exists():
+            observations = read_observations(Path(obs_path))
+        preview = preview_semiexperimental_gics(Path(xyz), observations)
+        self._append_semiexp_text("\n" + preview.text + "\n")
+
+    def suggest_semiexp_classes(self) -> None:
+        xyz = self.semiexp_xyz.text().strip()
+        if not xyz:
+            self._append_semiexp_text("\nselect parent XYZ before suggesting classes\n")
+            return
+        observations = ()
+        obs_path = self.semiexp_observations.text().strip()
+        if obs_path and Path(obs_path).exists():
+            observations = read_observations(Path(obs_path))
+        preview = preview_semiexperimental_gics(Path(xyz), observations)
+        text = ";".join(f"{item.name}:{item.mode}:{'|'.join(item.patterns)}" for item in preview.suggested_classes)
+        self.semiexp_classes.setText(text)
+        self._append_semiexp_text("\n" + preview.text + "\n")
+
+    def open_semiexp_report(self) -> None:
+        outdir = self.semiexp_outdir.text().strip()
+        if not outdir:
+            self._append_semiexp_text("\nselect output directory before opening report\n")
+            return
+        report = Path(outdir) / "semiexp_report.html"
+        if report.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(report)))
+        else:
+            self._append_semiexp_text(f"\nreport not found: {report}\n")
+
     def _append_semiexp_output(self) -> None:
         if self._semiexp_process is None:
             return
@@ -284,6 +380,41 @@ class DashboardWindow(QMainWindow):
     def _append_semiexp_text(self, text: str) -> None:
         self.semiexp_command.moveCursor(QTextCursor.MoveOperation.End)
         self.semiexp_command.insertPlainText(text)
+
+    def _semiexp_table_toml(self) -> str:
+        lines: list[str] = []
+        for row in range(self.semiexp_iso_table.rowCount()):
+            values = [_table_text(self.semiexp_iso_table, row, col) for col in range(self.semiexp_iso_table.columnCount())]
+            if not values[0].strip():
+                continue
+            lines.extend([
+                "[[isotopologues]]",
+                f'label = "{_toml_string(values[0])}"',
+                f'substitutions = "{_toml_string(values[1])}"',
+                "[isotopologues.constants]",
+                f"A_MHz = {_float_text(values[2])}",
+                f"B_MHz = {_float_text(values[3])}",
+                f"C_MHz = {_float_text(values[4])}",
+                "[isotopologues.vibrational_correction]",
+                f"delta_A_MHz = {_float_text(values[5], default='0.0')}",
+                f"delta_B_MHz = {_float_text(values[6], default='0.0')}",
+                f"delta_C_MHz = {_float_text(values[7], default='0.0')}",
+                'source = "gui"',
+                "[isotopologues.electronic_correction]",
+                f"delta_A_MHz = {_float_text(values[8], default='0.0')}",
+                f"delta_B_MHz = {_float_text(values[9], default='0.0')}",
+                f"delta_C_MHz = {_float_text(values[10], default='0.0')}",
+                'source = "gui"',
+            ])
+            if values[11].strip() and values[12].strip() and values[13].strip():
+                lines.extend([
+                    "[isotopologues.sigma_MHz]",
+                    f"A_MHz = {_float_text(values[11])}",
+                    f"B_MHz = {_float_text(values[12])}",
+                    f"C_MHz = {_float_text(values[13])}",
+                ])
+            lines.append("")
+        return "\n".join(lines)
 
 
 def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None) -> str:
@@ -360,3 +491,20 @@ def _select_directory(parent: QWidget, edit: QLineEdit) -> None:
 
 def _split_semiexp_items(text: str) -> list[str]:
     return [item.strip() for item in text.split(";") if item.strip()]
+
+
+def _table_text(table: QTableWidget, row: int, col: int) -> str:
+    item = table.item(row, col)
+    return item.text().strip() if item is not None else ""
+
+
+def _toml_string(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _float_text(text: str, *, default: str | None = None) -> str:
+    raw = text.strip()
+    if not raw and default is not None:
+        return default
+    float(raw)
+    return raw

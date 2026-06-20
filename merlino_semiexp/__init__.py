@@ -33,6 +33,16 @@ from .fit import (
     residuals_csv,
     write_semiexperimental_outputs,
 )
+from .report import (
+    SemiexperimentalBenchmarkCase,
+    SemiexperimentalBenchmarkRow,
+    SemiexperimentalGICPreview,
+    benchmark_csv,
+    preview_semiexperimental_gics,
+    run_semiexperimental_benchmark,
+    suggest_parameter_classes,
+    write_semiexperimental_html_report,
+)
 
 __all__ = [
     "CorrectedRotationalConstants",
@@ -43,6 +53,9 @@ __all__ = [
     "ParameterClassConstraint",
     "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
+    "SemiexperimentalBenchmarkCase",
+    "SemiexperimentalBenchmarkRow",
+    "SemiexperimentalGICPreview",
     "SemiexperimentalParameter",
     "SemiexperimentalResidual",
     "IsotopologueObservation",
@@ -50,16 +63,21 @@ __all__ = [
     "RotationalConstants",
     "SemiexperimentalFitRequest",
     "VibrationalCorrection",
+    "benchmark_csv",
     "corrected_constants_rows",
     "fit_semiexperimental_geometry",
     "format_substitutions",
     "parameters_csv",
     "parse_substitutions",
+    "preview_semiexperimental_gics",
     "read_observations",
     "read_observations_csv",
     "read_observations_json",
     "read_observations_toml",
     "residuals_csv",
+    "run_semiexperimental_benchmark",
+    "suggest_parameter_classes",
     "write_observations_csv",
     "write_semiexperimental_outputs",
+    "write_semiexperimental_html_report",
 ]

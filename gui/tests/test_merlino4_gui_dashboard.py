@@ -68,6 +68,12 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     assert "fortran77" in args
     assert args.count("--parameter-class") == 2
     assert window.semiexp_run_button.isEnabled()
+    window.semiexp_iso_table.item(0, 2).setText("1000.0")
+    window.semiexp_iso_table.item(0, 3).setText("800.0")
+    window.semiexp_iso_table.item(0, 4).setText("600.0")
+    toml = window.save_semiexp_observations_toml()
+    assert toml.exists()
+    assert "A_MHz = 1000.0" in toml.read_text(encoding="utf-8")
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):

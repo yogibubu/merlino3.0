@@ -21,8 +21,10 @@ from merlino_semiexp import (
     corrected_constants_rows,
     fit_semiexperimental_geometry,
     parse_substitutions,
+    preview_semiexperimental_gics,
     read_observations,
     read_observations_csv,
+    write_semiexperimental_html_report,
     write_observations_csv,
 )
 from merlino_core import repo_root
@@ -447,6 +449,31 @@ def test_semiexperimental_kraitchman_comparison_for_single_substitution(tmp_path
     assert {row.coordinate for row in result.kraitchman} == {"a", "b", "c"}
     assert all(row.isotopologue == "D1" for row in result.kraitchman)
     assert (tmp_path / "semiexp_krai" / "semiexp_kraitchman.csv").exists()
+
+
+def test_semiexperimental_gic_preview_and_html_report(tmp_path):
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(["3", "water", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+    request = SemiexperimentalFitRequest(xyz, (observation,))
+
+    preview = preview_semiexperimental_gics(xyz, request.observations)
+    result = fit_semiexperimental_geometry(request, max_iter=1)
+    report = write_semiexperimental_html_report(tmp_path / "semiexp_report.html", result, request)
+
+    assert "Non-redundant GICs" in preview.text
+    assert preview.gic_labels
+    assert any(item.mode in {"shared", "fixed"} for item in preview.suggested_classes)
+    assert "Merlino Semiexperimental Geometry Report" in report.read_text(encoding="utf-8")
 
 
 def _structure(atoms, coords, isotopes=None):

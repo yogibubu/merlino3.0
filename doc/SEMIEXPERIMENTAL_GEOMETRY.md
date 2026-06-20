@@ -180,6 +180,13 @@ The Merlino4 dashboard exposes the semiexperimental solver from the
 The GUI builds the same command used by the CLI and runs it asynchronously, so
 the interface remains responsive during the least-squares fit.
 
+The same panel also provides operational helpers:
+
+- an isotopologue table editor that writes the recommended TOML input;
+- a GIC preview showing the generated non-redundant labels before the fit;
+- automatic suggestions for shared/fixed parameter classes;
+- direct opening of the generated `semiexp_report.html`.
+
 ## Fit Model
 
 1. Read the parent XYZ geometry.
@@ -305,6 +312,8 @@ molecules unless direct MHz residuals are specifically required.
 The output directory contains:
 
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
+- `semiexp_report.html`: self-contained run report with diagnostics, parameter
+  classes, fitted GICs, residuals and Kraitchman comparison.
 - `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
   active/fixed flags.
 - `semiexp_residuals.csv`: observed, calculated and residual values for the
@@ -325,6 +334,15 @@ The output directory contains:
 
 The parameter values use native Merlino GIC units: stretches in Angstrom and
 angular coordinates in radians.
+
+## Benchmarks
+
+Benchmark runs are represented by `SemiexperimentalBenchmarkCase` objects and
+summarized with `run_semiexperimental_benchmark`. The resulting CSV table
+records RMS, iteration count, rank, condition number, stationary-point
+classification, number of fitted parameters and available Kraitchman rows. This
+is the recommended format for MSR-style validation sets and ring/fused-ring
+stress tests.
 
 ## Quality Checks
 
