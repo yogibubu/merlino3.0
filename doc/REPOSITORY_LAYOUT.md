@@ -17,8 +17,10 @@ the top-level README. New implementation files should not be added at root.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
   generation, and test suite.
 - `puckering_dvr/`: DVR analysis backend for completed Gaussian outputs.
-- `fortran/`: active Fortran backends. Code lives in `fortran/gicforge` and
-  `fortran/dvr`; historical standalone utilities remain in Merlino3.0.
+- `fortran/`: active Fortran backends. Executable code lives in
+  `fortran/gicforge` and `fortran/dvr`; source-library code for harmonic
+  internal-coordinate GF analysis lives in `fortran/harmonic_internal`;
+  historical standalone utilities remain in Merlino3.0.
 
 ## Generated And Local Files
 
@@ -53,3 +55,8 @@ constructs, while still failing on real compilation/link errors.
 
 - `fortran/dvr/build/path_dvr`
 - `bin/path_dvr.x`
+
+`fortran/harmonic_internal/compile_check` verifies the harmonic
+internal-coordinate GF source:
+
+- `fortran/harmonic_internal/build/gf.o`

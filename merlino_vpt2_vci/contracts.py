@@ -55,6 +55,7 @@ class VCIRequest:
 class VPT2VCIInventory:
     """Current VPT2/VCI backend status discovered in the Merlino4 tree."""
 
+    harmonic_internal_source: Path | None
     active_fortran_sources: tuple[Path, ...]
     davidson_backend: Path | None
     notes: tuple[str, ...]
@@ -63,14 +64,16 @@ class VPT2VCIInventory:
 def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
     """Record active VPT2/VCI kernels available in Merlino4."""
     root = Path(repo_root)
+    harmonic_internal = root / "fortran" / "harmonic_internal" / "gf.f"
     source_dir = root / "fortran" / "vpt2_vci"
     sources = tuple(sorted(source_dir.glob("*.f"))) if source_dir.exists() else ()
     davidson = source_dir / "davidson.f"
     notes = [
-        "No active quartic-field VPT2/VCI Fortran backend is present in Merlino4 yet.",
-        "The Davidson diagonalizer still has to be implemented before large VCI production runs.",
+        "Harmonic internal-coordinate GF analysis is available through gf.f.",
+        "The anharmonic VPT2/VCI backend and Davidson diagonalizer still have to be integrated.",
     ]
     return VPT2VCIInventory(
+        harmonic_internal_source=harmonic_internal if harmonic_internal.exists() else None,
         active_fortran_sources=sources,
         davidson_backend=davidson if davidson.exists() else None,
         notes=tuple(notes),

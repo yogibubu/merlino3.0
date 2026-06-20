@@ -19,6 +19,7 @@ DVR parsing/writing should have one source of truth.
 
 The planned new scientific capabilities are limited and explicit:
 
+- Harmonic internal-coordinate GF analysis from `fortran/harmonic_internal/gf.f`.
 - VPT2/VCI from Gaussian quartic force fields, with a Davidson diagonalizer for
   large VCI spaces.
 - Semiexperimental equilibrium-geometry determination from least-squares fits of
@@ -35,13 +36,14 @@ The planned new scientific capabilities are limited and explicit:
   definitions and Python/Fortran comparison helpers.
 - `merlino_gaussian`: Gaussian input writing, log parsing, scan extraction,
   GIC-value extraction and job metadata.
-- `merlino_fortran`: executable discovery, build checks, subprocess wrappers and
-  normalized error reporting for GICForge and DVR.
+- `merlino_fortran`: executable/source discovery, build checks, subprocess
+  wrappers and normalized error reporting for GICForge, DVR and source-library
+  Fortran kernels.
 - `merlino_dvr`: Gaussian-log/grid to DVR workflows, Cremer-Pople mapping,
   Fortran bridge integration and output readers.
-- `merlino_vpt2_vci`: Gaussian quartic force-field extraction, VPT2/VCI input
-  preparation, VCI basis control, Fortran backend orchestration and Davidson
-  diagonalization outputs.
+- `merlino_vpt2_vci`: harmonic internal-coordinate GF integration, Gaussian
+  quartic force-field extraction, VPT2/VCI input preparation, VCI basis control,
+  Fortran backend orchestration and Davidson diagonalization outputs.
 - `merlino_semiexp`: semiexperimental equilibrium-geometry fits from
   isotopologue rotational constants, QM vibrational corrections and
   least-squares diagnostics.
@@ -157,11 +159,12 @@ Implementation rule:
 2. Move path/config/logging helpers into `merlino_core`.
 3. Consolidate geometry/topology/ring primitives in `merlino_geometry`.
 4. Move GIC generation and ring numbering into `merlino_gic`.
-5. Introduce `merlino_fortran` wrappers for `gicforge.x` and `path_dvr.x`.
+5. Introduce `merlino_fortran` wrappers for `gicforge.x`, `path_dvr.x` and
+   source-only Fortran kernels such as `gf.f`.
 6. Move Gaussian parsing/writing into `merlino_gaussian`.
 7. Move DVR workflow orchestration into `merlino_dvr`.
-8. Inventory existing Fortran VPT2/VCI code and define its normalized input and
-   output files.
+8. Inventory existing harmonic/anharmonic Fortran code and define normalized
+   input and output files.
 9. Add the semiexperimental geometry data model and least-squares interface.
 10. Rewire GUI controllers to call service interfaces.
 11. Remove compatibility wrappers only after tests cover the new imports.

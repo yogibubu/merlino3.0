@@ -39,9 +39,13 @@ def test_vci_request_validation(tmp_path):
 
 def test_vpt2_vci_inventory_records_active_backend_status():
     inventory = inventory_vpt2_vci_backends(repo_root(__file__))
+    assert inventory.harmonic_internal_source is not None
+    assert inventory.harmonic_internal_source.name == "gf.f"
     assert inventory.active_fortran_sources == ()
     assert inventory.davidson_backend is None
-    assert "Davidson" in " ".join(inventory.notes)
+    notes = " ".join(inventory.notes)
+    assert "GF" in notes
+    assert "Davidson" in notes
 
 
 def test_semiexperimental_correction_subtracts_vibrational_delta():

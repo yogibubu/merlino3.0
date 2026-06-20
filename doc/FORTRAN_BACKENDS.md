@@ -55,5 +55,21 @@ Diagonalization is performed by `DVRHQRII` in `fortran/dvr/dvr_hqrii.f`, a
 renamed local copy of GICForge `HQRII1`. This avoids Jacobi diagonalization for
 large Hamiltonians.
 
+## Active Harmonic Internal-Coordinate Source
+
+- Source: `fortran/harmonic_internal/gf.f`
+- Compile check:
+
+```bash
+cd fortran/harmonic_internal
+./compile_check
+```
+
+`gf.f` is a source backend rather than a standalone executable. It provides
+`DNICGF` for building internal-coordinate F/G matrices and `DNICFq` for Wilson
+GF harmonic frequencies and internal-coordinate normal modes. It is the
+harmonic internal-coordinate layer that the later anharmonic VPT2/VCI workflow
+will build on.
+
 The `fortran/` root is intentionally documentation-only. Generated compiler
 logs such as `error` files are not source and should not be committed.

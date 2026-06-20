@@ -7,11 +7,13 @@ Active backends:
 
 - `gicforge/`: Cartesian XYZ to GIC/Gaussian input backend.
 - `dvr/`: Fortran77 DVR numerical kernel.
+- `harmonic_internal/`: Wilson GF harmonic internal-coordinate source backend.
 
 Build products:
 
 - `fortran/gicforge/build/gicforge`
 - `fortran/dvr/build/path_dvr`
+- `fortran/harmonic_internal/build/gf.o`
 - runtime copies under `bin/`
 
 Historical standalone Fortran material is kept in the frozen Merlino3.0 tree,

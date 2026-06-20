@@ -25,6 +25,22 @@ class BackendSpec:
         return [str(root / self.source_dir / self.build_script)]
 
 
+@dataclass(frozen=True)
+class SourceBackendSpec:
+    """Description of a Fortran source backend that is linked by another driver."""
+
+    name: str
+    source_dir: str
+    primary_source: str
+    compile_check: str = "compile_check"
+
+    def source_path(self, root: Path) -> Path:
+        return root / self.source_dir / self.primary_source
+
+    def check_command(self, root: Path) -> list[str]:
+        return [str(root / self.source_dir / self.compile_check)]
+
+
 BACKENDS: dict[str, BackendSpec] = {
     "gicforge": BackendSpec(
         name="gicforge",
@@ -36,6 +52,15 @@ BACKENDS: dict[str, BackendSpec] = {
         name="dvr",
         executable="path_dvr.x",
         source_dir="fortran/dvr",
+    ),
+}
+
+
+SOURCE_BACKENDS: dict[str, SourceBackendSpec] = {
+    "harmonic_internal": SourceBackendSpec(
+        name="harmonic_internal",
+        source_dir="fortran/harmonic_internal",
+        primary_source="gf.f",
     ),
 }
 
@@ -68,3 +93,17 @@ def resolve_backend(name: str, root: Path | None = None) -> Path:
     raise FileNotFoundError(
         f"Fortran backend {name!r} not found. Tried {candidates} and PATH."
     )
+
+
+def resolve_source_backend(name: str, root: Path | None = None) -> Path:
+    """Resolve a source-only Fortran backend primary source."""
+    if name not in SOURCE_BACKENDS:
+        known = ", ".join(sorted(SOURCE_BACKENDS))
+        raise KeyError(
+            f"Unknown Fortran source backend {name!r}; known backends: {known}"
+        )
+    root = Path(root) if root is not None else repo_root()
+    path = SOURCE_BACKENDS[name].source_path(root)
+    if not path.exists():
+        raise FileNotFoundError(f"Fortran source backend {name!r} not found at {path}")
+    return path
