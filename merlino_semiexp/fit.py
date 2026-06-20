@@ -10,11 +10,9 @@ import tempfile
 import numpy as np
 
 from geometry.inertia import principal_moments
-from geometry.inertia import center_of_mass, inertia_tensor
 from geometry.physical_constants import Phy, get_physical_constants
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
-from geometry.isotopes_table import get_default_isotope, get_isotope
 from merlino_core import ScientificValidationError, build_run_manifest
 from merlino_gic import run_gicforge
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
@@ -24,6 +22,7 @@ from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
 
 from .contracts import IsotopologueObservation, ParameterClassConstraint, QMParameterPredicate, SemiexperimentalFitRequest
+from .kraitchman import KraitchmanComparison, KraitchmanSeedResult, kraitchman_comparison, kraitchman_seed_geometry
 
 
 ROTATIONAL_COMPONENTS = ("A", "B", "C")
@@ -51,18 +50,6 @@ class SemiexperimentalResidual:
     observed_equilibrium_MHz: float
     calculated_MHz: float
     residual_MHz: float
-
-
-@dataclass(frozen=True)
-class KraitchmanComparison:
-    isotopologue: str
-    atom_index: int
-    atom: str
-    isotope_mass_number: int
-    coordinate: str
-    kraitchman_abs_angstrom: float
-    fitted_abs_angstrom: float
-    difference_angstrom: float
 
 
 @dataclass(frozen=True)
@@ -127,6 +114,7 @@ class SemiexperimentalFitResult:
     parameters: tuple[SemiexperimentalParameter, ...]
     residuals: tuple[SemiexperimentalResidual, ...]
     kraitchman: tuple[KraitchmanComparison, ...]
+    kraitchman_seed: KraitchmanSeedResult | None
     covariance: np.ndarray
     correlation: np.ndarray
     jacobian: np.ndarray
@@ -276,7 +264,8 @@ def fit_semiexperimental_geometry(
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active, transform, class_by_gic)
     residual_rows = _residual_rows(measurement_model, calc, obs)
-    kraitchman_rows = _kraitchman_comparison(atoms, coords, request.observations)
+    kraitchman_rows = kraitchman_comparison(atoms, coords, request.observations)
+    kraitchman_seed = kraitchman_seed_geometry(atoms, coords, request.observations, kraitchman_rows)
     rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
     manifest = None
     if outdir is not None:
@@ -288,6 +277,7 @@ def fit_semiexperimental_geometry(
             parameters,
             residual_rows,
             kraitchman_rows,
+            kraitchman_seed=kraitchman_seed,
             effective_parameter_names=reduced_names,
             covariance=covariance,
             correlation=correlation,
@@ -303,6 +293,7 @@ def fit_semiexperimental_geometry(
         parameters=parameters,
         residuals=residual_rows,
         kraitchman=kraitchman_rows,
+        kraitchman_seed=kraitchman_seed,
         covariance=covariance,
         correlation=correlation,
         jacobian=jac,
@@ -326,6 +317,7 @@ def write_semiexperimental_outputs(
     parameters: tuple[SemiexperimentalParameter, ...],
     residuals: tuple[SemiexperimentalResidual, ...],
     kraitchman: tuple[KraitchmanComparison, ...] = (),
+    kraitchman_seed: KraitchmanSeedResult | None = None,
     effective_parameter_names: tuple[str, ...] = (),
     covariance: np.ndarray | None = None,
     correlation: np.ndarray | None = None,
@@ -339,6 +331,7 @@ def write_semiexperimental_outputs(
     params = outdir / "semiexp_parameters.csv"
     residual_csv = outdir / "semiexp_residuals.csv"
     kraitchman_csv = outdir / "semiexp_kraitchman.csv"
+    kraitchman_xyz = outdir / "semiexp_kraitchman_geometry.xyz"
     covariance_csv = outdir / "semiexp_covariance.csv"
     correlation_csv = outdir / "semiexp_correlation.csv"
     hessian_csv = outdir / "semiexp_hessian.csv"
@@ -349,6 +342,13 @@ def write_semiexperimental_outputs(
     params.write_text(parameters_csv(parameters), encoding="utf-8")
     residual_csv.write_text(residuals_csv(residuals), encoding="utf-8")
     kraitchman_csv.write_text(kraitchman_csv_rows(kraitchman), encoding="utf-8")
+    if kraitchman_seed is not None:
+        write_xyz(
+            kraitchman_xyz,
+            atoms,
+            kraitchman_seed.coordinates_angstrom,
+            comment=f"Merlino Kraitchman substitution geometry; method={kraitchman_seed.method}; principal-axis frame",
+        )
     covariance_csv.write_text(_matrix_csv(active_names, covariance), encoding="utf-8")
     correlation_csv.write_text(_matrix_csv(active_names, correlation), encoding="utf-8")
     hessian_csv.write_text(_matrix_csv(active_names, hessian), encoding="utf-8")
@@ -363,22 +363,25 @@ def write_semiexperimental_outputs(
         "ring_coordinates": "GICForge ring deformation and puckering coordinates",
         "gicforge_iterations": str(outdir / "gicforge_iterations"),
     }
+    outputs = {
+        "geometry": xyz,
+        "parameters": params,
+        "residuals": residual_csv,
+        "kraitchman": kraitchman_csv,
+        "covariance": covariance_csv,
+        "correlation": correlation_csv,
+        "hessian": hessian_csv,
+        "hessian_eigenvalues": hessian_eigs_csv,
+        "diagnostics": diagnostics_csv,
+    }
+    if kraitchman_seed is not None:
+        outputs["kraitchman_geometry"] = kraitchman_xyz
     manifest = build_run_manifest(
         workflow="semiexperimental_geometry",
         status="completed",
         run_dir=outdir,
         inputs=manifest_inputs,
-        outputs={
-            "geometry": xyz,
-            "parameters": params,
-            "residuals": residual_csv,
-            "kraitchman": kraitchman_csv,
-            "covariance": covariance_csv,
-            "correlation": correlation_csv,
-            "hessian": hessian_csv,
-            "hessian_eigenvalues": hessian_eigs_csv,
-            "diagnostics": diagnostics_csv,
-        },
+        outputs=outputs,
         parameters={
             "fixed_parameters": request.fixed_parameters,
             "parameter_classes": tuple(
@@ -396,6 +399,8 @@ def write_semiexperimental_outputs(
             "n_effective_parameters": len(active_names),
             "n_active_gic_parameters": sum(1 for item in parameters if item.active),
             "n_kraitchman_rows": len(kraitchman),
+            "kraitchman_seed_method": kraitchman_seed.method if kraitchman_seed else "not_available",
+            "n_kraitchman_seed_atoms": len(kraitchman_seed.fitted_atom_indices) if kraitchman_seed else 0,
             "rank": diagnostics.rank if diagnostics else None,
             "condition_number": diagnostics.condition_number if diagnostics else None,
             "weighted_rms": diagnostics.weighted_rms if diagnostics else None,
@@ -1077,66 +1082,6 @@ def _parameters(
                 sigma = float(sigmas_active[pos])
         params.append(SemiexperimentalParameter(label, float(values[idx]), sigma, active, parameter_class))
     return tuple(params)
-
-
-def _kraitchman_comparison(
-    atoms: list[str] | tuple[str, ...],
-    coords: np.ndarray,
-    observations: tuple[IsotopologueObservation, ...],
-) -> tuple[KraitchmanComparison, ...]:
-    parent = next((obs for obs in observations if not obs.substitutions), None)
-    if parent is None:
-        return ()
-    parent_structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in coords])
-    parent_moments = np.array(_constants_to_moments(parent.corrected.as_tuple()), dtype=float)
-    parent_total_mass = float(sum(parent_structure.mass_isotope))
-    eigvals, eigvecs = np.linalg.eigh(inertia_tensor(parent_structure, isotopic=True))
-    order = np.argsort(eigvals)
-    eigvecs = eigvecs[:, order]
-    centered = np.asarray(coords, dtype=float) - center_of_mass(parent_structure, isotopic=True)
-    fitted_axis_coords = centered @ eigvecs
-    rows: list[KraitchmanComparison] = []
-    for obs in observations:
-        if len(obs.substitutions) != 1:
-            continue
-        atom_index, isotope_a = next(iter(obs.substitutions.items()))
-        atom_pos = atom_index - 1
-        if atom_pos < 0 or atom_pos >= len(atoms):
-            continue
-        z_number = _atomic_number(atoms[atom_pos])
-        default_iso = get_default_isotope(z_number)
-        substituted_iso = get_isotope(z_number, int(isotope_a))
-        if default_iso is None or substituted_iso is None:
-            continue
-        delta_mass = float(substituted_iso.mass - default_iso.mass)
-        if delta_mass <= 0.0:
-            continue
-        mu = delta_mass * parent_total_mass / (parent_total_mass + delta_mass)
-        if mu <= 0.0:
-            continue
-        moments = np.array(_constants_to_moments(obs.corrected.as_tuple()), dtype=float)
-        delta = moments - parent_moments
-        kraitchman_squared = (
-            (delta[1] + delta[2] - delta[0]) / (2.0 * mu),
-            (delta[0] + delta[2] - delta[1]) / (2.0 * mu),
-            (delta[0] + delta[1] - delta[2]) / (2.0 * mu),
-        )
-        for axis, value, fitted in zip(("a", "b", "c"), kraitchman_squared, fitted_axis_coords[atom_pos]):
-            kraitchman_abs = float(np.sqrt(max(value, 0.0)))
-            fitted_abs = float(abs(fitted))
-            rows.append(
-                KraitchmanComparison(
-                    isotopologue=obs.label,
-                    atom_index=atom_index,
-                    atom=atoms[atom_pos],
-                    isotope_mass_number=int(isotope_a),
-                    coordinate=axis,
-                    kraitchman_abs_angstrom=kraitchman_abs,
-                    fitted_abs_angstrom=fitted_abs,
-                    difference_angstrom=kraitchman_abs - fitted_abs,
-                )
-            )
-    return tuple(rows)
 
 
 def _covariance(jac: np.ndarray, residual: np.ndarray) -> np.ndarray:

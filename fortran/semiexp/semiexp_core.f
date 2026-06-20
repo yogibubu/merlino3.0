@@ -27,6 +27,57 @@ C     Analytic Wilson B row for a bond distance in Angstrom.
       Return
       End
 
+      Subroutine M4SEKraitchman(A0,B0,C0,A1,B1,C1,DMass,PMass,
+     $                          Ref,Coord,Info)
+C     Single-substitution Kraitchman coordinates in Angstrom.
+C     Rotational constants are MHz.  DMass is the isotope mass increment
+C     and PMass is the parent total mass, both in amu.  The substitution
+C     mass is DMass*PMass/(PMass+DMass), matching the Python SE solver.
+      Integer Info,I
+      Double Precision A0,B0,C0,A1,B1,C1,DMass,PMass
+      Double Precision Ref(3),Coord(3),Conv,Mu
+      Double Precision I0(3),I1(3),DI(3),X2(3)
+      Info=0
+      Conv=505379.006D0
+      Do 10 I=1,3
+         Coord(I)=0.0D0
+10    Continue
+      If(A0.le.0.0D0.or.B0.le.0.0D0.or.C0.le.0.0D0) Then
+         Info=1
+         Return
+      End If
+      If(A1.le.0.0D0.or.B1.le.0.0D0.or.C1.le.0.0D0) Then
+         Info=1
+         Return
+      End If
+      If(DMass.le.0.0D0.or.PMass.le.0.0D0) Then
+         Info=2
+         Return
+      End If
+      Mu=DMass*PMass/(PMass+DMass)
+      If(Mu.le.0.0D0) Then
+         Info=2
+         Return
+      End If
+      I0(1)=Conv/A0
+      I0(2)=Conv/B0
+      I0(3)=Conv/C0
+      I1(1)=Conv/A1
+      I1(2)=Conv/B1
+      I1(3)=Conv/C1
+      Do 20 I=1,3
+         DI(I)=I1(I)-I0(I)
+20    Continue
+      X2(1)=(DI(2)+DI(3)-DI(1))/(2.0D0*Mu)
+      X2(2)=(DI(1)+DI(3)-DI(2))/(2.0D0*Mu)
+      X2(3)=(DI(1)+DI(2)-DI(3))/(2.0D0*Mu)
+      Do 30 I=1,3
+         If(X2(I).gt.0.0D0) Coord(I)=DSQRT(X2(I))
+         If(Ref(I).lt.0.0D0) Coord(I)=-Coord(I)
+30    Continue
+      Return
+      End
+
       Subroutine M4SEClassNormalEq(NObs,NPar,NClass,ClassMap,J,Res,W,
      $                             Damp,DQ,Cov,Hess,Info)
 C     Weighted least-squares with parameter classes.

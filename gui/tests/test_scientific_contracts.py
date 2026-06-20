@@ -24,6 +24,8 @@ from merlino_semiexp import (
     VibrationalCorrection,
     corrected_constants_rows,
     fit_semiexperimental_geometry,
+    kraitchman_comparison,
+    kraitchman_seed_geometry,
     parse_substitutions,
     preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
@@ -445,6 +447,8 @@ def test_semiexperimental_kraitchman_comparison_for_single_substitution(tmp_path
             substitutions={2: 2},
         ),
     )
+    direct_rows = kraitchman_comparison(atoms, coords, observations)
+    direct_seed = kraitchman_seed_geometry(atoms, coords, observations, direct_rows)
 
     result = fit_semiexperimental_geometry(
         SemiexperimentalFitRequest(xyz, observations),
@@ -452,10 +456,16 @@ def test_semiexperimental_kraitchman_comparison_for_single_substitution(tmp_path
         outdir=tmp_path / "semiexp_krai",
     )
 
+    assert direct_seed is not None
+    assert direct_seed.method == "direct_substitution"
+    assert direct_seed.fitted_atom_indices == (2,)
+    assert direct_seed.coordinates_angstrom[1, 0] == pytest.approx(direct_rows[0].signed_kraitchman_angstrom)
     assert len(result.kraitchman) == 3
+    assert result.kraitchman_seed is not None
     assert {row.coordinate for row in result.kraitchman} == {"a", "b", "c"}
     assert all(row.isotopologue == "D1" for row in result.kraitchman)
     assert (tmp_path / "semiexp_krai" / "semiexp_kraitchman.csv").exists()
+    assert (tmp_path / "semiexp_krai" / "semiexp_kraitchman_geometry.xyz").exists()
 
 
 def test_semiexperimental_gic_preview_and_html_report(tmp_path):

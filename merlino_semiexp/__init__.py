@@ -22,10 +22,15 @@ from .io import (
     read_observations_toml,
     write_observations_csv,
 )
+from .kraitchman import (
+    KraitchmanComparison,
+    KraitchmanSeedResult,
+    kraitchman_comparison,
+    kraitchman_seed_geometry,
+)
 from .fit import (
     SemiexperimentalFitDiagnostics,
     SemiexperimentalFitResult,
-    KraitchmanComparison,
     SemiexperimentalParameter,
     SemiexperimentalResidual,
     fit_semiexperimental_geometry,
@@ -56,6 +61,7 @@ __all__ = [
     "DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS",
     "ElectronicCorrection",
     "KraitchmanComparison",
+    "KraitchmanSeedResult",
     "ParameterClassConstraint",
     "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
@@ -76,6 +82,8 @@ __all__ = [
     "corrected_constants_rows",
     "fit_semiexperimental_geometry",
     "format_substitutions",
+    "kraitchman_comparison",
+    "kraitchman_seed_geometry",
     "parameters_csv",
     "parse_substitutions",
     "preview_semiexperimental_gics",

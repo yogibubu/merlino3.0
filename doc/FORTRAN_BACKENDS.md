@@ -80,7 +80,9 @@ semiexperimental equilibrium geometry fitting:
 
 - `semiexp_core.f`: analytic B rows for basic internal coordinates, rotational
   constants from Cartesian coordinates and isotope masses, weighted normal
-  equations, covariance and least-squares Hessian.
+  equations, covariance, least-squares Hessian and the single-substitution
+  Kraitchman coordinate kernel using the same reduced substitution mass as the
+  Python semiexperimental solver.
 - `compile_check`: fixed-form compile check producing only local build
   artifacts.
 

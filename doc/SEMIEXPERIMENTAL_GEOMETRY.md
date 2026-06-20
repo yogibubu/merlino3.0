@@ -292,6 +292,17 @@ For isotopologues with exactly one substitution, Merlino writes
 from the Kraitchman equations with the absolute coordinates of the fitted
 structure in the parent principal-axis frame.
 
+The implementation is in `merlino_semiexp.kraitchman`. It uses corrected
+equilibrium rotational constants, converts them to moments of inertia, and
+uses the standard reduced substitution mass
+`Delta m * M_parent / (M_parent + Delta m)`. The sign of each coordinate is
+assigned from the current fitted geometry in the parent principal-axis frame.
+When single-substitution data are available, Merlino also writes
+`semiexp_kraitchman_geometry.xyz`, a Kraitchman-seeded geometry in the same
+principal-axis frame. With at least three well-conditioned substituted atoms,
+the seed applies a rigid Kabsch update before overwriting the substituted atom
+positions; otherwise it directly updates only the substituted atoms.
+
 This comparison is diagnostic, not a replacement for the semiexperimental fit:
 Kraitchman coordinates lose signs, are most informative for single substitutions
 and do not exploit the full correlated least-squares model. They are useful for
@@ -330,6 +341,9 @@ The output directory contains:
   for moments of inertia and native GIC units for QM predicates.
 - `semiexp_kraitchman.csv`: diagnostic comparison with Kraitchman substitution
   coordinates for single-substitution isotopologues.
+- `semiexp_kraitchman_geometry.xyz`: diagnostic Kraitchman-seeded geometry in
+  the parent principal-axis frame, written when single-substitution
+  isotopologues are available.
 - `semiexp_covariance.csv`: propagated covariance matrix for active parameters.
 - `semiexp_correlation.csv`: correlation matrix for active parameters.
 - `semiexp_hessian.csv`: Gauss-Newton least-squares Hessian.
