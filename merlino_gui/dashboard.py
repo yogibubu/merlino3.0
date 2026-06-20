@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMenu,
@@ -32,6 +34,9 @@ class DashboardWindow(QMainWindow):
         super().__init__(parent)
         self.workdir = Path(workdir)
         self.workflows = workflows or default_workflows()
+        self.selected_backends = {
+            workflow.workflow_id: workflow.default_backend for workflow in self.workflows
+        }
 
         self.setWindowTitle("Merlino 4.0")
         self.resize(1080, 720)
@@ -71,6 +76,13 @@ class DashboardWindow(QMainWindow):
         manifest_button = QPushButton("Open Manifest Browser")
         manifest_button.clicked.connect(self.open_manifest_browser)
         layout.addWidget(manifest_button)
+
+        backend_row = QHBoxLayout()
+        backend_row.addWidget(QLabel("Backend for selected step:"))
+        self.backend_selector = QComboBox()
+        self.backend_selector.currentTextChanged.connect(self._backend_changed)
+        backend_row.addWidget(self.backend_selector, stretch=1)
+        layout.addLayout(backend_row)
 
         splitter = QSplitter(Qt.Horizontal)
         layout.addWidget(splitter, stretch=1)
@@ -123,10 +135,34 @@ class DashboardWindow(QMainWindow):
         if workflow_id is None:
             return
         workflow = next(item for item in self.workflows if item.workflow_id == workflow_id)
-        self.detail_view.setPlainText(workflow_detail_text(workflow))
+        self._sync_backend_selector(workflow)
+        backend = self.selected_backends.get(workflow.workflow_id, workflow.default_backend)
+        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
+
+    def _sync_backend_selector(self, workflow: WorkflowSpec) -> None:
+        self.backend_selector.blockSignals(True)
+        self.backend_selector.clear()
+        self.backend_selector.addItems(workflow.backends)
+        selected = self.selected_backends.get(workflow.workflow_id, workflow.default_backend)
+        index = self.backend_selector.findText(selected)
+        self.backend_selector.setCurrentIndex(index if index >= 0 else 0)
+        self.backend_selector.setEnabled(len(workflow.backends) > 1)
+        self.backend_selector.blockSignals(False)
+
+    def _backend_changed(self, backend: str) -> None:
+        current = self.workflow_list.currentItem()
+        if current is None:
+            return
+        workflow_id = current.data(0, Qt.UserRole)
+        if workflow_id is None:
+            return
+        self.selected_backends[str(workflow_id)] = backend
+        workflow = next(item for item in self.workflows if item.workflow_id == workflow_id)
+        self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend))
 
 
-def workflow_detail_text(workflow: WorkflowSpec) -> str:
+def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None) -> str:
+    backend = selected_backend or workflow.default_backend
     lines = [
         workflow.title,
         "",
@@ -137,6 +173,10 @@ def workflow_detail_text(workflow: WorkflowSpec) -> str:
         "",
         "Service:",
         f"  {workflow.service}",
+        "",
+        "Backend:",
+        f"  selected: {backend}",
+        f"  available: {', '.join(workflow.backends)}",
         "",
         "Inputs:",
         *[f"  - {item}" for item in workflow.inputs],

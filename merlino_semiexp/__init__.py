@@ -15,6 +15,7 @@ from .io import (
     write_observations_csv,
 )
 from .fit import (
+    SemiexperimentalFitDiagnostics,
     SemiexperimentalFitResult,
     SemiexperimentalParameter,
     SemiexperimentalResidual,
@@ -26,6 +27,7 @@ from .fit import (
 
 __all__ = [
     "CorrectedRotationalConstants",
+    "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
     "SemiexperimentalParameter",
     "SemiexperimentalResidual",

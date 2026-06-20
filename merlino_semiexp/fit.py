@@ -37,6 +37,19 @@ class SemiexperimentalResidual:
 
 
 @dataclass(frozen=True)
+class SemiexperimentalFitDiagnostics:
+    convergence_reason: str
+    objective: float
+    weighted_rms: float
+    reduced_chi_square: float
+    rank: int
+    condition_number: float
+    damping: float
+    accepted_steps: int
+    rejected_steps: int
+
+
+@dataclass(frozen=True)
 class SemiexperimentalFitResult:
     atoms: tuple[str, ...]
     initial_coordinates_angstrom: np.ndarray
@@ -53,6 +66,7 @@ class SemiexperimentalFitResult:
     b_matrix: np.ndarray
     iterations: int
     rms_MHz: float
+    diagnostics: SemiexperimentalFitDiagnostics
     manifest: Path | None = None
 
 
@@ -62,7 +76,9 @@ def fit_semiexperimental_geometry(
     max_iter: int = 12,
     step: float = 1.0e-4,
     damping: float = 1.0e-8,
+    max_step: float = 0.25,
     tolerance_MHz: float = 1.0e-6,
+    gradient_tolerance: float = 1.0e-8,
     outdir: Path | None = None,
 ) -> SemiexperimentalFitResult:
     """Fit equilibrium geometry to semiexperimental rotational constants.
@@ -81,6 +97,11 @@ def fit_semiexperimental_geometry(
     if not np.any(active_mask):
         raise ScientificValidationError("All semiexperimental GIC parameters are fixed")
 
+    current_damping = float(damping)
+    accepted_steps = 0
+    rejected_steps = 0
+    convergence_reason = "max_iter"
+    previous_objective = None
     for iteration in range(1, max_iter + 1):
         prims, u_matrix, labels = _gic_model(coords, z_numbers)
         active_mask = _active_mask(labels, request.fixed_parameters)
@@ -90,6 +111,8 @@ def fit_semiexperimental_geometry(
         weights = _weights_vector(request.observations)
         sqrt_weights = np.sqrt(weights)
         residual = obs - calc
+        weighted_residual = residual * sqrt_weights
+        objective = _objective(weighted_residual)
         jac = _jacobian_constants_wrt_gics(
             atoms,
             coords,
@@ -100,15 +123,19 @@ def fit_semiexperimental_geometry(
             step=step,
         )
         if np.sqrt(np.mean(residual * residual)) < tolerance_MHz:
+            convergence_reason = "rms_tolerance"
             break
         jac_weighted = jac * sqrt_weights[:, None]
-        residual_weighted = residual * sqrt_weights
-        lhs = jac_weighted.T @ jac_weighted + damping * np.eye(jac.shape[1])
-        rhs = jac_weighted.T @ residual_weighted
-        dq_active = np.linalg.solve(lhs, rhs)
+        gradient = jac_weighted.T @ weighted_residual
+        if float(np.linalg.norm(gradient, ord=np.inf)) < gradient_tolerance:
+            convergence_reason = "gradient_tolerance"
+            break
+        lhs = jac_weighted.T @ jac_weighted + current_damping * np.eye(jac.shape[1])
+        dq_active = np.linalg.solve(lhs, gradient)
+        dq_active = _limit_step(dq_active, max_step)
         dq = np.zeros_like(q)
         dq[np.where(active_mask)[0]] = dq_active
-        coords = _line_search_update(
+        candidate, candidate_objective = _line_search_update(
             atoms,
             coords,
             z_numbers,
@@ -116,8 +143,19 @@ def fit_semiexperimental_geometry(
             prims,
             u_matrix,
             dq,
-            current_rms=float(np.sqrt(np.mean(residual * residual))),
+            current_objective=objective,
         )
+        if candidate_objective < objective:
+            coords = candidate
+            accepted_steps += 1
+            current_damping = max(current_damping / 3.0, 1.0e-14)
+            if previous_objective is not None and abs(previous_objective - candidate_objective) < tolerance_MHz * tolerance_MHz:
+                convergence_reason = "objective_tolerance"
+                break
+            previous_objective = candidate_objective
+        else:
+            rejected_steps += 1
+            current_damping = min(current_damping * 10.0, 1.0e12)
     else:
         iteration = max_iter
 
@@ -139,6 +177,14 @@ def fit_semiexperimental_geometry(
     correlation = _correlation(covariance)
     hessian_eigenvalues = np.linalg.eigvalsh(hessian) if hessian.size else np.array(())
     stationary_point = _stationary_point_type(hessian_eigenvalues)
+    diagnostics = _diagnostics(
+        weighted_jac,
+        weighted_residual,
+        convergence_reason=convergence_reason,
+        damping=current_damping,
+        accepted_steps=accepted_steps,
+        rejected_steps=rejected_steps,
+    )
     sigmas_active = np.sqrt(np.clip(np.diag(covariance), 0.0, None)) if covariance.size else np.array(())
     parameters = _parameters(labels, q_final, active_mask, sigmas_active)
     residual_rows = _residual_rows(request.observations, calc, obs)
@@ -157,6 +203,7 @@ def fit_semiexperimental_geometry(
             hessian=hessian,
             hessian_eigenvalues=hessian_eigenvalues,
             stationary_point=stationary_point,
+            diagnostics=diagnostics,
         )
     return SemiexperimentalFitResult(
         atoms=tuple(atoms),
@@ -174,6 +221,7 @@ def fit_semiexperimental_geometry(
         b_matrix=bq,
         iterations=iteration,
         rms_MHz=rms,
+        diagnostics=diagnostics,
         manifest=manifest,
     )
 
@@ -190,6 +238,7 @@ def write_semiexperimental_outputs(
     hessian: np.ndarray | None = None,
     hessian_eigenvalues: np.ndarray | None = None,
     stationary_point: str = "not_checked",
+    diagnostics: SemiexperimentalFitDiagnostics | None = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     xyz = outdir / "semiexp_geometry.xyz"
@@ -199,6 +248,7 @@ def write_semiexperimental_outputs(
     correlation_csv = outdir / "semiexp_correlation.csv"
     hessian_csv = outdir / "semiexp_hessian.csv"
     hessian_eigs_csv = outdir / "semiexp_hessian_eigenvalues.csv"
+    diagnostics_csv = outdir / "semiexp_diagnostics.csv"
     active_names = tuple(p.name for p in parameters if p.active)
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
@@ -207,6 +257,7 @@ def write_semiexperimental_outputs(
     correlation_csv.write_text(_matrix_csv(active_names, correlation), encoding="utf-8")
     hessian_csv.write_text(_matrix_csv(active_names, hessian), encoding="utf-8")
     hessian_eigs_csv.write_text(_eigenvalues_csv(hessian_eigenvalues), encoding="utf-8")
+    diagnostics_csv.write_text(_diagnostics_csv(diagnostics), encoding="utf-8")
     manifest = build_run_manifest(
         workflow="semiexperimental_geometry",
         status="completed",
@@ -220,8 +271,13 @@ def write_semiexperimental_outputs(
             "correlation": correlation_csv,
             "hessian": hessian_csv,
             "hessian_eigenvalues": hessian_eigs_csv,
+            "diagnostics": diagnostics_csv,
         },
-        parameters={"fixed_parameters": request.fixed_parameters, "stationary_point": stationary_point},
+        parameters={
+            "fixed_parameters": request.fixed_parameters,
+            "stationary_point": stationary_point,
+            "convergence_reason": diagnostics.convergence_reason if diagnostics else "not_reported",
+        },
         backend={"solver": "python", "coordinate_model": "merlino-gic", "b_matrix": "analytic"},
     )
     return manifest.write(outdir / "semiexp_manifest.json")
@@ -267,6 +323,18 @@ def _eigenvalues_csv(values: np.ndarray | None) -> str:
     writer.writerow(["index", "eigenvalue"])
     for idx, value in enumerate(np.asarray(values if values is not None else (), dtype=float), start=1):
         writer.writerow([idx, f"{value:.12g}"])
+    return stream.getvalue()
+
+
+def _diagnostics_csv(diagnostics: SemiexperimentalFitDiagnostics | None) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["key", "value"])
+    if diagnostics is None:
+        writer.writerow(["status", "not_reported"])
+        return stream.getvalue()
+    for key, value in diagnostics.__dict__.items():
+        writer.writerow([key, value])
     return stream.getvalue()
 
 
@@ -335,24 +403,25 @@ def _line_search_update(
     u_matrix: np.ndarray,
     dq: np.ndarray,
     *,
-    current_rms: float,
-) -> np.ndarray:
+    current_objective: float,
+) -> tuple[np.ndarray, float]:
     observed = _observed_vector(observations)
+    sqrt_weights = np.sqrt(_weights_vector(observations))
     best_coords = coords
-    best_rms = current_rms
+    best_objective = current_objective
     for scale in (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625):
         candidate = _displace_along_gics(coords, prims, u_matrix, scale * dq)
         try:
             _gic_model(candidate, z_numbers)
         except Exception:
             continue
-        residual = observed - _constants_vector(atoms, candidate, observations)
-        rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
-        if rms < best_rms:
+        residual = (observed - _constants_vector(atoms, candidate, observations)) * sqrt_weights
+        objective = _objective(residual)
+        if objective < best_objective:
             best_coords = candidate
-            best_rms = rms
+            best_objective = objective
             break
-    return best_coords
+    return best_coords, best_objective
 
 
 def _constants_vector(
@@ -419,6 +488,52 @@ def _covariance(jac: np.ndarray, residual: np.ndarray) -> np.ndarray:
     dof = max(jac.shape[0] - jac.shape[1], 1)
     sigma2 = float(residual @ residual) / dof
     return sigma2 * np.linalg.pinv(jac.T @ jac, rcond=1.0e-10)
+
+
+def _objective(weighted_residual: np.ndarray) -> float:
+    return 0.5 * float(weighted_residual @ weighted_residual)
+
+
+def _limit_step(step: np.ndarray, max_norm: float) -> np.ndarray:
+    norm = float(np.linalg.norm(step))
+    if max_norm <= 0.0 or norm <= max_norm:
+        return step
+    return step * (max_norm / norm)
+
+
+def _diagnostics(
+    weighted_jac: np.ndarray,
+    weighted_residual: np.ndarray,
+    *,
+    convergence_reason: str,
+    damping: float,
+    accepted_steps: int,
+    rejected_steps: int,
+) -> SemiexperimentalFitDiagnostics:
+    if weighted_jac.size:
+        singular = np.linalg.svd(weighted_jac, compute_uv=False)
+        threshold = max(weighted_jac.shape) * np.finfo(float).eps * (float(singular[0]) if singular.size else 0.0)
+        rank = int(np.sum(singular > threshold))
+        if singular.size and singular[-1] > threshold:
+            condition = float(singular[0] / singular[-1])
+        else:
+            condition = float("inf")
+    else:
+        rank = 0
+        condition = float("inf")
+    objective = _objective(weighted_residual)
+    dof = max(weighted_residual.size - weighted_jac.shape[1], 1) if weighted_jac.ndim == 2 else 1
+    return SemiexperimentalFitDiagnostics(
+        convergence_reason=convergence_reason,
+        objective=objective,
+        weighted_rms=float(np.sqrt(np.mean(weighted_residual * weighted_residual))) if weighted_residual.size else 0.0,
+        reduced_chi_square=float((weighted_residual @ weighted_residual) / dof) if weighted_residual.size else 0.0,
+        rank=rank,
+        condition_number=condition,
+        damping=float(damping),
+        accepted_steps=accepted_steps,
+        rejected_steps=rejected_steps,
+    )
 
 
 def _least_squares_hessian(weighted_jac: np.ndarray) -> np.ndarray:

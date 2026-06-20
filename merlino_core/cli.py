@@ -79,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--max-iter", type=int, default=12)
     semiexp.add_argument("--step", type=float, default=1.0e-4)
     semiexp.add_argument("--damping", type=float, default=1.0e-8)
+    semiexp.add_argument("--max-step", type=float, default=0.25)
     return parser
 
 
@@ -190,12 +191,16 @@ def main(argv: list[str] | None = None) -> int:
             max_iter=args.max_iter,
             step=args.step,
             damping=args.damping,
+            max_step=args.max_step,
             outdir=args.outdir,
         )
         print(f"manifest: {result.manifest}")
         print(f"rms_MHz: {result.rms_MHz:.8g}")
         print(f"iterations: {result.iterations}")
         print(f"stationary_point: {result.stationary_point}")
+        print(f"convergence: {result.diagnostics.convergence_reason}")
+        print(f"rank: {result.diagnostics.rank}")
+        print(f"condition_number: {result.diagnostics.condition_number:.8g}")
         return 0
 
     if args.command == "gaussian-summary":

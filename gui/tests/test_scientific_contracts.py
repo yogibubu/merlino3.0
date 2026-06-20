@@ -168,6 +168,15 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert result.hessian.shape == result.covariance.shape
     assert result.correlation.shape == result.covariance.shape
     assert result.stationary_point in {"minimum", "flat_or_rank_deficient"}
+    assert result.diagnostics.rank <= result.jacobian.shape[1]
+    assert result.diagnostics.accepted_steps >= 0
+    assert result.diagnostics.rejected_steps >= 0
+    assert result.diagnostics.convergence_reason in {
+        "rms_tolerance",
+        "gradient_tolerance",
+        "objective_tolerance",
+        "max_iter",
+    }
     assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
@@ -176,6 +185,7 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_correlation.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_hessian.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
 
 

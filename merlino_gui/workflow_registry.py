@@ -12,6 +12,8 @@ class WorkflowSpec:
     description: str
     inputs: tuple[str, ...]
     outputs: tuple[str, ...]
+    backends: tuple[str, ...] = ("python",)
+    default_backend: str = "python"
     status: str = "planned"
 
 
@@ -26,6 +28,7 @@ def default_workflows() -> list[WorkflowSpec]:
             description="Structure input, isotopes, topology, rings and symmetry.",
             inputs=("XYZ/xyzin/SMILES from Python side", "isotope selections"),
             outputs=("normalized molecular model", "topology/ring/symmetry report"),
+            backends=("python",),
             status="legacy GUI available",
         ),
         WorkflowSpec(
@@ -36,6 +39,8 @@ def default_workflows() -> list[WorkflowSpec]:
             description="GIC construction, GICForge execution and Gaussian GIC input.",
             inputs=("cartesian XYZ", "GIC options", "Gaussian route/resources"),
             outputs=("gauin.gjf", "GIC report", "optional B matrix", "manifest"),
+            backends=("python", "fortran77"),
+            default_backend="fortran77",
             status="service extraction in progress",
         ),
         WorkflowSpec(
@@ -46,6 +51,8 @@ def default_workflows() -> list[WorkflowSpec]:
             description="Gaussian scan/path output to DVR levels and wavefunctions.",
             inputs=("Gaussian log or grid CSV", "solver/boundary settings"),
             outputs=("levels CSV", "vectors/profile CSV", "summary", "manifest"),
+            backends=("python", "fortran77"),
+            default_backend="fortran77",
             status="legacy window available",
         ),
         WorkflowSpec(
@@ -56,6 +63,7 @@ def default_workflows() -> list[WorkflowSpec]:
             description="Wilson GF/PED and VPT2/VCI on canonical Merlino Hessian/QFF inputs.",
             inputs=("canonical Hessian/QFF", "optional Gaussian FCHK adapter", "basis cutoffs", "root/convergence settings"),
             outputs=("GF frequencies", "PED table", "VPT2 levels", "VCI levels", "dominant coefficients", "Davidson report"),
+            backends=("python", "fortran77"),
             status="GUI window available",
         ),
         WorkflowSpec(
@@ -66,6 +74,7 @@ def default_workflows() -> list[WorkflowSpec]:
             description="Equilibrium geometry from isotopologue rotational constants and QM vibrational corrections.",
             inputs=("parent XYZ", "isotopologue B0 constants", "QM vibrational corrections", "experimental uncertainties"),
             outputs=("fitted structure", "residuals", "covariance/correlation", "least-squares Hessian", "minimum check", "manifest"),
+            backends=("python", "fortran77"),
         ),
         WorkflowSpec(
             workflow_id="jobs_reports",
@@ -75,6 +84,7 @@ def default_workflows() -> list[WorkflowSpec]:
             description="Manifest browser, logs, reproducibility metadata and output collection.",
             inputs=("workflow manifests", "backend logs"),
             outputs=("status dashboard", "report bundle"),
+            backends=("python",),
             status="planned",
         ),
     ]

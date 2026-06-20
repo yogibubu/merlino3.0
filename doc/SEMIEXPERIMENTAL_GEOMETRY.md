@@ -13,7 +13,8 @@ Run from the CLI with:
 python -m merlino semiexp \
   --xyz parent_initial.xyz \
   --observations isotopologues.csv \
-  --outdir semiexp_run
+  --outdir semiexp_run \
+  --max-step 0.25
 ```
 
 The XYZ file contains the starting parent geometry in Angstrom.
@@ -62,6 +63,12 @@ Each token is matched as a case-insensitive substring of the generated GIC
 labels. Fixed parameters are reported but excluded from the least-squares
 normal equations.
 
+The optimizer uses a Levenberg-Marquardt style weighted least-squares step with
+adaptive damping. Steps that do not improve the weighted objective are rejected,
+the damping is increased, and the next iteration retries a more conservative
+normal equation. `--max-step` limits the active-GIC step norm and is useful when
+the starting geometry is only approximate.
+
 ## Output
 
 The output directory contains:
@@ -77,6 +84,9 @@ The output directory contains:
 - `semiexp_hessian_eigenvalues.csv`: eigenvalues used to classify the fitted
   stationary point as `minimum`, `flat_or_rank_deficient` or
   `transition_state_or_saddle`.
+- `semiexp_diagnostics.csv`: convergence reason, objective, weighted RMS,
+  reduced chi square, Jacobian rank, condition number and accepted/rejected
+  steps.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
 The parameter values use the native Merlino GIC units: stretches in Angstrom and

@@ -15,6 +15,8 @@ starts under `merlino_gui/`.
 - GUI classes must not parse Gaussian logs directly.
 - GUI classes must not call Fortran executables directly.
 - GUI classes should call service interfaces and display normalized outputs.
+- GUI workflow steps must ask for the backend family when alternatives exist
+  (`python` or `fortran77`) and pass that choice to the service layer.
 - Every long-running workflow should produce or consume a manifest JSON.
 
 ## Top-Level Workflows
@@ -33,9 +35,9 @@ starts under `merlino_gui/`.
 GUI -> service layer -> backend/parser/numerical code -> files + manifest -> GUI
 ```
 
-The GUI should not know whether a service uses Python, Fortran or Gaussian
-internally. It should know only the workflow contract and the manifest/output
-paths.
+The GUI should not implement backend-specific logic. It may expose a backend
+choice to the user, but execution remains delegated to the workflow service,
+which maps `python` or `fortran77` to the appropriate implementation.
 
 ## Migration Strategy
 

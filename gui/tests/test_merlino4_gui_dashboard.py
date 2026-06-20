@@ -14,6 +14,8 @@ def test_default_workflows_include_new_scientific_areas():
     assert "semiexp_geometry" in workflows
     assert workflows["vpt2_vci"].service == "merlino_vpt2_vci"
     assert workflows["semiexp_geometry"].service == "merlino_semiexp"
+    assert "fortran77" in workflows["semiexp_geometry"].backends
+    assert workflows["gic"].default_backend == "fortran77"
 
 
 def test_workflow_detail_text_lists_contract_fields():
@@ -24,6 +26,7 @@ def test_workflow_detail_text_lists_contract_fields():
     assert "Inputs:" in text
     assert "Outputs:" in text
     assert workflow.service in text
+    assert "Backend:" in text
 
 
 @pytest.mark.usefixtures("qtbot")
@@ -45,6 +48,13 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
         "Vibrations",
         "Dynamics",
     }
+    window.select_workflow("semiexp_geometry")
+    assert window.backend_selector.isEnabled()
+    assert window.backend_selector.findText("python") >= 0
+    assert window.backend_selector.findText("fortran77") >= 0
+    window.backend_selector.setCurrentText("fortran77")
+    assert window.selected_backends["semiexp_geometry"] == "fortran77"
+    assert "selected: fortran77" in window.detail_view.toPlainText()
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):
