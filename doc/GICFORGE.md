@@ -168,13 +168,26 @@ The post-check is intentionally reproducible:
 - numerical tolerances are centralized in `merlino_gic/gic_symmetry.py`
 - repeated runs on the same `gauin`/`xyzin` write byte-identical `gauin.symm`,
   `gicsym` and diagnostics
-- `gicsym` records whether each coordinate came from a direct primitive
-  projection or from a Cartesian projection
+- `gicsym` records the deterministic source block used for each coordinate
 
-`gic_symmetry_diagnostics.json` contains `strict_clean`. When it is `true`, all
-symmetry-adapted coordinates were obtained directly from the GICForge primitive
-expressions. When it is `false`, at least one non-active diagnostic coordinate
-needed Cartesian reconstruction to complete the full irrep bookkeeping. That is
-a backend-quality flag: the next Fortran cleanup target is to make common
-systems strict-clean, while the operational A1 block remains deterministic and
-explicitly labeled.
+The projection hierarchy is deliberately restricted. A coordinate is written
+only if it can be represented by one of these blocks:
+
+- direct primitive projection from the GICForge expression
+- same coordinate type (`bond`, `angle`, `linear_bend`, `dihedral`,
+  `out_of_plane`)
+- for non-totally-symmetric species only, an endocyclic ring block containing
+  ring valence angles, ring dihedrals and ring-related improper/OOP
+  coordinates
+- for non-totally-symmetric species only, a local out-of-plane block containing
+  dihedral-improper and OOP coordinates around the same center
+
+There is no global least-squares fallback over all primitives. If these blocks
+cannot generate the theoretical irrep counts, GICForge fails and the backend
+must be fixed before the workflow proceeds.
+
+`gic_symmetry_diagnostics.json` contains `strict_clean`, the irrep targets,
+the obtained counts and the source-block counts. `strict_clean=true` means no
+unsupported/global reconstruction was used; it does not require every
+coordinate to be a one-step primitive permutation, because type-local Cartesian
+projection is the deterministic way to validate the B-row symmetry.

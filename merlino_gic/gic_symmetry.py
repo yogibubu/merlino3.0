@@ -12,6 +12,7 @@ from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
 from merlino_fit.survibfit.symmetry_global import primitive_permutation
+from merlino_fit.topology.pipeline import build_topology_objects
 from topology.elements import atomic_number, atomic_symbol
 
 
@@ -19,6 +20,7 @@ SYMM_TOL = 1.0e-2
 SYMM_INERTIA_TOL = 1.0e-3
 ZERO_TOL = 1.0e-8
 RANK_TOL = 1.0e-7
+FIT_TOL = 1.0e-4
 PRINT_TOL = 1.0e-6
 
 
@@ -41,7 +43,7 @@ def write_gic_symmetry_files(workdir: Path) -> None:
     prims, u_matrix = _primitive_basis(gics)
     oriented = _oriented_coords(atoms, coords)
     op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
-    sym_gics = _symmetry_adapted_gics(gics, prims, u_matrix, op_data, oriented, strict=False)
+    sym_gics = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented)
     _write_gicsym(run_dir / "gicsym", sym_gics)
     _write_gic_symmetry_diagnostics(run_dir / "gic_symmetry_diagnostics.json", sym_gics, op_data, len(coords))
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
@@ -145,7 +147,7 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
     return _canonical_operation_order(op_data)
 
 
-def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, strict: bool = True):
+def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.ndarray):
     irreps = _irrep_characters([item[0] for item in op_data])
     if not irreps:
         return [(gic.name, "A", "input", u_matrix[:, idx]) for idx, gic in enumerate(gics)]
@@ -154,6 +156,7 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, s
     source_rows = u_matrix.T @ b_primitive
     vib_projector = _vibrational_projector(coords)
     cart_ops = [_cartesian_operation(rotation, mapping, len(coords)) for _label, rotation, mapping, _prim_op in op_data]
+    projection_blocks = _projection_blocks(atoms, coords, prims)
     adapted = []
     used_names: dict[str, int] = {}
     selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
@@ -162,7 +165,8 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, s
         target = targets.get(irrep, 0)
         if target <= 0:
             continue
-        for col, source_row in enumerate(source_rows):
+        for col in _source_column_order(irrep, u_matrix, prims):
+            source_row = source_rows[col]
             projected_row_raw = _project_cartesian_row(source_row, chars, cart_ops)
             projected_row = projected_row_raw @ vib_projector
             if np.linalg.norm(projected_row) < ZERO_TOL:
@@ -178,15 +182,16 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, s
             coeff_norm = np.linalg.norm(coeff)
             source = "primitive_projection"
             if coeff_norm < ZERO_TOL:
-                if strict:
-                    continue
-                coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims, mixed=False)
-                coeff_norm = np.linalg.norm(coeff)
-                source = "cartesian_projection"
-                if coeff_norm < ZERO_TOL:
-                    coeff = _cartesian_row_to_coeff(projected_row_raw, b_primitive, u_matrix[:, col], prims, mixed=True)
-                    coeff_norm = np.linalg.norm(coeff)
-                    source = "cartesian_mixed_projection"
+                coeff, source = _fit_projected_coeff(
+                    projected_row_raw,
+                    projected_row,
+                    b_primitive,
+                    u_matrix[:, col],
+                    prims,
+                    projection_blocks,
+                    irrep not in {"A1", "A", "Ag", "A'"},
+                )
+                coeff_norm = np.linalg.norm(coeff) if coeff is not None else 0.0
                 if coeff_norm < ZERO_TOL:
                     continue
             coeff /= coeff_norm
@@ -204,6 +209,86 @@ def _symmetry_adapted_gics(gics, prims, u_matrix, op_data, coords: np.ndarray, s
     if counts != targets:
         raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
     return adapted
+
+
+def _source_column_order(irrep: str, u_matrix: np.ndarray, prims: list[Primitive]) -> list[int]:
+    if irrep in {"A1", "A", "Ag", "A'"}:
+        return list(range(u_matrix.shape[1]))
+    priority = {
+        "dihedral": 0,
+        "out_of_plane": 0,
+        "angle": 1,
+        "linear_bend": 2,
+        "bond": 3,
+    }
+    return sorted(
+        range(u_matrix.shape[1]),
+        key=lambda col: (priority.get(_dominant_kind(u_matrix[:, col], prims), 9), col),
+    )
+
+
+def _projection_blocks(atoms: list[str], coords: np.ndarray, prims: list[Primitive]) -> list[tuple[str, set[int]]]:
+    blocks: list[tuple[str, set[int]]] = []
+    z_numbers = [atomic_number(atom) for atom in atoms]
+    try:
+        _continuous, graph, ringset, _synthons, _aromaticity = build_topology_objects(coords, z_numbers)
+    except Exception:
+        return blocks
+    adjacency = [set(neigh) for neigh in graph.adjacency]
+    seen: set[tuple[str, tuple[int, ...]]] = set()
+
+    for ring in ringset.rings:
+        ring_atoms = set(ring.atoms)
+        idxs = {
+            idx
+            for idx, prim in enumerate(prims)
+            if prim.kind in {"angle", "dihedral", "out_of_plane"} and _ring_mixed_member(prim, ring_atoms, adjacency)
+        }
+        _append_block(blocks, seen, f"ring_mixed_{ring.index + 1}", idxs)
+
+    for center in range(len(atoms)):
+        local_atoms = set(adjacency[center])
+        local_atoms.add(center)
+        idxs = {
+            idx
+            for idx, prim in enumerate(prims)
+            if prim.kind in {"dihedral", "out_of_plane"} and _oop_local_member(prim, center, local_atoms, adjacency)
+        }
+        _append_block(blocks, seen, f"oop_local_{center + 1}", idxs)
+    return blocks
+
+
+def _append_block(blocks: list[tuple[str, set[int]]], seen: set[tuple[str, tuple[int, ...]]], name: str, idxs: set[int]) -> None:
+    if len(idxs) < 2:
+        return
+    key = (name.split("_", 1)[0], tuple(sorted(idxs)))
+    if key in seen:
+        return
+    seen.add(key)
+    blocks.append((name, idxs))
+
+
+def _ring_mixed_member(prim: Primitive, ring_atoms: set[int], adjacency: list[set[int]]) -> bool:
+    atoms = set(prim.atoms)
+    if atoms.issubset(ring_atoms):
+        return True
+    if prim.kind not in {"dihedral", "out_of_plane"}:
+        return False
+    if len(atoms & ring_atoms) < 3:
+        return False
+    external = atoms - ring_atoms
+    return all(any(neigh in ring_atoms for neigh in adjacency[atom]) for atom in external)
+
+
+def _oop_local_member(prim: Primitive, center: int, local_atoms: set[int], adjacency: list[set[int]]) -> bool:
+    atoms = set(prim.atoms)
+    if not atoms.issubset(local_atoms):
+        return False
+    if prim.kind == "out_of_plane":
+        return len(prim.atoms) >= 2 and prim.atoms[1] == center
+    if prim.kind != "dihedral":
+        return False
+    return center in atoms and sum(1 for atom in atoms if atom != center and atom in adjacency[center]) >= 3
 
 
 def _canonical_operation_order(op_data):
@@ -260,15 +345,34 @@ def _vibrational_projector(coords: np.ndarray) -> np.ndarray:
     return np.eye(3 * natoms, dtype=float) - q_matrix @ q_matrix.T
 
 
-def _cartesian_row_to_coeff(
-    row: np.ndarray, b_primitive: np.ndarray, source_coeff: np.ndarray, prims: list[Primitive], mixed: bool
-) -> np.ndarray:
+def _fit_projected_coeff(
+    raw_row: np.ndarray,
+    vib_row: np.ndarray,
+    b_primitive: np.ndarray,
+    source_coeff: np.ndarray,
+    prims: list[Primitive],
+    projection_blocks: list[tuple[str, set[int]]],
+    allow_mixed_blocks: bool,
+) -> tuple[np.ndarray | None, str]:
     kind = _dominant_kind(source_coeff, prims)
-    idxs = list(range(len(prims))) if mixed else [idx for idx, prim in enumerate(prims) if prim.kind == kind]
-    coeff = _least_squares_coeff(row, b_primitive, idxs)
-    if np.linalg.norm(coeff @ b_primitive - row) <= 1.0e-5 * max(1.0, np.linalg.norm(row)):
-        return coeff
-    return np.zeros(b_primitive.shape[0], dtype=float)
+    support = {idx for idx, coeff in enumerate(source_coeff) if abs(coeff) > ZERO_TOL}
+    same_type = {idx for idx, prim in enumerate(prims) if prim.kind == kind}
+    candidates: list[tuple[str, set[int]]] = [(f"{kind}_type_projection", same_type)]
+    if allow_mixed_blocks:
+        for block_name, block_idxs in projection_blocks:
+            if support and support.issubset(block_idxs):
+                candidates.append((block_name, block_idxs))
+
+    for block_name, idxs in candidates:
+        for row_name, row in (("cartesian", raw_row), ("vibrational", vib_row)):
+            coeff = _least_squares_coeff(row, b_primitive, sorted(idxs))
+            if _fit_residual(coeff, b_primitive, row) <= FIT_TOL:
+                return coeff, f"{block_name}_{row_name}"
+    return None, "unresolved"
+
+
+def _fit_residual(coeff: np.ndarray, b_primitive: np.ndarray, row: np.ndarray) -> float:
+    return float(np.linalg.norm(coeff @ b_primitive - row) / max(1.0, np.linalg.norm(row)))
 
 
 def _least_squares_coeff(row: np.ndarray, b_primitive: np.ndarray, idxs: list[int]) -> np.ndarray:
@@ -382,9 +486,9 @@ def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int) 
         "targets": targets,
         "counts": counts,
         "sources": sources,
-        "strict_clean": sources.get("cartesian_projection", 0) == 0
-        and sources.get("cartesian_mixed_projection", 0) == 0,
+        "strict_clean": all(not source.startswith(("global_", "unresolved")) for source in sources),
         "tolerances": {
+            "fit": FIT_TOL,
             "symmetry": SYMM_TOL,
             "inertia": SYMM_INERTIA_TOL,
             "zero": ZERO_TOL,

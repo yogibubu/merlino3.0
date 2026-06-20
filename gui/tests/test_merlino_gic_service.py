@@ -77,3 +77,5 @@ def test_gic_symmetry_postcheck_is_byte_deterministic(tmp_path):
     diagnostics = json.loads((tmp_path / "gic_symmetry_diagnostics.json").read_text(encoding="utf-8"))
     assert diagnostics["strict_clean"] is True
     assert diagnostics["counts"] == diagnostics["targets"]
+    assert "cartesian_mixed_projection" not in diagnostics["sources"]
+    assert not any(source.startswith("global_") for source in diagnostics["sources"])
