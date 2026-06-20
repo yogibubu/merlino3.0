@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
+import tomllib
 
-from .contracts import IsotopologueObservation, RotationalConstants, VibrationalCorrection
+from .contracts import ElectronicCorrection, IsotopologueObservation, RotationalConstants, VibrationalCorrection
 
 
 CSV_FIELDS = (
@@ -15,6 +17,10 @@ CSV_FIELDS = (
     "delta_B_MHz",
     "delta_C_MHz",
     "correction_source",
+    "delta_elec_A_MHz",
+    "delta_elec_B_MHz",
+    "delta_elec_C_MHz",
+    "electronic_correction_source",
     "substitutions",
     "sigma_A_MHz",
     "sigma_B_MHz",
@@ -43,7 +49,7 @@ def parse_substitutions(text: str) -> dict[int, int]:
     for chunk in text.split(";"):
         atom_text, isotope_text = chunk.split(":", 1)
         atom_index = int(atom_text.strip())
-        isotope_a = int(isotope_text.strip())
+        isotope_a = _mass_number(isotope_text.strip())
         if atom_index < 1:
             raise ValueError("Substitution atom indexes are one-based")
         result[atom_index] = isotope_a
@@ -52,6 +58,18 @@ def parse_substitutions(text: str) -> dict[int, int]:
 
 def format_substitutions(substitutions: dict[int, int]) -> str:
     return ";".join(f"{atom}:{mass}" for atom, mass in sorted(substitutions.items()))
+
+
+def read_observations(path: Path) -> tuple[IsotopologueObservation, ...]:
+    target = Path(path)
+    suffix = target.suffix.lower()
+    if suffix == ".csv":
+        return read_observations_csv(target)
+    if suffix == ".json":
+        return read_observations_json(target)
+    if suffix == ".toml":
+        return read_observations_toml(target)
+    raise ValueError("Semiexp observations must be .csv, .json or .toml")
 
 
 def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:
@@ -77,11 +95,34 @@ def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:
                         float(row["delta_C_MHz"] or 0.0),
                         source=str(row["correction_source"] or "unspecified"),
                     ),
+                    electronic_correction=ElectronicCorrection(
+                        float(row.get("delta_elec_A_MHz") or 0.0),
+                        float(row.get("delta_elec_B_MHz") or 0.0),
+                        float(row.get("delta_elec_C_MHz") or 0.0),
+                        source=str(row.get("electronic_correction_source") or "unspecified"),
+                    ),
                     substitutions=parse_substitutions(str(row["substitutions"] or "")),
                     weights=weights,
                 )
             )
     return tuple(observations)
+
+
+def read_observations_json(path: Path) -> tuple[IsotopologueObservation, ...]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return observations_from_mapping(data)
+
+
+def read_observations_toml(path: Path) -> tuple[IsotopologueObservation, ...]:
+    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return observations_from_mapping(data)
+
+
+def observations_from_mapping(data: dict) -> tuple[IsotopologueObservation, ...]:
+    isotopologues = data.get("isotopologues")
+    if not isinstance(isotopologues, list) or not isotopologues:
+        raise ValueError("Structured semiexp input needs a non-empty isotopologues list")
+    return tuple(_observation_from_mapping(item) for item in isotopologues)
 
 
 def write_observations_csv(path: Path, observations: tuple[IsotopologueObservation, ...]) -> Path:
@@ -101,6 +142,10 @@ def write_observations_csv(path: Path, observations: tuple[IsotopologueObservati
                     "delta_B_MHz": f"{obs.correction.delta_B_MHz:.12g}",
                     "delta_C_MHz": f"{obs.correction.delta_C_MHz:.12g}",
                     "correction_source": obs.correction.source,
+                    "delta_elec_A_MHz": f"{obs.electronic_correction.delta_A_MHz:.12g}",
+                    "delta_elec_B_MHz": f"{obs.electronic_correction.delta_B_MHz:.12g}",
+                    "delta_elec_C_MHz": f"{obs.electronic_correction.delta_C_MHz:.12g}",
+                    "electronic_correction_source": obs.electronic_correction.source,
                     "substitutions": format_substitutions(obs.substitutions),
                     "sigma_A_MHz": _sigma_text(obs.weights.A_MHz) if obs.weights else "",
                     "sigma_B_MHz": _sigma_text(obs.weights.B_MHz) if obs.weights else "",
@@ -123,9 +168,88 @@ def corrected_constants_rows(
                 "B_e_MHz": corrected.B_MHz,
                 "C_e_MHz": corrected.C_MHz,
                 "correction_source": obs.correction.source,
+                "electronic_correction_source": obs.electronic_correction.source,
             }
         )
     return rows
+
+
+def _observation_from_mapping(item: dict) -> IsotopologueObservation:
+    constants = _rotconst_from_mapping(_required_mapping(item, "constants"))
+    return IsotopologueObservation(
+        label=str(item["label"]).strip(),
+        constants=constants,
+        substitutions=_substitutions_from_mapping(item.get("substitutions", {})),
+        correction=_vibrational_from_mapping(item.get("vibrational_correction", item.get("correction", {}))),
+        electronic_correction=_electronic_from_mapping(item.get("electronic_correction", {})),
+        weights=_weights_from_sigma_mapping(item.get("sigma_MHz", item.get("sigma", {}))),
+    )
+
+
+def _required_mapping(item: dict, key: str) -> dict:
+    value = item.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"Structured semiexp isotopologue needs {key}")
+    return value
+
+
+def _rotconst_from_mapping(item: dict) -> RotationalConstants:
+    return RotationalConstants(float(item["A_MHz"]), float(item["B_MHz"]), float(item["C_MHz"]))
+
+
+def _vibrational_from_mapping(item: dict) -> VibrationalCorrection:
+    return VibrationalCorrection(
+        float(item.get("delta_A_MHz", 0.0)),
+        float(item.get("delta_B_MHz", 0.0)),
+        float(item.get("delta_C_MHz", 0.0)),
+        source=str(item.get("source", "unspecified")),
+    )
+
+
+def _electronic_from_mapping(item: dict) -> ElectronicCorrection:
+    return ElectronicCorrection(
+        float(item.get("delta_A_MHz", 0.0)),
+        float(item.get("delta_B_MHz", 0.0)),
+        float(item.get("delta_C_MHz", 0.0)),
+        source=str(item.get("source", "unspecified")),
+    )
+
+
+def _weights_from_sigma_mapping(item: dict) -> RotationalConstants | None:
+    if not item:
+        return None
+    sigmas = (float(item["A_MHz"]), float(item["B_MHz"]), float(item["C_MHz"]))
+    if any(sigma <= 0.0 for sigma in sigmas):
+        raise ValueError("Semiexp sigma values must be positive")
+    return RotationalConstants(*(1.0 / (sigma * sigma) for sigma in sigmas))
+
+
+def _substitutions_from_mapping(value) -> dict[int, int]:
+    if value is None or value == "":
+        return {}
+    if isinstance(value, str):
+        return parse_substitutions(value)
+    if isinstance(value, dict):
+        return {int(atom): _mass_number(mass) for atom, mass in value.items()}
+    if isinstance(value, list):
+        result = {}
+        for item in value:
+            if isinstance(item, dict):
+                result[int(item["atom"])] = _mass_number(item["mass"])
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                result[int(item[0])] = _mass_number(item[1])
+            else:
+                raise ValueError("Invalid substitution list entry")
+        return result
+    raise ValueError("Invalid semiexp substitutions format")
+
+
+def _mass_number(value) -> int:
+    text = str(value).strip()
+    aliases = {"D": 2, "T": 3}
+    if text.upper() in aliases:
+        return aliases[text.upper()]
+    return int(text)
 
 
 def _weights_from_sigmas(row: dict[str, str]) -> RotationalConstants | None:

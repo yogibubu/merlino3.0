@@ -11,6 +11,7 @@ from merlino_semiexp import (
     CorrectedRotationalConstants,
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+    ElectronicCorrection,
     IsotopologueObservation,
     QMParameterPredicate,
     RotationalConstants,
@@ -19,6 +20,7 @@ from merlino_semiexp import (
     corrected_constants_rows,
     fit_semiexperimental_geometry,
     parse_substitutions,
+    read_observations,
     read_observations_csv,
     write_observations_csv,
 )
@@ -70,9 +72,10 @@ def test_vpt2_vci_inventory_records_active_backend_status():
 def test_semiexperimental_correction_subtracts_vibrational_delta():
     observed = RotationalConstants(1000.0, 800.0, 600.0)
     correction = VibrationalCorrection(1.0, -2.0, 0.5, source="qm")
-    corrected = CorrectedRotationalConstants(observed, correction).equilibrium
+    electronic = ElectronicCorrection(0.25, 0.5, -0.25, source="electronic")
+    corrected = CorrectedRotationalConstants(observed, correction, electronic).equilibrium
 
-    assert corrected.as_tuple() == (999.0, 802.0, 599.5)
+    assert corrected.as_tuple() == (998.75, 801.5, 599.75)
 
 
 def test_semiexperimental_fit_request_validation(tmp_path):
@@ -96,6 +99,7 @@ def test_semiexperimental_observations_csv_roundtrip(tmp_path):
             label="parent",
             constants=RotationalConstants(1000.0, 800.0, 600.0),
             correction=VibrationalCorrection(1.0, 2.0, 3.0, source="gaussian"),
+            electronic_correction=ElectronicCorrection(0.1, 0.2, 0.3, source="rel"),
             weights=RotationalConstants(100.0, 25.0, 4.0),
         ),
         IsotopologueObservation(
@@ -113,12 +117,75 @@ def test_semiexperimental_observations_csv_roundtrip(tmp_path):
     assert loaded[1].substitutions == {1: 13}
     assert loaded[0].weights is not None
     assert loaded[0].weights.as_tuple() == pytest.approx((100.0, 25.0, 4.0))
-    assert rows[0]["A_e_MHz"] == 999.0
+    assert rows[0]["A_e_MHz"] == pytest.approx(998.9)
     assert rows[1]["C_e_MHz"] == 587.5
 
 
+def test_semiexperimental_structured_observations_toml_and_json(tmp_path):
+    toml_path = tmp_path / "isotopologues.toml"
+    toml_path.write_text(
+        """
+[[isotopologues]]
+label = "parent"
+substitutions = ""
+[isotopologues.constants]
+A_MHz = 1000.0
+B_MHz = 800.0
+C_MHz = 600.0
+[isotopologues.vibrational_correction]
+delta_A_MHz = 1.0
+delta_B_MHz = 2.0
+delta_C_MHz = 3.0
+source = "vib"
+[isotopologues.electronic_correction]
+delta_A_MHz = 0.1
+delta_B_MHz = 0.2
+delta_C_MHz = 0.3
+source = "elec"
+[isotopologues.sigma_MHz]
+A_MHz = 0.01
+B_MHz = 0.02
+C_MHz = 0.05
+
+[[isotopologues]]
+label = "D2"
+substitutions = [{ atom = 2, mass = "D" }]
+[isotopologues.constants]
+A_MHz = 900.0
+B_MHz = 700.0
+C_MHz = 500.0
+""",
+        encoding="utf-8",
+    )
+    json_path = tmp_path / "isotopologues.json"
+    json_path.write_text(
+        """
+{
+  "isotopologues": [
+    {
+      "label": "13C1",
+      "substitutions": {"1": 13},
+      "constants": {"A_MHz": 990.0, "B_MHz": 790.0, "C_MHz": 590.0},
+      "vibrational_correction": {"delta_A_MHz": 0.5, "delta_B_MHz": 1.5, "delta_C_MHz": 2.5}
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+
+    toml_obs = read_observations(toml_path)
+    json_obs = read_observations(json_path)
+
+    assert toml_obs[0].corrected.as_tuple() == pytest.approx((998.9, 797.8, 596.7))
+    assert toml_obs[0].weights is not None
+    assert toml_obs[1].substitutions == {2: 2}
+    assert json_obs[0].substitutions == {1: 13}
+    assert json_obs[0].corrected.C_MHz == pytest.approx(587.5)
+
+
 def test_semiexperimental_substitution_parser():
-    assert parse_substitutions("2:13;5:18") == {2: 13, 5: 18}
+    assert parse_substitutions("2:13;5:18;6:D;7:T") == {2: 13, 5: 18, 6: 2, 7: 3}
     with pytest.raises(ValueError):
         parse_substitutions("0:13")
 

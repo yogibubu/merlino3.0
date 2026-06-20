@@ -112,7 +112,7 @@ The CLI mirrors GUI-capable services without requiring Qt:
 python -m merlino init my_project
 python -m merlino gf --fchk calc.fchk --out gf_report.txt
 python -m merlino vci --qff field.qff --max-quanta 3 --roots 6 --csv-dir csv
-python -m merlino semiexp --xyz parent.xyz --observations isotopologues.csv --outdir semiexp_run --observable moments
+python -m merlino semiexp --xyz parent.xyz --observations isotopologues.toml --outdir semiexp_run --observable moments
 python -m merlino gic --workdir working
 python -m merlino gaussian-summary calc.log
 python -m merlino backends

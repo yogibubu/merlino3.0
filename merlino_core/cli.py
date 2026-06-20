@@ -16,7 +16,7 @@ from merlino_semiexp import (
     QMParameterPredicate,
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
-    read_observations_csv,
+    read_observations,
 )
 from merlino_vpt2_vci import (
     QuarticForceField,
@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fit semiexperimental equilibrium geometry with the Cartesian/GIC Merlino standard solver",
     )
     semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
-    semiexp.add_argument("--observations", type=Path, required=True, help="CSV with isotopologue B0 constants and corrections")
+    semiexp.add_argument("--observations", type=Path, required=True, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
     semiexp.add_argument("--max-iter", type=int, default=12, help="Maximum LM iterations; default is conservative for semiexp fits")
@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "semiexp":
         fixed = _parse_fixed_parameters(args.fixed)
-        observations = read_observations_csv(args.observations)
+        observations = read_observations(args.observations)
         request = SemiexperimentalFitRequest(
             initial_geometry=args.xyz,
             observations=observations,

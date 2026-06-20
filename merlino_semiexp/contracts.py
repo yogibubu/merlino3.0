@@ -34,17 +34,32 @@ class VibrationalCorrection:
 
 
 @dataclass(frozen=True)
+class ElectronicCorrection:
+    """Electronic correction Delta B_elec in MHz."""
+
+    delta_A_MHz: float = 0.0
+    delta_B_MHz: float = 0.0
+    delta_C_MHz: float = 0.0
+    source: str = "unspecified"
+
+    def as_tuple(self) -> tuple[float, float, float]:
+        return (self.delta_A_MHz, self.delta_B_MHz, self.delta_C_MHz)
+
+
+@dataclass(frozen=True)
 class CorrectedRotationalConstants:
     """Experimental constants corrected to semiexperimental equilibrium values."""
 
     observed: RotationalConstants
     correction: VibrationalCorrection
+    electronic_correction: ElectronicCorrection = field(default_factory=ElectronicCorrection)
 
     @property
     def equilibrium(self) -> RotationalConstants:
         a, b, c = self.observed.as_tuple()
         da, db, dc = self.correction.as_tuple()
-        return RotationalConstants(a - da, b - db, c - dc)
+        ea, eb, ec = self.electronic_correction.as_tuple()
+        return RotationalConstants(a - da - ea, b - db - eb, c - dc - ec)
 
 
 @dataclass(frozen=True)
@@ -53,11 +68,12 @@ class IsotopologueObservation:
     constants: RotationalConstants
     substitutions: dict[int, int] = field(default_factory=dict)
     correction: VibrationalCorrection = field(default_factory=VibrationalCorrection)
+    electronic_correction: ElectronicCorrection = field(default_factory=ElectronicCorrection)
     weights: RotationalConstants | None = None
 
     @property
     def corrected(self) -> RotationalConstants:
-        return CorrectedRotationalConstants(self.constants, self.correction).equilibrium
+        return CorrectedRotationalConstants(self.constants, self.correction, self.electronic_correction).equilibrium
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ from merlino_core.cli import main as merlino_cli
 from merlino_core.cli import build_parser as merlino_parser
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_gaussian import summarize_gaussian_log
-from merlino_semiexp import IsotopologueObservation, RotationalConstants, write_observations_csv
+from merlino_semiexp import RotationalConstants
 from merlino_gui import discover_manifests
 
 
@@ -179,13 +179,29 @@ def test_merlino_cli_semiexp(tmp_path):
         ["O", "H", "H"],
         [(0.0, 0.0, 0.0), (0.0, 0.0, 0.9572), (0.9266, 0.0, -0.2396)],
     )
-    observations = (
-        IsotopologueObservation("parent", RotationalConstants(*rotational_constants_MHz(target))),
+    constants = RotationalConstants(*rotational_constants_MHz(target))
+    obs_file = tmp_path / "observations.toml"
+    obs_file.write_text(
+        "\n".join(
+            [
+                "[[isotopologues]]",
+                'label = "parent"',
+                "[isotopologues.constants]",
+                f"A_MHz = {constants.A_MHz:.12f}",
+                f"B_MHz = {constants.B_MHz:.12f}",
+                f"C_MHz = {constants.C_MHz:.12f}",
+                "[isotopologues.vibrational_correction]",
+                "delta_A_MHz = 0.0",
+                "delta_B_MHz = 0.0",
+                "delta_C_MHz = 0.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
     )
-    obs_csv = write_observations_csv(tmp_path / "observations.csv", observations)
     outdir = tmp_path / "semiexp"
 
-    assert merlino_cli(["semiexp", "--xyz", str(xyz), "--observations", str(obs_csv), "--outdir", str(outdir)]) == 0
+    assert merlino_cli(["semiexp", "--xyz", str(xyz), "--observations", str(obs_file), "--outdir", str(outdir)]) == 0
 
     assert (outdir / "semiexp_geometry.xyz").exists()
     assert (outdir / "semiexp_parameters.csv").exists()

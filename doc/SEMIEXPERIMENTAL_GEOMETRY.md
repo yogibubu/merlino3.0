@@ -33,7 +33,7 @@ The recommended CLI is:
 ```bash
 python -m merlino semiexp \
   --xyz parent_initial.xyz \
-  --observations isotopologues.csv \
+  --observations isotopologues.toml \
   --outdir semiexp_run \
   --observable moments \
   --rotational-components auto \
@@ -59,7 +59,77 @@ must be made directly in MHz.
 
 ## Input
 
-The XYZ file contains the starting parent geometry in Angstrom.
+The XYZ file contains the starting parent geometry in Angstrom. Isotopologue
+observations can be provided as TOML, JSON or CSV. TOML is the recommended
+human-edited format because it keeps constants, isotope substitutions and
+corrections grouped by isotopologue.
+
+Recommended TOML:
+
+```toml
+[[isotopologues]]
+label = "parent"
+substitutions = ""
+
+[isotopologues.constants]
+A_MHz = 1000.000
+B_MHz = 800.000
+C_MHz = 600.000
+
+[isotopologues.vibrational_correction]
+delta_A_MHz = 1.0
+delta_B_MHz = 2.0
+delta_C_MHz = 3.0
+source = "B3LYP/cc-pVTZ"
+
+[isotopologues.electronic_correction]
+delta_A_MHz = 0.1
+delta_B_MHz = 0.2
+delta_C_MHz = 0.3
+source = "relativistic+BOB"
+
+[isotopologues.sigma_MHz]
+A_MHz = 0.010
+B_MHz = 0.010
+C_MHz = 0.020
+
+[[isotopologues]]
+label = "D2"
+substitutions = [{ atom = 2, mass = 2 }]
+
+[isotopologues.constants]
+A_MHz = 900.000
+B_MHz = 700.000
+C_MHz = 500.000
+```
+
+The same schema can be written as JSON for GUI/script generation:
+
+```json
+{
+  "isotopologues": [
+    {
+      "label": "13C1",
+      "substitutions": {"1": 13},
+      "constants": {"A_MHz": 990.0, "B_MHz": 790.0, "C_MHz": 590.0},
+      "vibrational_correction": {
+        "delta_A_MHz": 0.5,
+        "delta_B_MHz": 1.5,
+        "delta_C_MHz": 2.5,
+        "source": "QM"
+      },
+      "electronic_correction": {
+        "delta_A_MHz": 0.0,
+        "delta_B_MHz": 0.0,
+        "delta_C_MHz": 0.0,
+        "source": "none"
+      }
+    }
+  ]
+}
+```
+
+CSV remains supported for spreadsheets and backward compatibility.
 
 The observation CSV columns are:
 
@@ -68,14 +138,21 @@ label,A_MHz,B_MHz,C_MHz,delta_A_MHz,delta_B_MHz,delta_C_MHz,correction_source,su
 ```
 
 `A_MHz`, `B_MHz` and `C_MHz` are experimental ground-state constants `B0`.
-`delta_*_MHz` are vibrational corrections in the Merlino convention:
+`delta_*_MHz` are vibrational corrections. Optional electronic corrections are
+available in TOML/JSON as `electronic_correction` and in CSV as
+`delta_elec_A_MHz`, `delta_elec_B_MHz`, `delta_elec_C_MHz`,
+`electronic_correction_source`.
+
+Merlino uses the convention:
 
 ```text
-Be = B0 - delta
+Be = B0 - delta_vib - delta_elec
 ```
 
-`substitutions` is a semicolon-separated list of one-based atom substitutions,
-for example `2:13;5:18`. Empty substitutions mean the parent isotopologue.
+`substitutions` uses one-based atom indices. In TOML/JSON it can be a mapping,
+a list of `{atom, mass}` records, or the compact string used by CSV. `D` and
+`T` are accepted aliases for masses 2 and 3. Empty substitutions mean the
+parent isotopologue.
 
 Optional columns `sigma_A_MHz`, `sigma_B_MHz` and `sigma_C_MHz` provide
 experimental uncertainties. When present, Merlino uses inverse-variance weights
