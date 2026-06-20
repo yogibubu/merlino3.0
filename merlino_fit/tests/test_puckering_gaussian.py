@@ -7,6 +7,7 @@ from survibfit.puckering_gaussian import (
     canonical_ring_indices,
     four_ring_target_gic,
     parse_ring_indices,
+    prelog_canonical_ring_indices,
     puckering_state,
     ring_puckering_gic_lines,
 )
@@ -20,6 +21,13 @@ def test_ring_numbering_is_canonical_under_rotation_and_reversal():
     assert canonical_ring_indices([2, 3, 4, 0, 1]) == [0, 1, 2, 3, 4]
     assert canonical_ring_indices([3, 2, 1, 0, 4]) == [0, 1, 2, 3, 4]
     assert ring_puckering_gic_lines([2, 3, 4, 0, 1]) == ring_puckering_gic_lines([3, 2, 1, 0, 4])
+
+
+def test_ring_numbering_starts_from_prelog_priority():
+    ring = [1, 2, 3, 4, 0]
+    atomic_numbers = [6, 6, 6, 8, 6]
+    assert prelog_canonical_ring_indices(ring, atomic_numbers) == [3, 2, 1, 0, 4]
+    assert prelog_canonical_ring_indices(list(reversed(ring)), atomic_numbers) == [3, 2, 1, 0, 4]
 
 
 def test_five_ring_gic_contains_q_and_phi():
@@ -65,6 +73,23 @@ def test_auto_ring_indices_detects_five_membered_ring():
     )
     atoms = ["O", "C", "C", "C", "C"]
     assert auto_ring_indices(atoms, coords) == [0, 1, 2, 3, 4]
+
+
+def test_build_gjf_links_uses_prelog_atom_order():
+    coords = np.array(
+        [
+            [0.30901699, -0.95105652, -0.09],
+            [1.0, 0.0, 0.15],
+            [0.30901699, 0.95105652, -0.10],
+            [-0.80901699, 0.58778525, 0.12],
+            [-0.80901699, -0.58778525, -0.08],
+        ],
+        dtype=float,
+    )
+    atoms = ["C", "C", "C", "O", "C"]
+    lines, _manifest = build_gjf_links(atoms, coords, [1, 2, 3, 4, 0], 0.0, 0.0, 10.0)
+    text = "\n".join(lines)
+    assert "T001(Inactive)=D(4,3,2,1)" in text
 
 
 def test_four_ring_gic_contains_q_and_phi():

@@ -56,12 +56,45 @@ def parse_ring_indices(text: str, natoms: int) -> list[int]:
     return canonical_ring_indices(indices)
 
 
-def canonical_ring_indices(ring_indices: list[int]) -> list[int]:
-    """Return the Merlino canonical cyclic numbering for a ring.
+def _ring_atom_priority(
+    atom_index: int,
+    ring_set: set[int],
+    atomic_numbers: list[int] | None,
+    adjacency: list[set[int]] | None,
+) -> tuple[float, ...]:
+    if atomic_numbers is None:
+        z_atom = 0
+        degree = 0
+        exocyclic: list[int] = []
+    else:
+        z_atom = int(atomic_numbers[atom_index])
+        neighbours = adjacency[atom_index] if adjacency is not None else set()
+        degree = len(neighbours)
+        exocyclic = sorted(
+            (int(atomic_numbers[nbr]) for nbr in neighbours if nbr not in ring_set),
+            reverse=True,
+        )
+    # CIP/Prelog priority starts from atomic number.  The input atom index is
+    # only the final deterministic tie-break for topologically equivalent atoms.
+    return (
+        float(z_atom),
+        float(degree),
+        *[float(value) for value in exocyclic],
+        float(-atom_index),
+    )
 
-    The first atom is the lowest input atom index.  The direction is chosen so
-    the second atom is the lower of the two cyclic neighbours.  This removes
-    arbitrary DFS/RDKit traversal choices while preserving the ring topology.
+
+def prelog_canonical_ring_indices(
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> list[int]:
+    """Return a deterministic Prelog-first cyclic numbering for a ring.
+
+    All rotations and both cyclic directions are compared lexicographically by
+    local CIP/Prelog-like atom priorities.  Atomic number is primary; local
+    graph degree and exocyclic substituent atomic numbers refine the choice when
+    topology is available; the input atom index is only a final tie-break.
     """
     indices = list(ring_indices)
     if len(indices) < 4:
@@ -69,14 +102,33 @@ def canonical_ring_indices(ring_indices: list[int]) -> list[int]:
     if len(set(indices)) != len(indices):
         raise ValueError("A canonical ring cannot contain duplicated atoms")
     n = len(indices)
-    start = min(range(n), key=lambda i: indices[i])
-    forward = [indices[(start + i) % n] for i in range(n)]
-    backward = [indices[(start - i) % n] for i in range(n)]
-    return forward if forward[1] <= backward[1] else backward
+    ring_set = set(indices)
+
+    def candidate_key(candidate: list[int]) -> tuple[tuple[float, ...], ...]:
+        return tuple(_ring_atom_priority(atom, ring_set, atomic_numbers, adjacency) for atom in candidate)
+
+    candidates: list[list[int]] = []
+    for start in range(n):
+        candidates.append([indices[(start + i) % n] for i in range(n)])
+        candidates.append([indices[(start - i) % n] for i in range(n)])
+    return max(candidates, key=candidate_key)
 
 
-def ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -> np.ndarray:
-    ring_indices = canonical_ring_indices(ring_indices)
+def canonical_ring_indices(
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> list[int]:
+    return prelog_canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
+
+
+def ring_endocyclic_torsions(
+    coords: np.ndarray,
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> np.ndarray:
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     ring = coords[ring_indices]
     size = len(ring_indices)
     return np.array(
@@ -91,8 +143,13 @@ def five_ring_endocyclic_torsions(coords: np.ndarray, ring_indices: list[int]) -
     return ring_endocyclic_torsions(coords, ring_indices)
 
 
-def four_ring_pucker_torsion(coords: np.ndarray, ring_indices: list[int]) -> float:
-    ring_indices = canonical_ring_indices(ring_indices)
+def four_ring_pucker_torsion(
+    coords: np.ndarray,
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> float:
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     ring = coords[ring_indices]
     return dihedral(ring[1], ring[2], ring[3], ring[0])
 
@@ -120,11 +177,16 @@ def five_ring_component_coefficients() -> tuple[np.ndarray, np.ndarray]:
     return ring_component_coefficients(5, 2)
 
 
-def ring_state(coords: np.ndarray, ring_indices: list[int]) -> PuckeringState:
+def ring_state(
+    coords: np.ndarray,
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> PuckeringState:
     if len(ring_indices) == 4:
-        return four_ring_state(coords, ring_indices)
+        return four_ring_state(coords, ring_indices, atomic_numbers, adjacency)
 
-    torsions = ring_endocyclic_torsions(coords, ring_indices)
+    torsions = ring_endocyclic_torsions(coords, ring_indices, atomic_numbers, adjacency)
     modes: list[PuckeringMode] = []
     for harmonic in ring_puckering_harmonics(len(ring_indices)):
         qc_coeff, qs_coeff = ring_component_coefficients(len(ring_indices), harmonic)
@@ -152,16 +214,26 @@ def five_ring_state(coords: np.ndarray, ring_indices: list[int]) -> PuckeringSta
     return PuckeringState(qc=qc, qs=qs, q=q, phi_deg=phi_deg, modes=(mode,))
 
 
-def four_ring_state(coords: np.ndarray, ring_indices: list[int]) -> PuckeringState:
-    puck = four_ring_pucker_torsion(coords, ring_indices)
+def four_ring_state(
+    coords: np.ndarray,
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> PuckeringState:
+    puck = four_ring_pucker_torsion(coords, ring_indices, atomic_numbers, adjacency)
     mode = PuckeringMode(harmonic=0, qc=puck, qs=0.0, q=abs(puck), phi_deg=math.degrees(puck))
     return PuckeringState(qc=puck, qs=0.0, q=abs(puck), phi_deg=math.degrees(puck), modes=(mode,))
 
 
-def puckering_state(coords: np.ndarray, ring_indices: list[int]) -> PuckeringState:
+def puckering_state(
+    coords: np.ndarray,
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> PuckeringState:
     if len(ring_indices) == 4:
-        return four_ring_state(coords, ring_indices)
-    return ring_state(coords, ring_indices)
+        return four_ring_state(coords, ring_indices, atomic_numbers, adjacency)
+    return ring_state(coords, ring_indices, atomic_numbers, adjacency)
 
 
 def phase_constraint_coefficients(phi_deg: float, ring_size: int = 5, harmonic: int = 2) -> np.ndarray:
@@ -182,8 +254,12 @@ def gic_linear_expression(coefficients: np.ndarray, names: list[str]) -> str:
     return "".join(terms) if terms else "0.0"
 
 
-def ring_gic_torsion_lines(ring_indices: list[int]) -> tuple[list[str], list[str]]:
-    ring_indices = canonical_ring_indices(ring_indices)
+def ring_gic_torsion_lines(
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> tuple[list[str], list[str]]:
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     atom = [index + 1 for index in ring_indices]
     size = len(atom)
     names = [f"T{i + 1:03d}" for i in range(size)]
@@ -200,10 +276,14 @@ def five_ring_gic_torsion_lines(ring_indices: list[int]) -> tuple[list[str], lis
     return ring_gic_torsion_lines(ring_indices)
 
 
-def ring_puckering_component_lines(ring_indices: list[int]) -> tuple[list[str], list[tuple[str, str, str, int]]]:
-    ring_indices = canonical_ring_indices(ring_indices)
+def ring_puckering_component_lines(
+    ring_indices: list[int],
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> tuple[list[str], list[tuple[str, str, str, int]]]:
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     ring_size = len(ring_indices)
-    torsion_lines, torsion_names = ring_gic_torsion_lines(ring_indices)
+    torsion_lines, torsion_names = ring_gic_torsion_lines(ring_indices, atomic_numbers, adjacency)
     lines = list(torsion_lines)
     modes: list[tuple[str, str, str, int]] = []
     rpck_index = 1
@@ -249,11 +329,13 @@ def ring_functional_target_gic(
     ring_indices: list[int],
     target_phi_deg: float,
     current_phi_deg: float,
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
 ) -> tuple[list[str], float]:
-    ring_indices = canonical_ring_indices(ring_indices)
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     if len(ring_indices) == 4:
-        return four_ring_target_gic(ring_indices, target_phi_deg, current_phi_deg)
-    component_lines, modes = ring_puckering_component_lines(ring_indices)
+        return four_ring_target_gic(ring_indices, target_phi_deg, current_phi_deg, atomic_numbers, adjacency)
+    component_lines, modes = ring_puckering_component_lines(ring_indices, atomic_numbers, adjacency)
     step_deg = angular_step_to_target(target_phi_deg, current_phi_deg)
     step_rad = math.radians(step_deg)
     lines = list(component_lines)
@@ -276,13 +358,18 @@ def five_ring_functional_target_gic(
     return ring_functional_target_gic(ring_indices, target_phi_deg, current_phi_deg)
 
 
-def ring_scan_to_zero_gic(ring_indices: list[int], target_phi_deg: float) -> list[str]:
-    ring_indices = canonical_ring_indices(ring_indices)
+def ring_scan_to_zero_gic(
+    ring_indices: list[int],
+    target_phi_deg: float,
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
+) -> list[str]:
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     if len(ring_indices) == 4:
         raise ValueError("scan-to-zero requires a paired puckering mode")
-    component_lines, modes = ring_puckering_component_lines(ring_indices)
+    component_lines, modes = ring_puckering_component_lines(ring_indices, atomic_numbers, adjacency)
     _q_name, _phi_name, rpck_c, rpck_s, harmonic = modes[0]
-    _torsion_lines, names = ring_gic_torsion_lines(ring_indices)
+    _torsion_lines, names = ring_gic_torsion_lines(ring_indices, atomic_numbers, adjacency)
     phase_coeff = phase_constraint_coefficients(target_phi_deg, len(ring_indices), harmonic)
     phi_label = f"{int(round(target_phi_deg * 1000.0)):06d}"
     lines = list(component_lines)
@@ -303,8 +390,10 @@ def four_ring_target_gic(
     ring_indices: list[int],
     target_deg: float,
     current_deg: float,
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
 ) -> tuple[list[str], float]:
-    ring_indices = canonical_ring_indices(ring_indices)
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     atom = [index + 1 for index in ring_indices]
     step_deg = target_deg - current_deg
     step_rad = math.radians(step_deg)
@@ -351,19 +440,28 @@ def build_gjf_links(
     title: str = "Puckering constrained optimization",
     route: str = DEFAULT_GAUSSIAN_ROUTE,
     constraint_mode: str = "functional-targets",
+    atomic_numbers: list[int] | None = None,
+    adjacency: list[set[int]] | None = None,
 ) -> tuple[list[str], list[dict[str, float]]]:
+    if atomic_numbers is None:
+        try:
+            atomic_number = _load_atomic_number_lookup()
+            atomic_numbers = [atomic_number(atom) for atom in atoms]
+        except Exception:
+            atomic_numbers = None
+    ring_indices = canonical_ring_indices(ring_indices, atomic_numbers, adjacency)
     phis = phi_values(phi_start, phi_end, phi_step)
-    state = puckering_state(coords_angstrom, ring_indices)
+    state = puckering_state(coords_angstrom, ring_indices, atomic_numbers, adjacency)
 
     lines: list[str] = []
     manifest: list[dict[str, float]] = []
     for i, phi in enumerate(phis):
         if constraint_mode == "functional-targets":
             gic_lines, step_deg = ring_functional_target_gic(
-                ring_indices, float(phi), state.phi_deg
+                ring_indices, float(phi), state.phi_deg, atomic_numbers, adjacency
             )
         elif constraint_mode == "scan-to-zero":
-            gic_lines = ring_scan_to_zero_gic(ring_indices, float(phi))
+            gic_lines = ring_scan_to_zero_gic(ring_indices, float(phi), atomic_numbers, adjacency)
             step_deg = angular_step_to_target(float(phi), state.phi_deg)
         else:
             raise ValueError("Supported constraint modes are functional-targets or scan-to-zero")
@@ -397,15 +495,31 @@ def build_gjf_links(
     return lines, manifest
 
 
-def auto_ring_indices(atoms: list[str], coords_angstrom: np.ndarray) -> list[int]:
-    from .pipeline import _load_topology_elements, build_topology
+def _load_atomic_number_lookup():
+    from .pipeline import _load_topology_elements
 
-    atomic_number = _load_topology_elements()
+    return _load_topology_elements()
+
+
+def _topology_for_atoms(atoms: list[str], coords_angstrom: np.ndarray):
+    from .pipeline import build_topology
+
+    atomic_number = _load_atomic_number_lookup()
     z_numbers = [atomic_number(atom) for atom in atoms]
-    _cg, _dg, ringset = build_topology(coords_angstrom / 0.52917721092, z_numbers)
+    _cg, dg, ringset = build_topology(coords_angstrom / 0.52917721092, z_numbers)
+    adjacency = [set(dg.adjacency[i]) for i in range(dg.natoms)]
+    return z_numbers, adjacency, ringset
+
+
+def auto_ring_indices(atoms: list[str], coords_angstrom: np.ndarray) -> list[int]:
+    z_numbers, adjacency, ringset = _topology_for_atoms(atoms, coords_angstrom)
     if ringset is None:
         raise ValueError("No rings detected in molecular geometry")
-    candidates = [canonical_ring_indices(list(ring.atoms)) for ring in ringset if len(ring.atoms) >= 4]
+    candidates = [
+        canonical_ring_indices(list(ring.atoms), z_numbers, adjacency)
+        for ring in ringset
+        if len(ring.atoms) >= 4
+    ]
     if not candidates:
         raise ValueError("No ring with at least 4 atoms detected in molecular geometry")
     candidates.sort(key=lambda ring: (len(ring), ring))
@@ -430,7 +544,18 @@ def write_gaussian_scan_from_xyz(
     constraint_mode: str = "functional-targets",
 ) -> list[dict[str, float]]:
     atoms, coords_angstrom, _ = read_xyz(Path(xyz_path))
-    ring_indices = parse_ring_indices(ring_text, len(atoms)) if ring_text else auto_ring_indices(atoms, coords_angstrom)
+    z_numbers, adjacency, _ringset = _topology_for_atoms(atoms, coords_angstrom)
+    if ring_text:
+        raw_ring_indices = [int(item.strip()) - 1 for item in ring_text.split(",") if item.strip()]
+        if len(raw_ring_indices) < 4:
+            raise ValueError("--ring must contain at least 4 comma-separated one-based atom indices")
+        if min(raw_ring_indices) < 0 or max(raw_ring_indices) >= len(atoms):
+            raise ValueError("--ring contains an atom index outside the molecular geometry")
+        if len(set(raw_ring_indices)) != len(raw_ring_indices):
+            raise ValueError("--ring contains duplicated atom indices")
+        ring_indices = canonical_ring_indices(raw_ring_indices, z_numbers, adjacency)
+    else:
+        ring_indices = auto_ring_indices(atoms, coords_angstrom)
     lines, manifest = build_gjf_links(
         atoms,
         coords_angstrom,
@@ -446,6 +571,8 @@ def write_gaussian_scan_from_xyz(
         title=title,
         route=route,
         constraint_mode=constraint_mode,
+        atomic_numbers=z_numbers,
+        adjacency=adjacency,
     )
     Path(gjf_out).write_text("\n".join(lines) + "\n")
     return manifest

@@ -24,9 +24,10 @@ C find cycles
       If(IPrint.gt.0) write(IOut,'(/,'' The Molecule has'',I3,
      $  '' Cycles'')')NCyc
 C Set canonical atom numbering.
-C Merlino convention: cyclic order starts from the lowest input atom
-C index and follows the direction selected by the ring canonicalizer.
-C Ring-puckering GICs generated later by CyGND use this order.
+C Merlino convention: cyclic order starts from the Prelog/CIP priority
+C implied by atom type and local connectivity; the input atom index is
+C only the final tie-break. Ring-puckering GICs generated later by
+C CyGND use this order.
 C Do not call SymCyc here: a symmetry-based shift changes the phase
 C origin and would make the Fortran and Python QPck/PhiP conventions
 C diverge for otherwise identical rings.
@@ -37,7 +38,7 @@ C diverge for otherwise identical rings.
      $   (ICAt(i,ICyc),i=1,NAtC(ICyc))
        ReNumb=.true.
        call CanCyc(IOut,IPrint,ReNumb,MxBnd,MxAtCy,NAtC(ICyc),
-     $   ICAt(1,ICyc),NBond,IBond)
+     $   ICAt(1,ICyc),NBond,IBond,EAN)
        if(ReNumb.and.IPrint.gt.0) write(IOut,'('' Canonical'',
      $   '' Numbering'',10I5)') (ICAt(i,ICyc),i=1,NAtC(ICyc))
    10 continue
@@ -433,43 +434,172 @@ C
       End
 *Deck CanCyc
       Subroutine CanCyc(IOut,IPrint,ReNumb,MxBnd,MxAtCy,NAtC,ICAt,
-     $  NBond,IBond)
-      Implicit Integer (A-Z)
-      Logical Found,ReNumb
-C IO  
-      Dimension ICAt(*),NBond(*),IBond(MxBnd,*)
+     $  NBond,IBond,EAN)
+      Implicit None
+      Integer IOut,IPrint,MxBnd,MxAtCy,NAtC
+      Integer ICAt(*),NBond(*),IBond(MxBnd,*)
+      Real*8 EAN(*)
+      Logical ReNumb
 C Local
-      Dimension ICAtOK(MxAtCy)
-C      
+      Integer ICAtOK(MxAtCy),IBest(MxAtCy),ICand(MxAtCy)
+      Integer I,II,KK,J,KAt,JAt,Kkii,ICK,IC3K
+      Integer IAt,I1,I2,IM,Ini,IEnd,IStart,IDir,IP,Idx
+      Integer NBest,IBetter
+      Logical BetterCyc
+      Integer IrMin1
+C
+C First rebuild a connected cyclic traversal from the detected cycle.
       call IMove(NAtC,ICAt,ICAtOK)
       IAt=IrMin1(ICAtOK,NAtC,.True.,IM)
       I1=ICAtOK(1)
       I2=ICAtOK(IM)
-      ICAtOk(1)=I2
+      ICAtOK(1)=I2
       ICAtOK(IM)=I1
-      IOk=1
-      ini=1
-      iend=NAtC-1
-      do 40 ii=ini,iend
+      Ini=1
+      IEnd=NAtC-1
+      do 40 II=Ini,IEnd
        IAt=ICAtOK(II)
-       do 50 kk=ini+1,iend+1
-        KAt=ICAtOK(kk)
-        do 60 j=1,NBond(KAt)
-         JAt=IBond(j,KAt)
-         If(JAt.eq.IAt) kkii=kk
+       Kkii=II+1
+       do 50 KK=Ini+1,IEnd+1
+        KAt=ICAtOK(KK)
+        do 60 J=1,NBond(KAt)
+         JAt=IBond(J,KAt)
+         If(JAt.eq.IAt) Kkii=KK
    60   continue
    50  continue
-       ICK=ICAtOK(kkii)
-       IC3K=ICAtOK(ii+1)
-       ICAtOK(ii+1)=ICK
-       ICAtOK(kkii)=IC3K
+       ICK=ICAtOK(Kkii)
+       IC3K=ICAtOK(II+1)
+       ICAtOK(II+1)=ICK
+       ICAtOK(Kkii)=IC3K
    40 continue
-      if(ReNumb) then 
-       call IMove(NAtC,ICAtOK,ICAt)
+C
+C Then select the Prelog-first rotation and direction.  Atomic number
+C is primary, local degree is secondary, and input atom index is only
+C the final deterministic tie-break.  This mirrors the Python generator.
+      NBest=0
+      do 100 IStart=1,NAtC
+       do 110 IDir=1,2
+        do 120 IP=1,NAtC
+         if(IDir.eq.1) then
+          Idx=IStart+IP-1
+          if(Idx.gt.NAtC) Idx=Idx-NAtC
+         else
+          Idx=IStart-IP+1
+          if(Idx.lt.1) Idx=Idx+NAtC
+         endif
+         ICand(IP)=ICAtOK(Idx)
+  120   continue
+        if(NBest.eq.0) then
+         call IMove(NAtC,ICand,IBest)
+         NBest=1
+        else
+         if(BetterCyc(NAtC,ICand,IBest,NBond,IBond,MxBnd,EAN))
+     $    then
+          call IMove(NAtC,ICand,IBest)
+         endif
+        endif
+  110  continue
+  100 continue
+      if(ReNumb) then
+       call IMove(NAtC,IBest,ICAt)
       else
-       write(IOut,'('' CanCyc: Canonical Numbering'',10I5)')(ICAtOK(i),
-     $   i=1,NAtC)
+       write(IOut,'('' CanCyc: Prelog Numbering'',10I5)')
+     $   (IBest(I),I=1,NAtC)
       endif
+      return
+      end
+*Deck BetterCyc
+      Logical Function BetterCyc(NAtC,ICand,IBest,NBond,IBond,
+     $ MxBnd,EAN)
+      Implicit None
+      Integer NAtC,ICand(*),IBest(*),NBond(*),MxBnd
+      Integer IBond(MxBnd,*)
+      Real*8 EAN(*)
+      Integer I,IA,IB,K,KMax
+      Real*8 Diff,ZA,ZB,ExoZ
+      BetterCyc=.False.
+      do 10 I=1,NAtC
+       IA=ICand(I)
+       IB=IBest(I)
+       Diff=EAN(IA)-EAN(IB)
+       if(Diff.gt.1.0D-8) then
+        BetterCyc=.True.
+        return
+       elseif(Diff.lt.-1.0D-8) then
+        return
+       endif
+       if(NBond(IA).gt.NBond(IB)) then
+        BetterCyc=.True.
+        return
+       elseif(NBond(IA).lt.NBond(IB)) then
+        return
+       endif
+       KMax=NBond(IA)
+       if(NBond(IB).gt.KMax) KMax=NBond(IB)
+       do 20 K=1,KMax
+        ZA=ExoZ(IA,K,NAtC,ICand,NBond,IBond,MxBnd,EAN)
+        ZB=ExoZ(IB,K,NAtC,IBest,NBond,IBond,MxBnd,EAN)
+        Diff=ZA-ZB
+        if(Diff.gt.1.0D-8) then
+         BetterCyc=.True.
+         return
+        elseif(Diff.lt.-1.0D-8) then
+         return
+        endif
+   20  continue
+       if(IA.lt.IB) then
+        BetterCyc=.True.
+        return
+       elseif(IA.gt.IB) then
+        return
+       endif
+   10 continue
+      return
+      end
+*Deck ExoZ
+      Real*8 Function ExoZ(IAt,KOrd,NAtC,IRing,NBond,IBond,
+     $ MxBnd,EAN)
+      Implicit None
+      Integer IAt,KOrd,NAtC,IRing(*),NBond(*),MxBnd
+      Integer IBond(MxBnd,*)
+      Real*8 EAN(*),ZL(20),ZT
+      Integer I,J,N,KAt
+      Logical InRing
+      ExoZ=-1.0D0
+      N=0
+      do 10 I=1,NBond(IAt)
+       KAt=IBond(I,IAt)
+       if(.not.InRing(KAt,NAtC,IRing)) then
+        if(N.lt.20) then
+         N=N+1
+         ZL(N)=EAN(KAt)
+        endif
+       endif
+   10 continue
+      if(N.lt.KOrd) return
+      do 20 I=1,N-1
+       do 30 J=I+1,N
+        if(ZL(J).gt.ZL(I)) then
+         ZT=ZL(I)
+         ZL(I)=ZL(J)
+         ZL(J)=ZT
+        endif
+   30  continue
+   20 continue
+      ExoZ=ZL(KOrd)
+      return
+      end
+*Deck InRing
+      Logical Function InRing(IAt,NAtC,IRing)
+      Implicit None
+      Integer IAt,NAtC,IRing(*),I
+      InRing=.False.
+      do 10 I=1,NAtC
+       if(IRing(I).eq.IAt) then
+        InRing=.True.
+        return
+       endif
+   10 continue
       return
       end
 *Deck TstCyc

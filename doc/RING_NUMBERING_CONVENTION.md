@@ -3,25 +3,30 @@
 Merlino uses a deterministic cyclic numbering before building ring-puckering
 GICs.
 
-## Canonical Rule
+## Prelog-First Canonical Rule
 
 For every detected ring:
 
 1. Keep only a cyclic sequence of bonded ring atoms.
-2. Rotate the sequence so the lowest input atom index is first.
-3. Choose the direction so the second atom is the lower of the two neighbours
-   of the first atom.
+2. Choose the starting atom from local Prelog/CIP priority. Atomic number is
+   primary; local connectivity and exocyclic substituents refine the ordering
+   when the molecular graph is available.
+3. Choose the direction by comparing the two cyclic paths from that atom with
+   the same priority rule.
+4. Use the input atom index only as the final deterministic tie-break for truly
+   equivalent atoms.
 
 Example:
 
 ```text
-3 4 5 1 2  ->  1 2 3 4 5
-4 3 2 1 5  ->  1 2 3 4 5
+C C C O C  ->  O C C C C
+3 4 5 1 2  ->  Prelog start, then deterministic cyclic direction
 ```
 
-This removes arbitrary DFS/RDKit traversal choices. For perfectly symmetric
-rings, the absolute phase origin remains conventional; this rule fixes that
-origin reproducibly from the input atom numbering.
+This removes arbitrary DFS/RDKit traversal choices while keeping the chemically
+meaningful Prelog origin. For perfectly symmetric rings, the absolute phase
+origin remains conventional; the final input-index tie-break fixes that origin
+reproducibly.
 
 ## Python
 
@@ -38,7 +43,8 @@ The DVR Cremer-Pople labeling uses the same canonical sequence.
 
 The Fortran `prova` path already canonicalizes cycles in `mkcyc.f`:
 
-- `CanCyc` rotates the cycle to the canonical atom order.
+- `CanCyc` rebuilds a bonded cycle and then applies the same Prelog-first
+  rotation/direction rule used by Python.
 - `SymCyc` is intentionally not applied before the ring-puckering GIC build,
   because a symmetry-based shift would change the phase origin.
 - `CyGND` builds ring puckering dihedrals from the canonical cycle.
