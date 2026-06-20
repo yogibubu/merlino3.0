@@ -120,13 +120,16 @@ def group_label(elements, linear=False):
         lab in sigma_v_labels for lab in labels
     )
     c2_axes = set()
+    explicit_c2_axes = set()
     for lab in labels:
         m = re.match(r"C2([xyz])\^", lab)
         if m:
             c2_axes.add(m.group(1))
+            explicit_c2_axes.add(m.group(1))
         if lab.startswith("C2_xy"):
             c2_axes.add("xy")
     has_c2_perp = any(ax != axis for ax in c2_axes)
+    has_explicit_c2_perp = any(ax != axis for ax in explicit_c2_axes)
 
     if linear and not has_poly:
         return "Dinfh" if has_i else "Cinfv"
@@ -151,7 +154,7 @@ def group_label(elements, linear=False):
         return f"S{snmax}"
 
     if nmax >= 2:
-        if has_sigma_h and has_c2_perp:
+        if has_sigma_h and has_explicit_c2_perp:
             return f"D{nmax}h"
         if has_sigma_h:
             return f"C{nmax}h"

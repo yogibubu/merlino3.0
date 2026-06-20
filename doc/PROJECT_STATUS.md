@@ -3,7 +3,7 @@ PROJECT STATUS — Merlino 3.0
 
 Stato attuale (checkpoint)
 --------------------------
-Data: 2026-03-24
+Data: 2026-06-20
 
 Obiettivo attuale
 -----------------
@@ -11,6 +11,7 @@ Rimettere sotto controllo il repository mentre prosegue lo sviluppo attivo su tr
 - GUI e pipeline Gaussian/DOS/Q(T)
 - fragment pipeline + delta correction PCS2/HPCS2
 - compatibilità futura con la nuova linea vibro-rotazionale `CeDiTT + alpha_resonances`
+- coordinate di puckering non ridondanti per Gaussian e post-processing DVR
 
 Situazione corrente
 -------------------
@@ -52,6 +53,14 @@ Bridge DeltaVib / alpha:
 - supporta inversione del segno `alpha` per frequenze immaginarie e scrittura di `ΔVib` in `xyzin`
 - questo blocco va inteso come bridge temporaneo verso la linea principale `CeDiTT + alpha_resonances`
 
+Puckering Gaussian/DVR:
+- generazione GIC di anello con `RPck....` inattive e coordinate attive
+  `QPck....`/`PhiP....`
+- implementazione parallela Python e Fortran per il blocco Gaussian GIC
+- copia runtime del workflow DVR in `puckering_dvr/`
+- pannello GUI Advanced `Puckering DVR – Gaussian scan analysis` collegato al
+  backend `puckering_dvr/scripts/mw_path_dvr.py`
+
 Verifiche minime fatte
 ---------------------
 - `python -m pytest tests/test_fragment_delta_correction.py` -> `4 passed`
@@ -77,16 +86,27 @@ Documenti di triage
 
 Come riprendere
 ---------------
-1) Se serve, attivare l'ambiente: `source ~/.bashrc && merlino-set`
-2) Avviare GUI: `python3 /Users/vincenzobarone/merlino3.0/manager.py`
-3) Per il blocco delta correction:
+1) Attivare l'ambiente Merlino: `source ~/.bashrc && merlino-set`
+   - default conda: `MERLINO_CONDA_ENV=merlino_26`
+2) Verificare il runtime GUI/SMILES: `merlino-run-check`
+   - il check deve trovare almeno `PySide6`, `PIL`, `rdkit`, `numpy`,
+     `scipy` e `matplotlib`
+   - se mancano dipendenze GUI nell'ambiente attivo: `merlino-install-gui-deps`
+3) Avviare GUI: `merlino-run`
+   - equivalente manuale: `python /Users/vincenzobarone/merlino3.0/app.py`
+4) Per il blocco delta correction:
    - generare `fragment_pipeline.json`
    - usare `prepare-hpcs2` o `prepare`
    - applicare la correzione con `apply`
-4) Per il bridge `ΔVib/alpha`:
+5) Per il bridge `ΔVib/alpha`:
    - caricare un Gaussian log con matrice vibro-rotazionale `alpha`
    - usare il dialog dedicato dal pannello input solo come integrazione locale provvisoria
    - considerare `CeDiTT + alpha_resonances` come sorgente scientifica primaria del metodo
+6) Per il flusso puckering:
+   - generare l'input Gaussian dalla GUI Advanced o dal backend Python/Fortran
+   - eseguire Gaussian sullo scan `QPck/PhiP`
+   - usare il pannello `Puckering DVR – Gaussian scan analysis` per leggere il
+     log e produrre livelli, profili e figure DVR
 
 Da sistemare dopo
 -----------------

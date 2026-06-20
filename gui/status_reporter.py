@@ -11,16 +11,16 @@ class StatusReporter:
     def update_status_label(
         self,
         label,
-        input_type,
-        source,
-        representation,
-        vib_q,
-        rovib_q,
-        dos_emin,
-        dos_emax,
-        dos_bin,
-        dos_T,
-        error,
+        input_type=None,
+        source=None,
+        representation=None,
+        vib_q=None,
+        rovib_q=None,
+        dos_emin=0.0,
+        dos_emax=0.0,
+        dos_bin=0.0,
+        dos_T=0.0,
+        error=None,
     ):
         parts = []
         parts.append(f"Input: {input_type or 'unknown'}")
@@ -62,18 +62,18 @@ class StatusReporter:
 
     def write_summary(
         self,
-        input_type,
-        source,
-        representation,
-        dos_emin,
-        dos_emax,
-        dos_bin,
-        dos_vmax,
-        dos_ncap,
-        dos_T,
-        vib_q,
-        rovib_q,
-        error,
+        input_type=None,
+        source=None,
+        representation=None,
+        dos_emin=0.0,
+        dos_emax=0.0,
+        dos_bin=0.0,
+        dos_vmax=None,
+        dos_ncap=None,
+        dos_T=0.0,
+        vib_q=None,
+        rovib_q=None,
+        error=None,
     ):
         try:
             lines = []

@@ -21,6 +21,7 @@ merlino3.0/
 ├─ gui/
 ├─ geometry/
 ├─ merlino_fit/
+├─ puckering_dvr/
 ├─ projects/
 │ ├─ se_library/
 │ ├─ pcs2_library/
@@ -35,6 +36,8 @@ Le aree operative principali sono:
 - `gui/` per l'interfaccia e i workflow utente
 - `geometry/` per pipeline rotazionali, vibrazionali e termochimiche
 - `merlino_fit/` per similarity, fragment pipeline e delta correction
+- `puckering_dvr/` per il post-processing DVR dei log Gaussian lungo coordinate
+  di puckering
 - `working/` come workspace runtime
 
 ---
@@ -108,6 +111,15 @@ Nota di architettura:
 - questa non è più la linea scientifica principale per il problema vibro-rotazionale
 - il lavoro principale vive nella nuova linea `CeDiTT + alpha_resonances`
 - in `Merlino 3.0` il blocco `DeltaVib/alpha` va mantenuto come ponte di compatibilità applicativa
+
+### Puckering Gaussian/DVR
+- La GUI Advanced genera input Gaussian con coordinate GIC di anello.
+- Le coordinate `RPck....` sono inattive; `QPck....` e `PhiP....` sono le
+  coordinate effettivamente usate nello scan/ottimizzazione Gaussian.
+- Dopo Gaussian, il pannello Advanced `Puckering DVR – Gaussian scan analysis`
+  legge il log e avvia `puckering_dvr/scripts/mw_path_dvr.py`.
+- Il backend DVR usa la distanza cartesiana mass-weighted lungo il percorso
+  ottimizzato e può etichettare il path con quantità Cremer-Pople-like.
 
 ---
 

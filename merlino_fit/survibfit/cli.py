@@ -27,6 +27,10 @@ from .vibrational_internal import modes_from_gaussian_log
 from .modify_geom import read_xyz
 from .pipeline import _load_topology_elements
 from .transforms import build_u_with_names, format_readgic_lines
+from .puckering_gaussian import (
+    DEFAULT_GAUSSIAN_ROUTE,
+    write_gaussian_scan_from_xyz,
+)
 
 
 def build_basis_cfg(cfg: configparser.ConfigParser, nvib: int):
@@ -285,6 +289,28 @@ def _gic_main(args):
     Path(args.out).write_text("\n".join(lines) + "\n")
 
 
+def _pucker_gaussian_main(args):
+    manifest = write_gaussian_scan_from_xyz(
+        Path(args.xyz),
+        args.ring,
+        Path(args.gjf_out),
+        phi_start=args.phi_start,
+        phi_end=args.phi_end,
+        phi_step=args.phi_step,
+        charge=args.charge,
+        multiplicity=args.multiplicity,
+        mem=args.mem,
+        nproc=args.nproc,
+        chk_prefix=args.chk_prefix,
+        title=args.title,
+        route=args.route,
+        constraint_mode=args.constraint_mode,
+    )
+    if args.manifest_out:
+        import json
+        Path(args.manifest_out).write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -350,6 +376,27 @@ def main():
     ap_gic.add_argument("--symmetry-group-limit", default=None)
     ap_gic.add_argument("--symmetry-confidence", action="store_true")
 
+    ap_pucker = sub.add_parser("pucker-gaussian")
+    ap_pucker.add_argument("--xyz", required=True)
+    ap_pucker.add_argument("--ring", default=None)
+    ap_pucker.add_argument("--gjf-out", required=True)
+    ap_pucker.add_argument("--manifest-out", default=None)
+    ap_pucker.add_argument("--phi-start", type=float, default=0.0)
+    ap_pucker.add_argument("--phi-end", type=float, default=360.0)
+    ap_pucker.add_argument("--phi-step", type=float, default=10.0)
+    ap_pucker.add_argument(
+        "--constraint-mode",
+        choices=["functional-targets", "scan-to-zero"],
+        default="functional-targets",
+    )
+    ap_pucker.add_argument("--charge", type=int, default=0)
+    ap_pucker.add_argument("--multiplicity", type=int, default=1)
+    ap_pucker.add_argument("--mem", default="16GB")
+    ap_pucker.add_argument("--nproc", default="8")
+    ap_pucker.add_argument("--chk-prefix", default="mw_path_phi")
+    ap_pucker.add_argument("--title", default="Puckering constrained optimization")
+    ap_pucker.add_argument("--route", default=DEFAULT_GAUSSIAN_ROUTE)
+
     args = ap.parse_args()
     if args.cmd == "fit":
         _fit_main(args)
@@ -357,101 +404,8 @@ def main():
         _vib_main(args)
     elif args.cmd == "gic":
         _gic_main(args)
-
-    u = None
-    u_path = None
-    u_mode = cfg.get("u", "mode", fallback="identity") if "u" in cfg else "identity"
-    if "u" in cfg and "u_path" in cfg["u"]:
-        u_path = cfg["u"]["u_path"]
-    if u_path:
-        u = load_u_matrix(u_path, nprim)
-    elif u_mode == "auto":
-        _, _, ringset = build_topology(coords[0], Z)
-        u = build_u(prims, coords[0], Z=Z, ringset=ringset)
-    else:
-        u = load_u_matrix(None, nprim)
-    nvib = u.shape[1]
-
-    basis_cfg = build_basis_cfg(cfg, nvib)
-    term_list = None
-    if "terms" in cfg and "term_list" in cfg["terms"]:
-        term_list = cfg["terms"]["term_list"]
-    terms = load_terms(term_list) if term_list else generate_terms(nvib)
-
-    # Build design matrix
-    rows = []
-    targets = []
-
-    for p in range(coords.shape[0]):
-        s = eval_primitives(prims, coords[p])
-        b = b_matrix(prims, coords[p], fit_cfg.fd_step)
-        q = q_from_s(u, s)
-        gx = grad[p].reshape(-1)
-        gq = gq_from_gx(u, b, gx)
-
-        phi, dphi = eval_terms(q, terms, basis_cfg)
-        rows.append(phi)
-        targets.append(energy[p])
-        for i in range(nvib):
-            rows.append(dphi[i, :])
-            targets.append(gq[i])
-
-    A = np.vstack(rows)
-    y = np.array(targets)
-
-    # Optional scaling pass (single-shot)
-    scale_mode = cfg.get("fit", "scale", fallback="none")
-    if scale_mode and scale_mode != "none":
-        # initial residuals from unweighted fit
-        coeff0 = robust_fit(
-            A, y, delta=fit_cfg.delta, ridge=fit_cfg.ridge,
-            max_iter=5, tol=fit_cfg.tol
-        )
-        res = y - A @ coeff0
-        # split residuals into energy and gradient blocks
-        nE = coords.shape[0]
-        E_res = res[:nE]
-        G_res = res[nE:]
-        E_scaled, G_scaled, sE, sG = scale_residuals(E_res, G_res, mode=scale_mode)
-        # scale A and y to balance energy/gradient blocks
-        A[:nE, :] /= sE
-        y[:nE] /= sE
-        A[nE:, :] /= sG
-        y[nE:] /= sG
-
-    coeff = robust_fit(
-        A,
-        y,
-        delta=fit_cfg.delta,
-        ridge=fit_cfg.ridge,
-        max_iter=fit_cfg.max_iter,
-        tol=fit_cfg.tol,
-    )
-
-    # Write terms
-    out_path = Path(args.out)
-    write_terms(out_path, coeff, terms)
-
-        if args.with_g:
-            # evaluate G and derivatives at first geometry
-            masses = data["mass"] if "mass" in data.files else None
-            if masses is None:
-                raise SystemExit("mass array required in data.npz for G output")
-            g0, dG, d2G = g_matrix_derivs(u, prims, coords[0], masses, fit_cfg.fd_step)
-            nv = nvib
-            with out_path.open("a") as fh:
-                for i in range(nv):
-                    for j in range(i, nv):
-                        fh.write(f"-{i+1} -{j+1} {g0[i,j]:.16e}\n")
-                for k in range(nv):
-                    for i in range(nv):
-                        for j in range(i, nv):
-                            fh.write(f"-{i+1} -{j+1} {k+1} {dG[i,j,k]:.16e}\n")
-                for k in range(nv):
-                    for l in range(k, nv):
-                        for i in range(nv):
-                            for j in range(i, nv):
-                                fh.write(f"-{i+1} -{j+1} {k+1} {l+1} {d2G[i,j,k,l]:.16e}\n")
+    elif args.cmd == "pucker-gaussian":
+        _pucker_gaussian_main(args)
 
 
 if __name__ == "__main__":

@@ -962,8 +962,47 @@ C Clean values close to n*pi
      $  ValTot(IGic)
        write(IOut,'(100(''-''))')
   10  continue
+      If(ITp.eq.4) Call PrtPckVal(IOut,NVar,ITPV,ValTot)
       return
       end
+
+*Deck PrtPckVal
+      Subroutine PrtPckVal(IOut,NVar,ITPV,ValTot)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,NVar,ITPV(*)
+      Dimension ValTot(*)
+      Character S1*4,S2*4,SP*4
+      Pi=4.0d0*DAtan(1.0d0)
+      ToDeg=1.80d2/Pi
+      IPair=0
+      IVar=1
+   10 If(IVar.gt.NVar) Return
+      If(ITPV(IVar).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      If(IVar.eq.NVar) Return
+      If(ITPV(IVar+1).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      JVar=IVar+1
+      IPair=IPair+1
+      Call IntoCh(IVar,S1,L1)
+      Call IntoCh(JVar,S2,L2)
+      Call IntoCh(IPair,SP,LP)
+      QPck=DSqrt(ValTot(IVar)*ValTot(IVar)+
+     $           ValTot(JVar)*ValTot(JVar))
+      PhiP=DAtan2(ValTot(JVar),ValTot(IVar))
+      Write(IOut,1000) SP,S1,S2,QPck
+      Write(IOut,1010) SP,S2,S1,PhiP,PhiP*ToDeg
+      IVar=IVar+2
+      Go To 10
+ 1000 Format(6X,'QPck',A4,' from RPck',A4,'/RPck',A4,
+     $ ' Value=',F12.6,' rad')
+ 1010 Format(6X,'PhiP',A4,' = ATAN2(RPck',A4,',RPck',A4,
+     $ ') Value=',F12.6,' rad =',F12.6,' deg')
+      End
 *Deck FndRed
       Subroutine FndRed(MxIAt,MaxTer,IAt,JAt,KAt,LAt,NVar,IJKL,NTerm,
      $  IPrm,IAtP)
@@ -1453,6 +1492,45 @@ C       Value1=OutAngOLd(C(1,IAt2),C(1,IAt1),C(1,IAt3),C(1,IAt4))*ToDeg
   100 continue
       return
       end
+
+*Deck PrtPckQP
+      Subroutine PrtPckQP(IOut,NVar,ITPV)
+      Implicit Integer (A-Z)
+      Integer IOut,NVar,ITPV(*)
+      Character S1*4,S2*4,SP*4
+C
+C     Derive Gaussian functional GICs from ring-puckering components
+C     already printed by PrtDih.  CyGND generates RPck coordinates in
+C     consecutive pairs.  Each complete pair defines:
+C       Q   = SQRT(RPck_i*RPck_i + RPck_j*RPck_j)
+C       Phi = ATAN2(RPck_j, RPck_i)
+C
+      IPair=0
+      IVar=1
+   10 If(IVar.gt.NVar) Return
+      If(ITPV(IVar).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      If(IVar.eq.NVar) Return
+      If(ITPV(IVar+1).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      JVar=IVar+1
+      IPair=IPair+1
+      Call IntoCh(IVar,S1,L1)
+      Call IntoCh(JVar,S2,L2)
+      Call IntoCh(IPair,SP,LP)
+      Write(IOut,1000) SP,S1,S1,S2,S2
+      Write(IOut,1010) SP,S2,S1
+      IVar=IVar+2
+      Go To 10
+ 1000 Format(' QPck',A4,'=SQRT(RPck',A4,'*RPck',A4,
+     $ '+RPck',A4,'*RPck',A4,')')
+ 1010 Format(' PhiP',A4,'=ATAN2(RPck',A4,',RPck',A4,
+     $ ')')
+      End
 *Deck PrtBnd 
       Subroutine PrtBnd(IOut,MaxAtG,MaxTer,InvDst,NVar,NTT,NTerm,IAtom,
      $  ITPV,IFixB,IAn,Coef,Valtot,C,PrtVal)
@@ -1525,7 +1603,7 @@ C      EndIf
          write(IOut,'(''+'',F6.4,''*R('',I3,'','',I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,2)
        else
-        write(IOut,'(''-'',F6.4,''*R('',I3,'','',I3'')]'')')
+        write(IOut,'(''-'',F6.4,''*R('',I3,'','',I3,'')]'')')
      $     DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,2)
        endif
   100 continue    
@@ -1622,7 +1700,7 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
         write(IOut,'(''+'',F8.5,''*A('',2(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3)
        else
-        write(IOut,'(''-'',F8.5,''*A('',2(I3,'',''),I3'')]'')')
+        write(IOut,'(''-'',F8.5,''*A('',2(I3,'',''),I3,'')]'')')
      $     DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3)
        endif
   100 continue    
@@ -1700,7 +1778,7 @@ C Set for MxVar=999
         write(IOut,'(''+'',F6.4,''*L('',2(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),I4,I5
        else
-        write(IOut,'(''-'',F6.4,''*L('',2(I3,'',''),I3'')]'')')
+        write(IOut,'(''-'',F6.4,''*L('',2(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),I4,I5
        endif
   100 continue   
@@ -1785,15 +1863,30 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
         go to 100
        EndIf
        Value=ValTot(IVar)
-       If(PrtVal) then
-        write(IOut,'(1X,A4,A4,''(Value='',F10.5,'')=['',F10.5,''*D('',
-     $     3(I3,'',''),I3,'')'')',advance='no') Lbl(1:4),StrVar(1:4),
-     $     Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,4)
+       If(ITPV(IVar).eq.1) Then
+        If(PrtVal) then
+         write(IOut,'(1X,A4,A4,''(Inactive,Value='',F10.5,
+     $    '')=['',F10.5,''*D('',3(I3,'',''),I3,'')'')',
+     $    advance='no') Lbl(1:4),StrVar(1:4),Value,Coef(1,IVar),
+     $    (IAtom(ii,1,IVar),ii=1,4)
+        Else
+         write(IOut,'(1X,A4,A4,''(Inactive)=['',F10.5,
+     $    ''*D('',3(I3,'',''),I3,'')'')',advance='no')
+     $    Lbl(1:4),StrVar(1:4),Coef(1,IVar),
+     $    (IAtom(ii,1,IVar),ii=1,4)
+        EndIf
        Else
-        write(IOut,'(1X,A4,A4,'' =['',F10.5,''*D('',
-     $     3(I3,'',''),I3,'')'')',advance='no') Lbl(1:4),StrVar(1:4),
-     $     Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,4)
-       EndIf 
+        If(PrtVal) then
+         write(IOut,'(1X,A4,A4,''(Value='',F10.5,'')=['',F10.5,
+     $    ''*D('',3(I3,'',''),I3,'')'')',advance='no')
+     $    Lbl(1:4),StrVar(1:4),Value,Coef(1,IVar),
+     $    (IAtom(ii,1,IVar),ii=1,4)
+        Else
+         write(IOut,'(1X,A4,A4,'' =['',F10.5,''*D('',
+     $    3(I3,'',''),I3,'')'')',advance='no') Lbl(1:4),
+     $    StrVar(1:4),Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,4)
+        EndIf
+       EndIf
        if(NTrmI.gt.2) then
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
@@ -1809,10 +1902,10 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
         write(IOut,'(''+'',F7.5,''*D('',3(I3,'',''),I3,'')]'')')
      $   DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,4)
        else
-        write(IOut,'(''-'',F7.5,''*D('',3(I3,'',''),I3'')]'')')
+        write(IOut,'(''-'',F7.5,''*D('',3(I3,'',''),I3,'')]'')')
      $   DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,4)
        endif
   100 continue
+      Call PrtPckQP(IOut,NVar,ITPV)
       return
       end
-

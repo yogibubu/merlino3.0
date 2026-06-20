@@ -87,6 +87,28 @@ Example scale file: `scale_example.json`
 python -m survibfit.cli gic --xyz in.xyz --out gic.txt
 ```
 
+## Gaussian puckering scan input
+Generate a multi-link Gaussian input that defines ring puckering GICs directly
+from the current geometry. Rings with at least 4 atoms are supported; tests
+cover the 4-, 5-, and 7-membered cases. The writer
+emits inactive endocyclic torsions and inactive `RPck...` components; the
+effective Gaussian GICs are active `QPck...=SQRT(...)` and
+`PhiP...=ATAN2(...)` coordinates. Seven-membered rings generate two
+`QPck/PhiP` pairs.
+
+```
+python -m survibfit.cli pucker-gaussian \
+  --xyz in.xyz \
+  --ring 1,2,3,4,5 \
+  --phi-start 0 --phi-end 360 --phi-step 10 \
+  --gjf-out puckering_scan.gjf \
+  --manifest-out puckering_scan.json
+```
+
+Use `--constraint-mode functional-targets` for direct phase stepping or
+`--constraint-mode scan-to-zero` for the linear fallback on paired puckering
+modes.
+
 Options: `--min-coeff` to drop tiny coefficients and `--no-normalize` to keep raw coefficients.
 Local symmetry options (same as `[u]`):
 `--symmetry-mode`, `--prune-mode`, `--zeff-tol`, `--geometry-match-tol`, `--pattern-report`,

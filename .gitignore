@@ -20,6 +20,8 @@ venv/
 *.log
 *.out
 *.err
+*_freeze_*.tar.gz
+*_freeze_*.sha256
 
 # Local runtime outputs
 work/
