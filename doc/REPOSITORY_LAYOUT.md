@@ -10,7 +10,8 @@ the top-level README. New implementation files should not be added at root.
 ## Runtime Code
 
 - `gui/`: PySide6 user interface.
-- `advanced/`: advanced workflow panel, launchers, and viewers.
+- `advanced/`: advanced workflow panel, dedicated DVR window, launchers, and
+  viewers.
 - `geometry/`: core molecular geometry, rotational/vibrational/thermodynamic
   routines, and `xyzin` utilities.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
@@ -45,4 +46,3 @@ constructs, while still failing on real compilation/link errors.
 
 - `fortran/prova/prova`
 - `bin/prova.x`
-

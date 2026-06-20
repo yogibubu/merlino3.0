@@ -294,6 +294,26 @@ GUI stability is always preferred over strict validation
 
 The GUI is designed to never crash during preview.
 
+## DVR Window
+
+The main toolbar exposes a dedicated `DVR` action. It opens the Path DVR window
+implemented in `advanced/dvr_window.py`.
+
+The DVR window reads completed Gaussian scan/path logs and runs the vendored
+backend `puckering_dvr/scripts/mw_path_dvr.py`. It does not generate Gaussian
+inputs or scan paths; those remain part of the Merlino/`merlino_fit` Gaussian
+preparation workflow.
+
+Default DVR settings:
+
+- Gaussian log: `working/gauin.log`
+- output directory: `working/puckering_dvr_outputs`
+- figure directory: `working/puckering_dvr_figs`
+- boundary: `periodic`
+- solver: `fourier`
+- rotational constants: enabled
+- Cremer-Pople labeling: disabled unless explicitly requested
+
 GUI testing policy
 
 The GUI is not tested via automated frameworks.

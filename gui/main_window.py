@@ -39,6 +39,7 @@ from .viewer_panel import ViewerPanel
 from .workflow_feedback import ask_open_report
 from .project_manager import ProjectManager
 from advanced.advanced_window import AdvancedWindow
+from advanced.dvr_window import DVRWindow
 from .dos_controller import DosController
 from .xyzin_service import XyzinService
 from .gui_settings import GuiSettings
@@ -93,6 +94,7 @@ class MainWindow(QMainWindow):
         self.xyzin_path = self.working_dir / "xyzin"
         self._backup_xyzin = self.working_dir / ".xyzin_backup"
         self.advanced_window = None
+        self.dvr_window = None
         self.bdpcs3_version = "legacy"
         self._last_xyzin_stamp = None
         self._refresh_timer = None
@@ -161,6 +163,10 @@ class MainWindow(QMainWindow):
         act_fragment = QAction("Fragment pipeline", self)
         act_fragment.triggered.connect(self._open_fragment_pipeline_window)
         self.toolbar.addAction(act_fragment)
+        self.toolbar.addSeparator()
+        act_dvr = QAction("DVR", self)
+        act_dvr.triggered.connect(self._open_dvr_window)
+        self.toolbar.addAction(act_dvr)
         self.toolbar.addSeparator()
         act_isot = QAction("Isotopologues…", self)
         act_isot.triggered.connect(self._open_isotopologues_dialog)
@@ -554,6 +560,17 @@ class MainWindow(QMainWindow):
         self.advanced_window.show()
         self.advanced_window.raise_()
         self.advanced_window.activateWindow()
+
+    def _open_dvr_window(self):
+        if self.dvr_window is None:
+            self.dvr_window = DVRWindow(
+                self.working_dir,
+                get_project_root(),
+                parent=self,
+            )
+        self.dvr_window.show()
+        self.dvr_window.raise_()
+        self.dvr_window.activateWindow()
 
     # --------------------------------------------------
     # Action menu

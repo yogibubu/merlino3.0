@@ -20,7 +20,7 @@ from advanced.launchers.msr_launcher import MSRLauncher
 from advanced.launchers.gaussian_launcher import GaussianLauncher
 from advanced.launchers.vpt2_launcher import VPT2Launcher
 from advanced.launchers.survibfit_launcher import SurvibfitLauncher
-from advanced.launchers.puckering_dvr_launcher import PuckeringDVRLauncher
+from advanced.dvr_window import DVRWindow
 
 from advanced.kwd_spec import KWD_SPEC
 
@@ -175,7 +175,7 @@ class AdvancedWindow(QMainWindow):
         layout.addLayout(methods_layout)
 
         self._build_survibfit_panel(layout)
-        self._build_puckering_dvr_panel(layout)
+        self._build_dvr_shortcut_panel(layout)
 
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.close)
@@ -384,66 +384,30 @@ class AdvancedWindow(QMainWindow):
     # ==================================================================
     # Path DVR panel
     # ==================================================================
-    def _build_puckering_dvr_panel(self, layout: QVBoxLayout):
+    def _build_dvr_shortcut_panel(self, layout: QVBoxLayout):
         group = QGroupBox("Path DVR – Gaussian scan analysis")
         vbox = QVBoxLayout(group)
 
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Gaussian log:"))
-        self.dvr_log = QLineEdit(str(self.workdir / "gauin.log"))
-        row1.addWidget(self.dvr_log)
-        btn_log = QPushButton("Browse")
-        btn_log.clicked.connect(self._browse_dvr_log)
-        row1.addWidget(btn_log)
-        vbox.addLayout(row1)
+        info = QLabel(
+            "DVR analysis has a dedicated window. It reads completed Gaussian "
+            "scan/path logs and computes levels, profiles, properties, and "
+            "optional Cremer-Pople labels."
+        )
+        info.setWordWrap(True)
+        vbox.addWidget(info)
 
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Output dir:"))
-        self.dvr_outdir = QLineEdit(str(self.workdir / "puckering_dvr_outputs"))
-        row2.addWidget(self.dvr_outdir)
-        btn_outdir = QPushButton("Browse")
-        btn_outdir.clicked.connect(self._browse_dvr_outdir)
-        row2.addWidget(btn_outdir)
-        vbox.addLayout(row2)
-
-        row3 = QHBoxLayout()
-        row3.addWidget(QLabel("Figure dir:"))
-        self.dvr_figdir = QLineEdit(str(self.workdir / "puckering_dvr_figs"))
-        row3.addWidget(self.dvr_figdir)
-        btn_figdir = QPushButton("Browse")
-        btn_figdir.clicked.connect(self._browse_dvr_figdir)
-        row3.addWidget(btn_figdir)
-        vbox.addLayout(row3)
-
-        row4 = QHBoxLayout()
-        row4.addWidget(QLabel("Prefix:"))
-        self.dvr_prefix = QLineEdit("puckering_dvr")
-        row4.addWidget(self.dvr_prefix)
-        row4.addWidget(QLabel("Boundary:"))
-        self.dvr_boundary = QComboBox()
-        self.dvr_boundary.addItems(["periodic", "nonperiodic"])
-        row4.addWidget(self.dvr_boundary)
-        row4.addWidget(QLabel("Solver:"))
-        self.dvr_solver = QComboBox()
-        self.dvr_solver.addItems(["auto", "fourier", "gaussian", "sinc-dvr"])
-        self.dvr_solver.setCurrentText("fourier")
-        row4.addWidget(self.dvr_solver)
-        vbox.addLayout(row4)
-
-        row5 = QHBoxLayout()
-        self.dvr_rotconst = QCheckBox("Compute rotational constants")
-        self.dvr_rotconst.setChecked(True)
-        row5.addWidget(self.dvr_rotconst)
-        self.dvr_cremer = QCheckBox("Label Cremer-Pople")
-        self.dvr_cremer.setChecked(False)
-        row5.addWidget(self.dvr_cremer)
-        vbox.addLayout(row5)
-
-        self.run_dvr_btn = QPushButton("Run Path DVR")
-        self.run_dvr_btn.clicked.connect(lambda: AdvancedWindow.run_puckering_dvr(self))
-        vbox.addWidget(self.run_dvr_btn)
+        self.open_dvr_btn = QPushButton("Open DVR window")
+        self.open_dvr_btn.clicked.connect(self.open_dvr_window)
+        vbox.addWidget(self.open_dvr_btn)
 
         layout.addWidget(group)
+
+    def open_dvr_window(self):
+        if not hasattr(self, "dvr_window") or self.dvr_window is None:
+            self.dvr_window = DVRWindow(self.workdir, self.project_root, parent=self)
+        self.dvr_window.show()
+        self.dvr_window.raise_()
+        self.dvr_window.activateWindow()
 
     # ==================================================================
     # Actions
@@ -809,31 +773,6 @@ class AdvancedWindow(QMainWindow):
         self.survibfit_launcher.finished.connect(self._on_survibfit_finished)
         self.survibfit_launcher.start_gic(xyz_path, out_path, include_frag=False)
 
-    def run_puckering_dvr(self):
-        log_path = Path(self.dvr_log.text().strip())
-        outdir = Path(self.dvr_outdir.text().strip())
-        figdir = Path(self.dvr_figdir.text().strip())
-        prefix = self.dvr_prefix.text().strip() or "puckering_dvr"
-        boundary = self.dvr_boundary.currentText()
-        solver = self.dvr_solver.currentText()
-
-        self.puckering_dvr_launcher = PuckeringDVRLauncher(
-            self.workdir,
-            self.project_root,
-            parent=self,
-        )
-        self.puckering_dvr_launcher.finished.connect(self._on_puckering_dvr_finished)
-        self.puckering_dvr_launcher.start_path_analysis(
-            log_path,
-            outdir,
-            figdir,
-            prefix,
-            boundary,
-            solver,
-            compute_rotconst=self.dvr_rotconst.isChecked(),
-            label_cremer_pople=self.dvr_cremer.isChecked(),
-        )
-
     def preview_survibfit_gic(self):
         from PySide6.QtWidgets import QDialog, QTextEdit, QVBoxLayout
         import sys
@@ -930,13 +869,6 @@ class AdvancedWindow(QMainWindow):
         else:
             QMessageBox.critical(self, "Survibfit failed", message)
 
-    def _on_puckering_dvr_finished(self, success: bool, message: str):
-        if success:
-            QMessageBox.information(self, "Path DVR", message)
-            self._export_project_files()
-        else:
-            QMessageBox.critical(self, "Path DVR failed", message)
-
     def _browse_log(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Gaussian log", str(self.workdir), "Gaussian Logs (*.log *.out)"
@@ -977,28 +909,6 @@ class AdvancedWindow(QMainWindow):
         )
         if path:
             self.sv_gic_out.setText(path)
-
-    def _browse_dvr_log(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Gaussian log", str(self.workdir), "Gaussian Logs (*.log *.out)"
-        )
-        if path:
-            self.dvr_log.setText(path)
-
-    def _browse_dvr_outdir(self):
-        path = QFileDialog.getExistingDirectory(
-            self, "Select DVR output directory", str(self.workdir)
-        )
-        if path:
-            self.dvr_outdir.setText(path)
-
-    def _browse_dvr_figdir(self):
-        path = QFileDialog.getExistingDirectory(
-            self, "Select DVR figure directory", str(self.workdir)
-        )
-        if path:
-            self.dvr_figdir.setText(path)
-
 
 class AdvancedCalculationsWindow(AdvancedWindow):
     """Compatibility wrapper used by legacy tests/scripts."""

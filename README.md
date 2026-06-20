@@ -50,4 +50,3 @@ cd fortran/prova
 The Fortran compile script uses legacy-compatible flags and writes build logs
 under `fortran/prova/build/`; it updates both `fortran/prova/prova` and
 `bin/prova.x`.
-
