@@ -13,8 +13,9 @@ The planned scientific additions are:
 - VPT2/VCI from canonical Merlino Hessian/QFF inputs, with Gaussian currently
   supported as an adapter and independent Python/Fortran77 kernels with
   Davidson diagonalization for large VCI spaces.
-- Semiexperimental equilibrium geometries from least-squares fits of
-  isotopologue rotational constants with QM vibrational corrections.
+- Standard semiexperimental equilibrium geometries from Cartesian/GIC
+  least-squares fits of isotopologue rotational data with QM vibrational
+  corrections, avoiding fragile Z-matrix parameterizations.
 
 See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 
@@ -121,3 +122,7 @@ python -m merlino dvr-args --repo-root . --log scan.log --outdir out --figdir fi
 
 See `doc/DEVELOPER_WORKFLOW.md` for the service/CLI/GUI/manifest contract used
 by new workflows.
+
+See `doc/SEMIEXPERIMENTAL_GEOMETRY.md` for the Merlino standard
+semiexperimental geometry solver, including rationale, recommended defaults,
+QM predicates and quality checks.

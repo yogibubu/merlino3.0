@@ -9,6 +9,8 @@ from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_semiexp import (
     CorrectedRotationalConstants,
+    DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     IsotopologueObservation,
     QMParameterPredicate,
     RotationalConstants,
@@ -80,6 +82,8 @@ def test_semiexperimental_fit_request_validation(tmp_path):
     )
     request = SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs,))
     request.validate()
+    assert request.observable == DEFAULT_SEMIEXP_OBSERVABLE == "moments"
+    assert request.rotational_components == DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS == "auto"
 
     duplicate = SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs, obs))
     with pytest.raises(ValueError):

@@ -71,10 +71,11 @@ def default_workflows() -> list[WorkflowSpec]:
             title="Semiexperimental Geometry",
             category="Structure",
             service="merlino_semiexp",
-            description="Equilibrium geometry from isotopologue rotational constants and QM vibrational corrections.",
+            description="Merlino standard Cartesian/GIC equilibrium geometry fit from isotopologue rotational data and QM vibrational corrections.",
             inputs=("parent XYZ", "isotopologue B0 constants", "QM vibrational corrections", "experimental uncertainties"),
-            outputs=("fitted structure", "residuals", "covariance/correlation", "least-squares Hessian", "minimum check", "manifest"),
+            outputs=("fitted structure", "GIC parameters", "residuals", "covariance/correlation", "least-squares Hessian", "minimum check", "diagnostics", "manifest"),
             backends=("python", "fortran77"),
+            status="standard solver",
         ),
         WorkflowSpec(
             workflow_id="jobs_reports",

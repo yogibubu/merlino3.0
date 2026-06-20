@@ -9,6 +9,7 @@ from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_core.cli import main as merlino_cli
+from merlino_core.cli import build_parser as merlino_parser
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_gaussian import summarize_gaussian_log
 from merlino_semiexp import IsotopologueObservation, RotationalConstants, write_observations_csv
@@ -56,6 +57,22 @@ def test_shared_numerics_lm_step_and_conditioning():
     assert objective(residual) == pytest.approx(1.0)
     assert conditioning.rank == 1
     assert np.isfinite(conditioning.condition_number)
+
+
+def test_semiexp_cli_defaults_are_standard_solver_defaults():
+    args = merlino_parser().parse_args([
+        "semiexp",
+        "--xyz",
+        "parent.xyz",
+        "--observations",
+        "obs.csv",
+        "--outdir",
+        "run",
+    ])
+
+    assert args.observable == "moments"
+    assert args.rotational_components == "auto"
+    assert args.max_step == pytest.approx(0.25)
 
 
 def test_gaussian_log_summary_parser(tmp_path):

@@ -2,6 +2,8 @@
 
 from .contracts import (
     CorrectedRotationalConstants,
+    DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     IsotopologueObservation,
     QMParameterPredicate,
     RotationalConstants,
@@ -28,6 +30,8 @@ from .fit import (
 
 __all__ = [
     "CorrectedRotationalConstants",
+    "DEFAULT_SEMIEXP_OBSERVABLE",
+    "DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS",
     "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
     "SemiexperimentalParameter",

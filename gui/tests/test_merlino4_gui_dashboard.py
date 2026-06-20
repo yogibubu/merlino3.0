@@ -15,6 +15,7 @@ def test_default_workflows_include_new_scientific_areas():
     assert workflows["vpt2_vci"].service == "merlino_vpt2_vci"
     assert workflows["semiexp_geometry"].service == "merlino_semiexp"
     assert "fortran77" in workflows["semiexp_geometry"].backends
+    assert workflows["semiexp_geometry"].status == "standard solver"
     assert workflows["gic"].default_backend == "fortran77"
 
 

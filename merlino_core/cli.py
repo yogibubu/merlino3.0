@@ -10,7 +10,14 @@ from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
 from merlino_gaussian import summarize_gaussian_log
 from merlino_gic import run_gicforge
-from merlino_semiexp import QMParameterPredicate, SemiexperimentalFitRequest, fit_semiexperimental_geometry, read_observations_csv
+from merlino_semiexp import (
+    DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+    QMParameterPredicate,
+    SemiexperimentalFitRequest,
+    fit_semiexperimental_geometry,
+    read_observations_csv,
+)
 from merlino_vpt2_vci import (
     QuarticForceField,
     VCIOptions,
@@ -71,17 +78,30 @@ def build_parser() -> argparse.ArgumentParser:
     dvr.add_argument("--no-rotconst", action="store_true")
     dvr.add_argument("--label-cremer-pople", action="store_true")
 
-    semiexp = sub.add_parser("semiexp", help="Fit semiexperimental equilibrium geometry")
+    semiexp = sub.add_parser(
+        "semiexp",
+        help="Fit semiexperimental equilibrium geometry with the Cartesian/GIC Merlino standard solver",
+    )
     semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
     semiexp.add_argument("--observations", type=Path, required=True, help="CSV with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
-    semiexp.add_argument("--max-iter", type=int, default=12)
-    semiexp.add_argument("--step", type=float, default=1.0e-4)
-    semiexp.add_argument("--damping", type=float, default=1.0e-8)
-    semiexp.add_argument("--max-step", type=float, default=0.25)
-    semiexp.add_argument("--observable", choices=("moments", "rotational_constants", "auto"), default="moments")
-    semiexp.add_argument("--rotational-components", choices=("auto", "ABC", "AB", "AC", "BC"), default="auto")
+    semiexp.add_argument("--max-iter", type=int, default=12, help="Maximum LM iterations; default is conservative for semiexp fits")
+    semiexp.add_argument("--step", type=float, default=1.0e-4, help="Finite step for rotational observable derivatives with respect to GICs")
+    semiexp.add_argument("--damping", type=float, default=1.0e-8, help="Initial Levenberg-Marquardt damping")
+    semiexp.add_argument("--max-step", type=float, default=0.25, help="Maximum active-GIC step norm per iteration")
+    semiexp.add_argument(
+        "--observable",
+        choices=("moments", "rotational_constants", "auto"),
+        default=DEFAULT_SEMIEXP_OBSERVABLE,
+        help="Fit target; default moments is the Merlino standard because it is more stable than reciprocal rotational constants",
+    )
+    semiexp.add_argument(
+        "--rotational-components",
+        choices=("auto", "ABC", "AB", "AC", "BC"),
+        default=DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+        help="Rotational constants to use when observable=rotational_constants; auto chooses best-conditioned pair for planar molecules",
+    )
     semiexp.add_argument(
         "--qm-predicate",
         action="append",

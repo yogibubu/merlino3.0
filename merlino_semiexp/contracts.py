@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+DEFAULT_SEMIEXP_OBSERVABLE = "moments"
+DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS = "auto"
+
+
 @dataclass(frozen=True)
 class RotationalConstants:
     """Rotational constants in MHz."""
@@ -77,8 +81,8 @@ class SemiexperimentalFitRequest:
     initial_geometry: Path
     observations: tuple[IsotopologueObservation, ...]
     fixed_parameters: tuple[str, ...] = ()
-    observable: str = "moments"
-    rotational_components: str = "auto"
+    observable: str = DEFAULT_SEMIEXP_OBSERVABLE
+    rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
     qm_predicates: tuple[QMParameterPredicate, ...] = ()
 
     def validate(self) -> None:
