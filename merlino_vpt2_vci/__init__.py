@@ -17,6 +17,7 @@ from .gdv_sources import (
     discover_gdv_vpt2_vci_sources,
 )
 from .gaussian_qff import FCHKData, lower_to_symmetric, read_gaussian_fchk_qff, read_indexed_qff_text
+from .davidson import DavidsonResult, davidson_lowest
 from .harmonic import GFResult, mass_weighted_cartesian_hessian, solve_wilson_gf
 from .vci import (
     QuarticForceField,
@@ -31,6 +32,7 @@ from .workflow import VPT2VCIRun, run_python_vci_from_gaussian_fchk
 __all__ = [
     "ANHARMONIC_DECKS",
     "DavidsonSettings",
+    "DavidsonResult",
     "DEFAULT_GDV_SOURCE_ROOT",
     "FCHKData",
     "ForceFieldSource",
@@ -46,6 +48,7 @@ __all__ = [
     "VPT2VCIRun",
     "build_vci_hamiltonian",
     "discover_gdv_vpt2_vci_sources",
+    "davidson_lowest",
     "generate_vibrational_basis",
     "inventory_vpt2_vci_backends",
     "lower_to_symmetric",

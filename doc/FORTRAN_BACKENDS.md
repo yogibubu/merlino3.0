@@ -92,12 +92,13 @@ Merlino4:
 
 - `gf_core.f`: Wilson-GF helper for already independent coordinates.
 - `vci_core.f`: small dense VCI helpers and product-basis generation.
+- `davidson_core.f`: Davidson support routines independent from Gaussian/GDV.
 
 These routines do not parse Gaussian files and do not build coordinates.
 Python owns Gaussian/FCHK parsing, QFF tensor normalization and workflow
-orchestration. The Fortran kernels receive numerical arrays only; this keeps
-the later Davidson implementation independent from Gaussian and from GDV
-common-block layout.
+orchestration. The Fortran kernels receive numerical arrays only; Davidson is
+implemented with a Merlino4 `matvec + diagonal` contract and is not copied from
+Gaussian/GDV.
 
 The `fortran/` root is intentionally documentation-only. Generated compiler
 logs such as `error` files are not source and should not be committed.

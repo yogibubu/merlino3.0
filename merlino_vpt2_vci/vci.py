@@ -5,6 +5,8 @@ from itertools import combinations_with_replacement, product
 
 import numpy as np
 
+from .davidson import DavidsonResult, davidson_lowest
+
 
 @dataclass(frozen=True)
 class QuarticForceField:
@@ -20,6 +22,7 @@ class VCIResult:
     basis: tuple[tuple[int, ...], ...]
     energies_cm: np.ndarray
     eigenvectors: np.ndarray
+    davidson: DavidsonResult | None = None
 
 
 def generate_vibrational_basis(n_modes: int, max_quanta: int) -> tuple[tuple[int, ...], ...]:
@@ -95,13 +98,39 @@ def build_vci_hamiltonian(force_field: QuarticForceField, max_quanta: int) -> tu
     return h, basis
 
 
-def solve_vci(force_field: QuarticForceField, max_quanta: int, n_roots: int | None = None) -> VCIResult:
+def solve_vci(
+    force_field: QuarticForceField,
+    max_quanta: int,
+    n_roots: int | None = None,
+    *,
+    method: str = "dense",
+    max_subspace: int = 80,
+    max_iter: int = 200,
+    convergence: float = 1.0e-8,
+) -> VCIResult:
     hamiltonian, basis = build_vci_hamiltonian(force_field, max_quanta)
-    eig, vec = np.linalg.eigh((hamiltonian + hamiltonian.T) * 0.5)
+    sym_hamiltonian = (hamiltonian + hamiltonian.T) * 0.5
+    if method == "dense":
+        eig, vec = np.linalg.eigh(sym_hamiltonian)
+        davidson = None
+    elif method == "davidson":
+        roots = n_roots or min(10, sym_hamiltonian.shape[0])
+        davidson = davidson_lowest(
+            lambda vector: sym_hamiltonian @ vector,
+            np.diag(sym_hamiltonian),
+            n_roots=roots,
+            max_subspace=max_subspace,
+            max_iter=max_iter,
+            convergence=convergence,
+        )
+        eig = davidson.eigenvalues
+        vec = davidson.eigenvectors
+    else:
+        raise ValueError("VCI method must be 'dense' or 'davidson'")
     if n_roots is not None:
         eig = eig[:n_roots]
         vec = vec[:, :n_roots]
-    return VCIResult(basis=basis, energies_cm=eig, eigenvectors=vec)
+    return VCIResult(basis=basis, energies_cm=eig, eigenvectors=vec, davidson=davidson)
 
 
 def zero_anharmonic_force_field(frequencies_cm: np.ndarray) -> QuarticForceField:

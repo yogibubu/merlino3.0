@@ -72,12 +72,12 @@ def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
     gdv_davidson = gdv_root / "utilnz.F"
     source_dir = root / "fortran" / "vpt2_vci"
     sources = tuple(sorted(source_dir.glob("*.f"))) if source_dir.exists() else ()
-    davidson = source_dir / "davidson.f"
+    davidson = source_dir / "davidson_core.f"
     notes = [
         "Harmonic internal-coordinate GF analysis is available through gf.f.",
         "GDV l717.F contains the current VPT2/VCI driver decks.",
-        "GDV utilnz.F contains NHDiag, the current Davidson/subspace diagonalization source.",
-        "Merlino4 has independent Python and Fortran77 GF/VCI cores; Gaussian QFF tensor promotion is still being expanded.",
+        "GDV utilnz.F is retained only as historical context; Merlino4 Davidson is independent.",
+        "Merlino4 has independent Python and Fortran77 GF/VCI/Davidson cores; Gaussian QFF tensor promotion is still being expanded.",
     ]
     return VPT2VCIInventory(
         harmonic_internal_source=harmonic_internal if harmonic_internal.exists() else None,

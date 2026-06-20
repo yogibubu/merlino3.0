@@ -25,18 +25,21 @@ coordinates.
 - `merlino_vpt2_vci.harmonic`: independent Wilson-GF linear algebra.
 - `merlino_vpt2_vci.vci`: product-basis VCI matrix elements and dense
   diagonalization for small spaces.
+- `merlino_vpt2_vci.davidson`: independent symmetric Davidson diagonalizer
+  using only `matvec` and an approximate diagonal.
 - `merlino_vpt2_vci.workflow`: Gaussian-FCHK to GF/VCI orchestration.
 
 ## Fortran77 Backend
 
 - `fortran/vpt2_vci/gf_core.f`: independent GF helper.
 - `fortran/vpt2_vci/vci_core.f`: product-basis and dense VCI helpers.
+- `fortran/vpt2_vci/davidson_core.f`: independent Davidson support routines.
 
 The Fortran code is fixed-form Fortran77 and receives arrays only. It is not a
 GDV wrapper.
 
 ## Next Numerical Step
 
-The dense VCI path is for small validation spaces. Large VCI spaces need a
-standalone Davidson matrix-vector driver using the same VCI matrix-element
-contract, with `utilnz.F:NHDiag` used only as a reference source.
+The dense VCI path is for small validation spaces. Large VCI spaces use the
+standalone Davidson contract. `utilnz.F:NHDiag` is historical context only and
+is not a dependency or copy source for Merlino4.

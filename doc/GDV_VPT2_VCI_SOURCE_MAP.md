@@ -42,16 +42,18 @@ Local source root:
   - `VPTCrs`, `VPTRHS`, `VPTWFC`: VPT2 wavefunction coefficients.
 
 Current limitation in `VCIDrv`: when the VCI space exceeds the dense threshold,
-the code still stops with "Davidson not yet available". Merlino4 should replace
-that branch with a standalone Davidson matrix-vector backend.
+the code still stops with "Davidson not yet available". Merlino4 does not copy
+Gaussian/GDV Davidson code; it uses an independent matrix-vector Davidson
+contract.
 
 ## Davidson/Subspace Diagonalization
 
-- Original GDV source: `utilnz.F`
+- Historical GDV source: `utilnz.F`
 - Relevant deck:
   - `NHDiag`: non-Hermitian subspace diagonalization used by Davidson-like
     iterations elsewhere in GDV.
 
 `utilnz.F` is about 26 MB and should not be copied wholesale into Merlino4.
-Extract only the routines needed by the standalone Davidson backend and keep
-their dependencies explicit.
+It is not an implementation source for Merlino4 Davidson. The Merlino4
+Davidson layer must remain independent from Gaussian/GDV common blocks and file
+formats.

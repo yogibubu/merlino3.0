@@ -77,6 +77,7 @@ def test_vpt2_vci_source_compiles_to_objects():
     )
     assert (root / "fortran" / "vpt2_vci" / "build" / "gf_core.o").exists()
     assert (root / "fortran" / "vpt2_vci" / "build" / "vci_core.o").exists()
+    assert (root / "fortran" / "vpt2_vci" / "build" / "davidson_core.o").exists()
 
 
 def test_project_state_is_created_and_reloaded(tmp_path):

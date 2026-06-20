@@ -4,6 +4,7 @@ import numpy as np
 
 from merlino_vpt2_vci import (
     QuarticForceField,
+    davidson_lowest,
     generate_vibrational_basis,
     lower_to_symmetric,
     read_gaussian_fchk_qff,
@@ -75,3 +76,35 @@ def test_indexed_qff_text_feeds_quartic_vci(tmp_path):
     result = solve_vci(qff, max_quanta=0)
 
     assert np.allclose(result.energies_cm, [53.0])
+
+
+def test_independent_davidson_matches_dense_symmetric_diagonalization():
+    matrix = np.array(
+        [
+            [2.0, 0.1, 0.0, 0.0],
+            [0.1, 3.0, 0.2, 0.0],
+            [0.0, 0.2, 5.0, 0.3],
+            [0.0, 0.0, 0.3, 8.0],
+        ]
+    )
+    expected, _ = np.linalg.eigh(matrix)
+
+    result = davidson_lowest(lambda vector: matrix @ vector, np.diag(matrix), n_roots=2)
+
+    assert result.converged
+    assert np.allclose(result.eigenvalues, expected[:2], atol=1.0e-8)
+
+
+def test_vci_davidson_path_matches_dense_path():
+    qff = QuarticForceField(
+        harmonic_frequencies_cm=np.array([100.0, 140.0]),
+        cubic_cm={(0, 0, 1): 1.5},
+        quartic_cm={(0, 0, 0, 0): 0.2, (0, 1, 1, 1): -0.1},
+    )
+
+    dense = solve_vci(qff, max_quanta=3, n_roots=3)
+    iterative = solve_vci(qff, max_quanta=3, n_roots=3, method="davidson")
+
+    assert iterative.davidson is not None
+    assert iterative.davidson.converged
+    assert np.allclose(iterative.energies_cm, dense.energies_cm, atol=1.0e-7)
