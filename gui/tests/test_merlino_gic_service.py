@@ -195,8 +195,12 @@ def test_gic_symmetry_preserves_cyclopentadiene_irrep_and_class_counts(tmp_path)
 
     assert first == second
     assert diagnostics["counts"] == {"A1": 10, "A2": 4, "B1": 5, "B2": 8}
+    assert diagnostics["b_ranks"] == diagnostics["targets"]
     assert diagnostics["class_counts"] == diagnostics["class_targets"]
     assert diagnostics["class_counts"] == {"bond": 11, "angle": 10, "dihedral": 6}
+    a1_lines = [line for line in gicsym.splitlines() if ",A1," in line]
+    assert sum(line.startswith("A1Str") for line in a1_lines) > 0
+    assert sum(line.startswith("A1Ang") for line in a1_lines) > 0
     assert "Tor" in gicsym
     assert "cartesian_mixed_projection" not in diagnostics["sources"]
     assert not any(source.startswith("global_") for source in diagnostics["sources"])

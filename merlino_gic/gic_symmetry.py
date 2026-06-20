@@ -51,6 +51,8 @@ def write_gic_symmetry_files(workdir: Path) -> None:
         op_data,
         len(coords),
         _class_counts(u_matrix, prims),
+        prims,
+        oriented,
     )
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
 
@@ -168,63 +170,79 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
     cart_ops = [_cartesian_operation(rotation, mapping, len(coords)) for _label, rotation, mapping, _prim_op in op_data]
     projection_blocks = _projection_blocks(atoms, coords, prims)
     class_targets = _class_counts(u_matrix, prims)
-    adapted = []
-    used_names: dict[str, int] = {}
-    selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
-    selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
-    selected_global: list[np.ndarray] = []
-    for irrep, chars in irreps:
-        target = targets.get(irrep, 0)
-        if target <= 0:
-            continue
-        for col in _source_column_order(irrep, u_matrix, prims, selected_classes, class_targets):
-            kind = _dominant_kind(u_matrix[:, col], prims)
-            if selected_classes.get(kind, 0) >= class_targets.get(kind, 0):
-                continue
-            source_row = source_rows[col]
+    irrep_order = {irrep: idx for idx, (irrep, _chars) in enumerate(irreps)}
+    class_order = {"bond": 0, "angle": 1, "linear_bend": 2, "dihedral": 3, "out_of_plane": 4}
+    candidates = []
+    for col, source_row in enumerate(source_rows):
+        kind = _dominant_kind(u_matrix[:, col], prims)
+        for irrep, chars in irreps:
             projected_row_raw = _project_cartesian_row(source_row, chars, cart_ops)
             projected_row = projected_row_raw @ vib_projector
-            if np.linalg.norm(projected_row) < ZERO_TOL:
-                continue
-            residual = _orthogonal_residual(projected_row, selected_rows[irrep])
-            row_norm = np.linalg.norm(residual)
-            if row_norm < RANK_TOL:
-                continue
-            global_residual = _orthogonal_residual(projected_row, selected_global)
-            if np.linalg.norm(global_residual) < RANK_TOL:
-                continue
-            coeff = _project_column_to_irrep(u_matrix[:, col], chars, op_data)
-            coeff_norm = np.linalg.norm(coeff)
-            source = "primitive_projection"
-            if coeff_norm < ZERO_TOL:
-                coeff, source = _fit_projected_coeff(
-                    projected_row_raw,
-                    projected_row,
-                    b_primitive,
-                    u_matrix[:, col],
-                    prims,
-                    projection_blocks,
-                    irrep not in {"A1", "A", "Ag", "A'"},
-                )
-                coeff_norm = np.linalg.norm(coeff) if coeff is not None else 0.0
-                if coeff_norm < ZERO_TOL:
-                    continue
-            coeff /= coeff_norm
-            selected_rows[irrep].append(residual / row_norm)
-            selected_global.append(global_residual / np.linalg.norm(global_residual))
-            selected_classes[kind] = selected_classes.get(kind, 0) + 1
-            adapted.append((_next_name(irrep, kind, used_names), irrep, source, coeff))
-            if len(selected_rows[irrep]) == target:
-                break
-        if len(selected_rows[irrep]) != target:
-            raise RuntimeError(
-                f"GIC symmetry reduction generated {len(selected_rows[irrep])} {irrep} coordinates; expected {target}"
+            score = float(np.linalg.norm(projected_row))
+            if score > ZERO_TOL:
+                candidates.append((score, class_order.get(kind, 9), col, irrep_order[irrep], irrep, chars, kind, projected_row_raw, projected_row))
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
+    chosen = []
+    used_names: dict[str, int] = {}
+    selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
+    selected_class_rows: dict[tuple[str, str], list[np.ndarray]] = {}
+    selected_class_coeffs: dict[tuple[str, str], list[np.ndarray]] = {}
+    selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
+    selected_global: list[np.ndarray] = []
+    used_cols: set[int] = set()
+    for _score, _class_idx, col, _irrep_idx, irrep, chars, kind, projected_row_raw, projected_row in candidates:
+        if col in used_cols or len(selected_rows[irrep]) >= targets.get(irrep, 0):
+            continue
+        coeff = _project_column_to_irrep(u_matrix[:, col], chars, op_data)
+        coeff_norm = np.linalg.norm(coeff)
+        source = "primitive_projection"
+        if coeff_norm < ZERO_TOL:
+            coeff, source = _fit_projected_coeff(
+                projected_row_raw,
+                projected_row,
+                b_primitive,
+                u_matrix[:, col],
+                prims,
+                projection_blocks,
+                irrep not in {"A1", "A", "Ag", "A'"},
             )
+            coeff_norm = np.linalg.norm(coeff) if coeff is not None else 0.0
+        if coeff_norm < ZERO_TOL:
+            continue
+        class_key = (irrep, kind)
+        class_rows = selected_class_rows.setdefault(class_key, [])
+        class_coeffs = selected_class_coeffs.setdefault(class_key, [])
+        output_row = coeff @ b_primitive @ vib_projector
+        coeff_residual = coeff.astype(float, copy=True)
+        for basis_row, basis_coeff in zip(class_rows, class_coeffs):
+            coeff_residual -= np.dot(basis_row, output_row) * basis_coeff
+        output_residual = coeff_residual @ b_primitive @ vib_projector
+        row_norm = np.linalg.norm(output_residual)
+        if row_norm < RANK_TOL:
+            continue
+        coeff = coeff_residual / row_norm
+        output_unit = output_residual / row_norm
+        global_residual = _orthogonal_residual(output_unit, selected_global)
+        global_norm = np.linalg.norm(global_residual)
+        if global_norm < RANK_TOL:
+            continue
+        class_rows.append(output_unit)
+        class_coeffs.append(coeff)
+        selected_rows[irrep].append(output_unit)
+        selected_global.append(global_residual / global_norm)
+        selected_classes[kind] = selected_classes.get(kind, 0) + 1
+        used_cols.add(col)
+        chosen.append((irrep_order[irrep], col, irrep, kind, source, coeff))
+        if all(len(selected_rows[name]) == targets.get(name, 0) for name, _chars in irreps):
+            break
     counts = {irrep: len(rows) for irrep, rows in selected_rows.items()}
     if counts != targets:
         raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
     if selected_classes != class_targets:
         raise RuntimeError(f"GIC class count mismatch: {selected_classes}; expected {class_targets}")
+    adapted = []
+    for _irrep_idx, _col, irrep, kind, source, coeff in sorted(chosen, key=lambda item: (item[0], item[1])):
+        adapted.append((_next_name(irrep, kind, used_names), irrep, source, coeff))
     return adapted
 
 
@@ -509,7 +527,15 @@ def _write_gicsym(path: Path, sym_gics) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int, class_targets: dict[str, int]) -> None:
+def _write_gic_symmetry_diagnostics(
+    path: Path,
+    sym_gics,
+    op_data,
+    natoms: int,
+    class_targets: dict[str, int],
+    prims: list[Primitive] | None = None,
+    coords: np.ndarray | None = None,
+) -> None:
     irreps = _irrep_characters([item[0] for item in op_data])
     targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
     counts: dict[str, int] = {irrep: 0 for irrep in targets}
@@ -520,11 +546,19 @@ def _write_gic_symmetry_diagnostics(path: Path, sym_gics, op_data, natoms: int, 
         class_name = _class_from_name(name)
         class_counts[class_name] = class_counts.get(class_name, 0) + 1
         sources[source] = sources.get(source, 0) + 1
+    b_ranks: dict[str, int] = {}
+    if prims is not None and coords is not None and sym_gics:
+        b_primitive = b_matrix_analytic(prims, coords)
+        vib_projector = _vibrational_projector(coords)
+        for irrep in targets:
+            rows = [column @ b_primitive @ vib_projector for _name, row_irrep, _source, column in sym_gics if row_irrep == irrep]
+            b_ranks[irrep] = int(np.linalg.matrix_rank(np.array(rows), tol=RANK_TOL)) if rows else 0
     payload = {
         "schema": "merlino.gic_symmetry.v1",
         "operation_order": [item[0] for item in op_data],
         "targets": targets,
         "counts": counts,
+        "b_ranks": b_ranks,
         "class_targets": class_targets,
         "class_counts": class_counts,
         "sources": sources,
