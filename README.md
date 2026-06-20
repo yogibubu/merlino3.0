@@ -8,6 +8,13 @@ The first goal is to separate GUI, geometry/topology, Gaussian/GIC generation,
 Fortran backends, DVR and data handling behind stable interfaces so each area
 can evolve independently.
 
+The planned scientific additions are:
+
+- VPT2/VCI from Gaussian quartic force fields, reusing the existing Fortran code
+  and adding Davidson diagonalization for large VCI spaces.
+- Semiexperimental equilibrium geometries from least-squares fits of
+  isotopologue rotational constants with QM vibrational corrections.
+
 See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 
 ## Main Entry Points

@@ -17,6 +17,14 @@ should orchestrate workflows, not contain scientific or backend-specific logic.
 Fortran programs should be called through narrow Python wrappers. Gaussian and
 DVR parsing/writing should have one source of truth.
 
+The planned new scientific capabilities are limited and explicit:
+
+- VPT2/VCI from Gaussian quartic force fields, with a Davidson diagonalizer for
+  large VCI spaces.
+- Semiexperimental equilibrium-geometry determination from least-squares fits of
+  experimental rotational constants for isotopologues, using QM vibrational
+  corrections.
+
 ## Target Packages
 
 - `merlino_core`: configuration, paths, logging, manifests, job status and common
@@ -31,6 +39,12 @@ DVR parsing/writing should have one source of truth.
   normalized error reporting for GICForge and DVR.
 - `merlino_dvr`: Gaussian-log/grid to DVR workflows, Cremer-Pople mapping,
   Fortran bridge integration and output readers.
+- `merlino_vpt2_vci`: Gaussian quartic force-field extraction, VPT2/VCI input
+  preparation, VCI basis control, Fortran backend orchestration and Davidson
+  diagonalization outputs.
+- `merlino_semiexp`: semiexperimental equilibrium-geometry fits from
+  isotopologue rotational constants, QM vibrational corrections and
+  least-squares diagnostics.
 - `merlino_gui`: PySide6 windows and controllers only; all scientific work goes
   through service interfaces.
 - `merlino_data`: local libraries, catalog indexes and curated chemical data.
@@ -83,6 +97,60 @@ Output:
 - Parsed scan/path records.
 - Manifest JSON.
 
+### VPT2/VCI
+
+Input:
+
+- Gaussian output containing a quadratic/cubic/quartic force field, or an
+  equivalent normalized force-field file produced by `merlino_gaussian`.
+- Normal-mode metadata, harmonic frequencies and transformation data.
+- Basis/cutoff settings for VCI.
+- Requested number of roots and Davidson convergence settings.
+
+Output:
+
+- VPT2 energies and spectroscopic constants where available.
+- VCI levels and dominant basis-state coefficients.
+- Davidson convergence report.
+- Manifest JSON with Gaussian input checksum, basis/cutoff settings, executable
+  versions and output paths.
+
+Implementation rule:
+
+- Reuse the existing Fortran force-field/VPT2/VCI code first.
+- Add Davidson as an isolated numerical component with a matrix-vector product
+  interface; avoid dense VCI diagonalization for large spaces.
+- Python handles parsing, input preparation, job orchestration and output
+  normalization.
+
+### Semiexperimental Equilibrium Geometry
+
+Input:
+
+- Experimental rotational constants for multiple isotopologues.
+- Isotopic compositions and atomic masses.
+- QM vibrational corrections, normally `Delta B_vib`, from Gaussian or a
+  normalized Merlino correction table.
+- Initial equilibrium geometry and fit constraints.
+
+Output:
+
+- Fitted semiexperimental equilibrium geometry.
+- Parameter covariance/correlation diagnostics.
+- Residuals by isotopologue and rotational constant.
+- Corrected equilibrium rotational constants.
+- Manifest JSON with experimental data checksums, QM correction source,
+  weighting scheme and constraints.
+
+Implementation rule:
+
+- Keep least-squares fitting in Python unless a Fortran backend is demonstrably
+  needed.
+- Keep vibrational-correction parsing in `merlino_gaussian`; `merlino_semiexp`
+  should consume normalized correction data.
+- Support constrained fits and fixed parameters from the beginning, because
+  isotopologue data are often insufficient for a fully free structure.
+
 ## Migration Sequence
 
 1. Add the new package skeletons and compatibility imports.
@@ -92,8 +160,11 @@ Output:
 5. Introduce `merlino_fortran` wrappers for `gicforge.x` and `path_dvr.x`.
 6. Move Gaussian parsing/writing into `merlino_gaussian`.
 7. Move DVR workflow orchestration into `merlino_dvr`.
-8. Rewire GUI controllers to call service interfaces.
-9. Remove compatibility wrappers only after tests cover the new imports.
+8. Inventory existing Fortran VPT2/VCI code and define its normalized input and
+   output files.
+9. Add the semiexperimental geometry data model and least-squares interface.
+10. Rewire GUI controllers to call service interfaces.
+11. Remove compatibility wrappers only after tests cover the new imports.
 
 Each step should end with a small commit and a green validation run.
 
@@ -106,6 +177,10 @@ Each step should end with a small commit and a green validation run.
 - Keep all file-based backend contracts documented and tested.
 - Prefer integration tests that exercise real input/output files.
 - Keep GICForge and DVR Fortran77 backends independent compiled tools.
+- Keep VPT2/VCI numerical kernels independent from Gaussian parsing and GUI
+  orchestration.
+- Keep semiexperimental geometry fitting independent from any specific QM
+  package by consuming normalized vibrational-correction tables.
 
 ## First Milestone
 
