@@ -13,9 +13,9 @@ rm -f "$LOG"
   -std=legacy \
   -w \
   -L"$SDK_LIB" \
-  dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f \
+  dina25.f entors.f coord.f mkprim.f mkcyc.f mksalc.f \
   gicprune.f ../symmetry/gic_type_symmetry.f \
-  pcsgeo.f symang.f rates.f tools1.f tools2.f symm.f \
+  pcsgeo.f symang.f tools1.f tools2.f symm.f \
   -o gicforge \
   >"$LOG" 2>&1
 

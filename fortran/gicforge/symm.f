@@ -77,25 +77,25 @@ C       - loose tolerance  = 1.0D-2 (quasi-symmetry)
 
 *Deck READ_XYZ_WITH_INFO
       SUBROUTINE READ_XYZ_WITH_INFO
-     &     (NAT, SYMBOL, X, Y, Z, GROUP, SMILES, GROUP_NORM)
+     &     (NAT, SYMBOL, X, Y, Z, GROUP, GROUP_NORM)
 
       INTEGER NAT
       CHARACTER*2 SYMBOL(*)
       DOUBLE PRECISION X(*), Y(*), Z(*)
-      CHARACTER*(*) GROUP, SMILES, GROUP_NORM
+      CHARACTER*(*) GROUP, GROUP_NORM
 
       INTEGER I, IOS
       CHARACTER*256 LINE
 
       GROUP  = ' '
-      SMILES = ' '
+      GROUP_NORM = ' '
 
       OPEN(10, FILE='xyzin', STATUS='OLD')
 
       READ(10,*) NAT
       READ(10,'(A)') LINE
 
-      CALL PARSE_SECOND_LINE(LINE, GROUP, SMILES, GROUP_NORM)
+      CALL PARSE_SECOND_LINE(LINE, GROUP, GROUP_NORM)
 
       DO 100 I = 1, NAT
          READ(10,*,IOSTAT=IOS) SYMBOL(I), X(I), Y(I), Z(I)
@@ -110,15 +110,15 @@ C       - loose tolerance  = 1.0D-2 (quasi-symmetry)
       RETURN
       END
 *Deck PARSE_SECOND_LINE
-      SUBROUTINE PARSE_SECOND_LINE(LINE, GROUP, SMILES, GROUP_NORM)
+      SUBROUTINE PARSE_SECOND_LINE(LINE, GROUP, GROUP_NORM)
 
-      CHARACTER*(*) LINE, GROUP, GROUP_NORM, SMILES
+      CHARACTER*(*) LINE, GROUP, GROUP_NORM
       CHARACTER*32 TOK(10), TWORK
       INTEGER NTOK, I
       LOGICAL IS_POINT_GROUP
 
       GROUP  = ' '
-      SMILES = ' '
+      GROUP_NORM = ' '
 
       CALL SPLIT_TOKENS(LINE, TOK, NTOK)
 
@@ -132,9 +132,6 @@ C        copia di lavoro per il gruppo
 C           salva il gruppo ORIGINALE (non alterato)
             GROUP = TOK(I)
             GROUP_NORM = TWORK
-         ELSE
-C           salva SMILES ORIGINALE (case-sensitive)
-            IF (SMILES .EQ. ' ') SMILES = TOK(I)
          END IF
 
   200 CONTINUE

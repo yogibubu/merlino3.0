@@ -26,6 +26,10 @@ Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
 checks and user-facing workflow logic.
 
+The Fortran GICForge build no longer contains a SMILES reader and no longer
+accepts legacy FITPOT/VCI/DVR, MSR/isotope or rate keywords. Those workflows
+must be driven from Python or from explicitly archived legacy code.
+
 ## Input Contract
 
 GICForge no longer selects among geometry readers. The only molecular geometry
@@ -39,7 +43,10 @@ Unsupported legacy geometry paths:
 - FCHK geometry input
 - Z-matrix input from `provin`
 - Cartesian coordinates embedded in `provin`
+- SMILES input or SMILES-derived coordinate generation
 - `BLDZ`/`WRTZ` Z-matrix build/write workflow
+- `FITPOT`/`VCI1`/`DVR1`, `SEMIEX`/`ISOTOP`/`DVIBROT`, `VOLT`, `COLL`/`GORIN`
+  and `SPINFOR` in the GICForge driver
 
 `RDXYZ` is therefore implicit and is no longer a user-facing keyword.
 

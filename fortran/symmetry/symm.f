@@ -14,7 +14,6 @@ C     ---- DATI MOLECOLARI ----
 C     ---- INFO EXTRA ----
       CHARACTER*256 LINE2
       CHARACTER*16  GROUP, GROUP_NORM
-      CHARACTER*256 SMILES
       LOGICAL OK
 
 C     -----ROTAZIONI ----
@@ -3064,4 +3063,3 @@ C=======================================================================
 
       RETURN
       END
-

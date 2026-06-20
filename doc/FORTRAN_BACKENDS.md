@@ -29,9 +29,16 @@ non-redundant GICs, optionally writes the B matrix, emits a readable report, and
 creates Gaussian input. GUI orchestration, RDKit/SMILES, any conversion to
 Cartesian coordinates, DVR and post-processing remain Python responsibilities.
 
+The active build intentionally does not compile the old Z-matrix,
+FITPOT/VCI/DVR, MSR/isotope or rate utilities. Historical vibrational material
+is kept under `fortran/legacy/`; old non-Cartesian input experiments are kept
+outside the active Fortran tree under `archives/legacy_fortran/`.
+
 ## Other Fortran Areas
 
 - `fortran/gnic/`: standalone/non-active GIC development code.
+- `fortran/legacy/`: historical vibrational utilities no longer compiled into
+  active backends.
 - `fortran/qcent/`: quadrupole/centering utility backend.
 - `fortran/quadrupolari/`: quadrupole conversion examples and utilities.
 - `fortran/symmetry/`: standalone symmetry experiments/reference code.

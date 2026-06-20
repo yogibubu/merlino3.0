@@ -21,8 +21,6 @@ C Local
       Character*2 SymAt(MxAt),IAnEl2
       Character*20 StrInp,SL,SA,SD
       Character*6 Str1,Str2,Str3
-CEnzo Added group and smiles
-      Character*256 Smiles
       Character*16 Group, Group0
       Character*8 SymGroup
       Character*80 LinScr
@@ -63,7 +61,7 @@ C Set defaults and starting values
       DoBPCS = KWd(13)
       JoinFr = KWd(16)
       DoHBnd = KWd(17)
-      RdIsot = Kwd(24)
+      RdIsot = .False.
       Clean  = Kwd(31)
       NAtoms = 0
       NFrag  = 0
@@ -102,15 +100,12 @@ C Do not add silent fallbacks to FCHK, Z-matrix, or stdin coordinates here.
       write(IOut,'(/,'' Cartesian Coordinates from XYZ File for'',
      $ I5,'' Atoms'',/)') NAtoms
       Read(InFil,*) LinScr
-CENZO
-      CALL FndGrp(LinScr, GROUP0, SMILES, GROUP)
+      CALL FndGrp(LinScr, GROUP0, GROUP)
       IF (GROUP .EQ. ' ') THEN
        GROUP0='C1'
        GROUP='c1'
       END IF
       write(IOut,'('' Group ='',A4)') GROUP0
-      write(IOut,'('' SMILES ='',A72)') SMILES
-CENZO
       Do 10 IAt=1,NAtoms
        Call LlinCl(LinScr)
        Read(InFil,'(A80)') LinScr
@@ -372,7 +367,7 @@ C Numerical parameters
       IEndL  = 0
       IEndA  = 0
       IEndB  = 0
-      RdIsot = Kwd(24)
+      RdIsot = .False.
       GauCon = Kwd(4)       
       filnam='topo24'
 C Read Z-Matrix
@@ -2694,15 +2689,15 @@ C
       Return
       End
 *Deck FndGrp
-      SUBROUTINE FndGrp(LINE, GROUP, SMILES, GROUP_NORM)
+      SUBROUTINE FndGrp(LINE, GROUP, GROUP_NORM)
 
-      CHARACTER*(*) LINE, GROUP, GROUP_NORM, SMILES
+      CHARACTER*(*) LINE, GROUP, GROUP_NORM
       CHARACTER*32 TOK(10), TWORK
       INTEGER NTOK, I
       LOGICAL IS_POINT_GROUP
 
       GROUP  = ' '
-      SMILES = ' '
+      GROUP_NORM = ' '
 
       CALL SPLIT_TOKENS(LINE, TOK, NTOK)
 
@@ -2716,9 +2711,6 @@ C        copia di lavoro per il gruppo
 C           salva il gruppo ORIGINALE (non alterato)
             GROUP = TOK(I)
             GROUP_NORM = TWORK
-         ELSE
-C           salva SMILES ORIGINALE (case-sensitive)
-            IF (SMILES .EQ. ' ') SMILES = TOK(I)
          END IF
 
   200 CONTINUE
