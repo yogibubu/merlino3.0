@@ -7,6 +7,8 @@ GICForge is the active Fortran77 geometry backend formerly called `prova`.
 GICForge is intentionally narrow:
 
 - read Cartesian molecular input from the Merlino working directory
+- determine the molecular point group through the linked Fortran `symm.f`
+  symmetry engine
 - build topology, redundant GICs and non-redundant GICs
 - remove residual linear dependencies by coordinate-type blocks, so stretches,
   bends, linear bends, torsions and out-of-plane coordinates are never mixed
@@ -37,6 +39,23 @@ The build creates:
 - `bin/prova.x` as a compatibility alias
 
 The source remains fixed-form Fortran77/legacy-compatible Fortran.
+
+## Molecular Symmetry
+
+GICForge links `fortran/gicforge/symm.f` directly in the normal build. After
+Cartesian input and mass data are available, `coord.f` centers the molecule at
+the center of mass, projects it on the principal inertia axes, and calls
+`DETERMINE_POINT_GROUP`.
+
+The readable output reports:
+
+- `Point Group from symm.f`
+- symmetry quality: `STRICT`, `QUASI`, or `BROKEN`
+- maximum atom-matching deviation in Angstrom
+
+The second line of `xyzin` may still contain an optional point-group token for
+legacy workflows, but the authoritative GICForge report is now the group
+computed by `symm.f`.
 
 ## Initial GIC Selection
 

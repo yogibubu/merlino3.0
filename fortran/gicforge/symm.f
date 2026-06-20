@@ -1,64 +1,3 @@
-      PROGRAM PROVA_SYMMETRY
-      IMPLICIT NONE
-
-C     ---- PARAMETRI ----
-      INTEGER MAXAT
-      PARAMETER (MAXAT = 500)
-
-C     ---- DATI MOLECOLARI ----
-      INTEGER NAT
-      CHARACTER*2 SYMBOL(MAXAT)
-      DOUBLE PRECISION X(MAXAT), Y(MAXAT), Z(MAXAT)
-      DOUBLE PRECISION XP, YP, ZP
-
-C     ---- INFO EXTRA ----
-      CHARACTER*256 LINE2
-      CHARACTER*16  GROUP, GROUP_NORM
-      CHARACTER*256 SMILES
-      LOGICAL OK
-
-C     ---- SIMMETRIA ----
-      CHARACTER*8 FAM
-      CHARACTER*8 GROUP_NAME
-      INTEGER N
-      INTEGER NOPS
-      INTEGER SYM_STATUS
-      DOUBLE PRECISION DELTA_MAX
-      DOUBLE PRECISION TOL
-
-C     ---- EQUIVALENZE ----
-      INTEGER NCLASS
-      INTEGER CLASS(MAXAT,MAXAT)
-      INTEGER CSIZE(MAXAT)
-
-C Tolerance Strict
-      TOL=1.0D-4
-
-C     ---- LETTURA XYZ ----
-      CALL READ_XYZ_WITH_INFO(NAT,SYMBOL,X,Y,Z,GROUP,SMILES,GROUP_NORM)
-
-      IF (GROUP .EQ. ' ') THEN
-         WRITE(*,*) 'WARNING: NO POINT GROUP FOUND'
-      END IF
-
-      CALL DETERMINE_POINT_GROUP(MAXAT, NAT, SYMBOL, X, Y, Z,
-     &  TOL, GROUP_NAME, SYM_STATUS, DELTA_MAX)
-
-      If(SYM_STATUS.eq.0) then
-       WRITE(*,*) 'SYMMETRY: STRICT (max deviation = ', DELTA_MAX,' Å)'
-      ElseIf(SYM_STATUS.eq.1) then
-       WRITE(*,*) 'SYMMETRY: QUASI (max deviation = ', DELTA_MAX,' Å)'
-      ElseIF(SYM_STATUS.eq.2) then
-       WRITE(*,*) 'SYMMETRY: BROKEN (max deviation = ', DELTA_MAX,' Å)'
-      EndIf
-      WRITE(*,*) 'DETERMINED GROUP  = ', GROUP_NAME
-
-      Call EqvAtm(MAXAT,NAT, SYMBOL, GROUP,GROUP_NORM,FAM,N,OK,
-     $  X,Y,Z,CSIZE,CLASS)
-
-      STOP
-      END
-
 *Deck EqvAtm
       Subroutine EqvAtm(MAXAT, NAt, SYMBOL, GROUP, GROUP_NORM, FAM, 
      $  N, OK, X, Y, Z, CSIZE, CLASS)
@@ -1317,6 +1256,11 @@ C=================================================================
       ELSE
          SYM_STATUS = 2
       END IF
+
+C     GICForge uses this routine as a library call.  Return the point group
+C     and quality flag here; subgroup enumeration is kept below for the
+C     standalone symmetry workflow but is intentionally not run by GICForge.
+      RETURN
 
 C=================================================================
 C 5b. ENUMERATE SUBGROUPS
@@ -3091,4 +3035,3 @@ C=================================================================
 
       RETURN
       END
-

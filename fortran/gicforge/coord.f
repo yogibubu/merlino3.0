@@ -18,11 +18,13 @@ C Local
       Logical DoBPCS,DoHBnd,DoEck,TstAng,TTest,Error,AllHB,JoinFr,Linear
       Logical DoZMat,Aver,OK,Clean,RdXYZ,RdFChk
       Character*2 AtSymb(MxAt)
+      Character*2 SymAt(MxAt),IAnEl2
       Character*20 StrInp,SL,SA,SD
       Character*6 Str1,Str2,Str3
 CEnzo Added group and smiles
       Character*256 Smiles
       Character*16 Group, Group0
+      Character*8 SymGroup
       Character*80 LinScr
       Dimension IStart(100),IZIZ(4)
       Dimension CInp(3),Values(MaxNZ)
@@ -30,6 +32,7 @@ CEnzo Added group and smiles
       Dimension TMom(6)
 C Dimensions for Rotational Constants 
       Dimension XYZCM(3),Rotcm1(3),Dip(3),PMomB(3),RotMat(3,3)
+      Dimension XSym(MxAt),YSym(MxAt),ZSym(MxAt)
 C Dimensions for Z-Matrix
       Dimension LBl(MaxNZ),LAlpha(MaxNZ),LBeta(MaxNZ)
       Dimension BL(MaxNZ),Alpha(MaxNZ),Beta(MaxNZ)
@@ -260,6 +263,28 @@ C Find Fragments
 C Compute principal inertia axes and Eckart orientation 
       call MofI(IOut,Iprint,.false.,1,NAtoms,C,AtMass,XYZCM,TMom,PMom,
      $  RotMat)
+      Do 130 IAt=1,NAtoms
+       SymAt(IAt)=IAnEl2(IAn(IAt))
+       DX=C(1,IAt)-XYZCM(1)
+       DY=C(2,IAt)-XYZCM(2)
+       DZ=C(3,IAt)-XYZCM(3)
+       XSym(IAt)=RotMat(1,1)*DX+RotMat(2,1)*DY+RotMat(3,1)*DZ
+       YSym(IAt)=RotMat(1,2)*DX+RotMat(2,2)*DY+RotMat(3,2)*DZ
+       ZSym(IAt)=RotMat(1,3)*DX+RotMat(2,3)*DY+RotMat(3,3)*DZ
+  130 Continue
+      Call DETERMINE_POINT_GROUP(MxAt,NAtoms,SymAt, XSym,YSym,ZSym,
+     $ 1.0D-4,SymGroup,ISymStat,DelSym)
+      Write(IOut,'(/,'' Point Group from symm.f: '',A8)') SymGroup
+      If(ISymStat.eq.0) then
+       Write(IOut,'('' Symmetry quality: STRICT, max deviation ='',
+     $  1PE10.3,'' Angstrom'')') DelSym
+      ElseIf(ISymStat.eq.1) then
+       Write(IOut,'('' Symmetry quality: QUASI, max deviation ='',
+     $  1PE10.3,'' Angstrom'')') DelSym
+      Else
+       Write(IOut,'('' Symmetry quality: BROKEN, max deviation ='',
+     $  1PE10.3,'' Angstrom'')') DelSym
+      EndIf
       if(DoEck) then
        call Eckart(IOut,IPrint,DoEck,NAtoms,C,AtMass,XYZCM,Linear,PMom,
      $   RotMat)
@@ -2762,170 +2787,6 @@ C           salva SMILES ORIGINALE (case-sensitive)
          END IF
 
   200 CONTINUE
-
-      RETURN
-      END
-*Deck SPLIT_TOKENS
-      SUBROUTINE SPLIT_TOKENS(LINE, TOK, NTOK)
-
-      CHARACTER*(*) LINE
-      CHARACTER*(*) TOK(*)
-      INTEGER NTOK
-
-      INTEGER I, START, LENL
-
-      LENL = LEN(LINE)
-      NTOK = 0
-      START = 1
-
-      DO 300 I = 1, LENL+1
-         IF (I .GT. LENL .OR. LINE(I:I) .EQ. ' ') THEN
-            IF (I .GT. START) THEN
-               NTOK = NTOK + 1
-               TOK(NTOK) = LINE(START:I-1)
-            END IF
-            START = I + 1
-         END IF
-  300 CONTINUE
-
-      RETURN
-      END
-*Deck IS_POINT_GROUP
-      LOGICAL FUNCTION IS_POINT_GROUP(TOK)
-
-      CHARACTER*(*) TOK
-      CHARACTER*8 FAM
-      INTEGER N
-      LOGICAL OK
-
-      CALL CLASSIFY_GROUP(TOK, FAM, N, OK)
-
-      IS_POINT_GROUP = OK
-      RETURN
-      END
-*Deck CLASSIFY_GROUP
-      SUBROUTINE CLASSIFY_GROUP(GROUP, FAM, N, OK)
-
-      CHARACTER*(*) GROUP, FAM
-      INTEGER N
-      LOGICAL OK
-
-      INTEGER L
-      LOGICAL GOTN
-
-      OK  = .FALSE.
-      FAM = ' '
-      N   = 0
-      L   = LEN_TRIM(GROUP)
-
-C     ---- casi banali ----
-      IF (GROUP .EQ. 'c1') THEN
-         FAM = 'C1'
-         OK  = .TRUE.
-         RETURN
-      END IF
-
-      IF (GROUP .EQ. 'ci') THEN
-         FAM = 'Ci'
-         OK  = .TRUE.
-         RETURN
-      END IF
-
-      IF (GROUP .EQ. 'cs') THEN
-         FAM = 'Cs'
-         OK  = .TRUE.
-         RETURN
-      END IF
-
-C     ---- gruppi cubici ----
-      IF (GROUP .EQ. 't'  .OR. GROUP .EQ. 'td' .OR.
-     &    GROUP .EQ. 'th' .OR. GROUP .EQ. 'o'  .OR.
-     &    GROUP .EQ. 'oh' .OR. GROUP .EQ. 'i'  .OR.
-     &    GROUP .EQ. 'ih') THEN
-         FAM = GROUP
-         OK  = .TRUE.
-         RETURN
-      END IF
-
-C     ---- gruppi Cn, Cnv, Cnh ----
-      IF (GROUP(1:1) .EQ. 'c') THEN
-         CALL GET_N_FROM_GROUP(GROUP, N, GOTN)
-         IF (GOTN) THEN
-            IF (INDEX(GROUP,'v') .GT. 0) THEN
-               FAM = 'Cnv'
-            ELSE IF (INDEX(GROUP,'h') .GT. 0) THEN
-               FAM = 'Cnh'
-            ELSE
-               FAM = 'Cn'
-            END IF
-            OK = .TRUE.
-            RETURN
-         END IF
-      END IF
-
-C     ---- gruppi Dn, Dnd, Dnh ----
-      IF (GROUP(1:1) .EQ. 'd') THEN
-         CALL GET_N_FROM_GROUP(GROUP, N, GOTN)
-         IF (GOTN) THEN
-            IF (INDEX(GROUP,'d') .GT. 0) THEN
-               FAM = 'Dnd'
-            ELSE IF (INDEX(GROUP,'h') .GT. 0) THEN
-               FAM = 'Dnh'
-            ELSE
-               FAM = 'Dn'
-            END IF
-            OK = .TRUE.
-            RETURN
-         END IF
-      END IF
-
-      RETURN
-      END
-*Deck TOLOWER
-      SUBROUTINE TOLOWER(STR)
-
-      CHARACTER*(*) STR
-      INTEGER I, C
-
-      DO I = 1, LEN(STR)
-         C = ICHAR(STR(I:I))
-         IF (C .GE. 65 .AND. C .LE. 90) THEN
-            STR(I:I) = CHAR(C + 32)
-         END IF
-      END DO
-
-      RETURN
-      END
-*Deck GET_N_FROM_GROUP
-      SUBROUTINE GET_N_FROM_GROUP(GROUP, N, OK)
-
-      CHARACTER*(*) GROUP
-      INTEGER N
-      LOGICAL OK
-
-      CHARACTER*16 NUM
-      INTEGER I, J, C
-
-      OK = .FALSE.
-      N  = 0
-      NUM = ' '
-
-      J = 0
-      DO 100 I = 2, LEN_TRIM(GROUP)
-         C = ICHAR(GROUP(I:I))
-         IF (C .GE. 48 .AND. C .LE. 57) THEN
-            J = J + 1
-            NUM(J:J) = GROUP(I:I)
-         ELSE
-            IF (J .GT. 0) GOTO 200
-         END IF
-  100 CONTINUE
-
-  200 CONTINUE
-      IF (J .GT. 0) THEN
-         READ(NUM(1:J),*) N
-         OK = .TRUE.
-      END IF
 
       RETURN
       END
