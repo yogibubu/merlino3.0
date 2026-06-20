@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import pytest
+import numpy as np
 
+from geometry.rotational import rotational_constants_MHz
+from geometry.structure import Structure
 from merlino_semiexp import (
     CorrectedRotationalConstants,
     IsotopologueObservation,
@@ -9,6 +12,7 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     VibrationalCorrection,
     corrected_constants_rows,
+    fit_semiexperimental_geometry,
     parse_substitutions,
     read_observations_csv,
     write_observations_csv,
@@ -107,3 +111,95 @@ def test_semiexperimental_substitution_parser():
     assert parse_substitutions("2:13;5:18") == {2: 13, 5: 18}
     with pytest.raises(ValueError):
         parse_substitutions("0:13")
+
+
+def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
+    atoms = ["O", "H", "H"]
+    target = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [0.0000, 0.0000, 0.9572],
+            [0.9266, 0.0000, -0.2396],
+        ],
+        dtype=float,
+    )
+    initial = target.copy()
+    initial[1, 2] += 0.08
+    initial[2, 0] -= 0.05
+    xyz = tmp_path / "water_initial.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "distorted water",
+                *[f"{atom} {x:.8f} {y:.8f} {z:.8f}" for atom, (x, y, z) in zip(atoms, initial)],
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    parent_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, target)))
+    d1_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, target, [None, 2, None])))
+    observations = (
+        IsotopologueObservation("parent", parent_constants),
+        IsotopologueObservation("D1", d1_constants, substitutions={2: 2}),
+    )
+    request = SemiexperimentalFitRequest(xyz, observations)
+    initial_rms = _rotconst_rms(atoms, initial, observations)
+
+    result = fit_semiexperimental_geometry(request, max_iter=8, outdir=tmp_path / "semiexp")
+
+    assert result.rms_MHz < initial_rms
+    assert result.b_matrix.shape[0] == len(result.gic_labels)
+    assert result.b_matrix.shape[1] == 3 * len(atoms)
+    assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
+    assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
+    assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_residuals.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
+
+
+def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, (observation,), fixed_parameters=("GIC001",)),
+        max_iter=1,
+    )
+
+    assert result.parameters[0].active is False
+    assert any(parameter.active for parameter in result.parameters)
+
+
+def _structure(atoms, coords, isotopes=None):
+    return Structure.from_atoms_coords(atoms, [tuple(row) for row in coords], isotopes=isotopes)
+
+
+def _rotconst_rms(atoms, coords, observations):
+    residuals = []
+    for observation in observations:
+        isotopes = [None] * len(atoms)
+        for atom_index, mass_number in observation.substitutions.items():
+            isotopes[atom_index - 1] = mass_number
+        calculated = rotational_constants_MHz(_structure(atoms, coords, isotopes))
+        residuals.extend(obs - calc for obs, calc in zip(observation.corrected.as_tuple(), calculated))
+    return float(np.sqrt(np.mean(np.square(residuals))))

@@ -14,16 +14,32 @@ from .io import (
     read_observations_csv,
     write_observations_csv,
 )
+from .fit import (
+    SemiexperimentalFitResult,
+    SemiexperimentalParameter,
+    SemiexperimentalResidual,
+    fit_semiexperimental_geometry,
+    parameters_csv,
+    residuals_csv,
+    write_semiexperimental_outputs,
+)
 
 __all__ = [
     "CorrectedRotationalConstants",
+    "SemiexperimentalFitResult",
+    "SemiexperimentalParameter",
+    "SemiexperimentalResidual",
     "IsotopologueObservation",
     "RotationalConstants",
     "SemiexperimentalFitRequest",
     "VibrationalCorrection",
     "corrected_constants_rows",
+    "fit_semiexperimental_geometry",
     "format_substitutions",
+    "parameters_csv",
     "parse_substitutions",
     "read_observations_csv",
+    "residuals_csv",
     "write_observations_csv",
+    "write_semiexperimental_outputs",
 ]

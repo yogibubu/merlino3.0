@@ -10,6 +10,7 @@ from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
 from merlino_gaussian import summarize_gaussian_log
 from merlino_gic import run_gicforge
+from merlino_semiexp import SemiexperimentalFitRequest, fit_semiexperimental_geometry, read_observations_csv
 from merlino_vpt2_vci import (
     QuarticForceField,
     VCIOptions,
@@ -69,6 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
     dvr.add_argument("--solver", default="fourier")
     dvr.add_argument("--no-rotconst", action="store_true")
     dvr.add_argument("--label-cremer-pople", action="store_true")
+
+    semiexp = sub.add_parser("semiexp", help="Fit semiexperimental equilibrium geometry")
+    semiexp.add_argument("--xyz", type=Path, required=True, help="Initial parent Cartesian geometry in XYZ format")
+    semiexp.add_argument("--observations", type=Path, required=True, help="CSV with isotopologue B0 constants and corrections")
+    semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
+    semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
+    semiexp.add_argument("--max-iter", type=int, default=12)
+    semiexp.add_argument("--step", type=float, default=1.0e-4)
+    semiexp.add_argument("--damping", type=float, default=1.0e-8)
     return parser
 
 
@@ -167,6 +177,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}: {path}")
         return 0
 
+    if args.command == "semiexp":
+        fixed = _parse_fixed_parameters(args.fixed)
+        observations = read_observations_csv(args.observations)
+        request = SemiexperimentalFitRequest(
+            initial_geometry=args.xyz,
+            observations=observations,
+            fixed_parameters=fixed,
+        )
+        result = fit_semiexperimental_geometry(
+            request,
+            max_iter=args.max_iter,
+            step=args.step,
+            damping=args.damping,
+            outdir=args.outdir,
+        )
+        print(f"manifest: {result.manifest}")
+        print(f"rms_MHz: {result.rms_MHz:.8g}")
+        print(f"iterations: {result.iterations}")
+        return 0
+
     if args.command == "gaussian-summary":
         summary = summarize_gaussian_log(args.log)
         print(f"path: {summary.path}")
@@ -232,6 +262,10 @@ def _parse_active_modes(raw: str) -> tuple[int, ...] | None:
     if any(value < 0 for value in values):
         raise ValueError("active modes are one-based")
     return values
+
+
+def _parse_fixed_parameters(raw: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in raw.replace(";", ",").split(",") if part.strip())
 
 
 if __name__ == "__main__":

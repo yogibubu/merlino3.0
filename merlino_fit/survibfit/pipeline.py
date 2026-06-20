@@ -171,8 +171,8 @@ def _connected_components(adjacency, nat):
     return comps
 
 
-def primitives_from_topology(coords, Z, linear_threshold, include_fragments=True):
-    _, dg, _ = build_topology(coords, Z, coords_units="auto")
+def primitives_from_topology(coords, Z, linear_threshold, include_fragments=True, coords_units="auto"):
+    _, dg, _ = build_topology(coords, Z, coords_units=coords_units)
     prims = build_primitives(dg, coords, linear_threshold)
 
     if include_fragments:

@@ -22,7 +22,7 @@ See `doc/MERLINO4_REFACTOR_PLAN.md` before moving code.
 
 - `app.py`: GUI launcher.
 - `python -m merlino`: Merlino4 workflow CLI for workspace initialization,
-  GF/PED, VPT2/VCI and DVR command preparation.
+  GF/PED, VPT2/VCI, semiexperimental geometries and DVR command preparation.
 - `python -m merlino_gui.app`: experimental Merlino4 workflow dashboard.
 - `manager.py`, `cli_modules.py`, `cli_gaussian.py`: command-line entry points
   retained for compatibility.
@@ -103,6 +103,7 @@ The CLI mirrors GUI-capable services without requiring Qt:
 python -m merlino init my_project
 python -m merlino gf --fchk calc.fchk --out gf_report.txt
 python -m merlino vci --qff field.qff --max-quanta 3 --roots 6 --csv-dir csv
+python -m merlino semiexp --xyz parent.xyz --observations isotopologues.csv --outdir semiexp_run
 python -m merlino gic --workdir working
 python -m merlino gaussian-summary calc.log
 python -m merlino backends

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 
+from geometry.rotational import rotational_constants_MHz
+from geometry.structure import Structure
 from merlino_core import build_run_manifest, ensure_workspace, load_config, write_default_config
 from merlino_core.cli import main as merlino_cli
 from merlino_gaussian import summarize_gaussian_log
+from merlino_semiexp import IsotopologueObservation, RotationalConstants, write_observations_csv
 from merlino_gui import discover_manifests
 
 
@@ -120,6 +123,39 @@ def test_merlino_cli_init_vci_and_dvr_args(tmp_path):
         "scan",
     ]) == 0
     assert (outdir / "scan_manifest.json").exists()
+
+
+def test_merlino_cli_semiexp(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.987200",
+                "H 0.906600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    target = Structure.from_atoms_coords(
+        ["O", "H", "H"],
+        [(0.0, 0.0, 0.0), (0.0, 0.0, 0.9572), (0.9266, 0.0, -0.2396)],
+    )
+    observations = (
+        IsotopologueObservation("parent", RotationalConstants(*rotational_constants_MHz(target))),
+    )
+    obs_csv = write_observations_csv(tmp_path / "observations.csv", observations)
+    outdir = tmp_path / "semiexp"
+
+    assert merlino_cli(["semiexp", "--xyz", str(xyz), "--observations", str(obs_csv), "--outdir", str(outdir)]) == 0
+
+    assert (outdir / "semiexp_geometry.xyz").exists()
+    assert (outdir / "semiexp_parameters.csv").exists()
+    assert (outdir / "semiexp_residuals.csv").exists()
+    assert (outdir / "semiexp_manifest.json").exists()
 
 
 def test_merlino_cli_gic_gaussian_summary_and_backends(tmp_path):
