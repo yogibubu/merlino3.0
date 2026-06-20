@@ -20,8 +20,11 @@ venv/
 *.log
 *.out
 *.err
+build/
+fortran/*/build/
 *_freeze_*.tar.gz
 *_freeze_*.sha256
+archives/freezes/
 
 # Local runtime outputs
 work/

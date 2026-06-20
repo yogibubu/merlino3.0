@@ -26,7 +26,8 @@
 - Root smoke scripts moved under `scripts/`:
   - `scripts/smoke_geometry_pipeline.py`
   - `scripts/smoke_advanced_window.py`
-- References updated (`readme_rotvib`, `FREEZE_NOTES.md`).
+- References updated (`doc/legacy/readme_rotvib`,
+  `doc/legacy/FREEZE_NOTES_2026-02-04.md`).
 
 ## Test Stability
 - Sign/format-robust regression checks added for GIC output in:

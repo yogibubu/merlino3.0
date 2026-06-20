@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_NAME="$(basename "$ROOT_DIR")"
 STAMP="$(date '+%Y%m%d_%H%M%S')"
 PARENT_DIR="$(dirname "$ROOT_DIR")"
-OUT_DIR="$ROOT_DIR"
+OUT_DIR="$ROOT_DIR/archives/freezes"
 
 RUN_CHECKS=1
 for arg in "$@"; do
@@ -40,6 +40,7 @@ tar \
   --exclude=".DS_Store" \
   --exclude="work" \
   --exclude="working" \
+  --exclude="archives/freezes" \
   --exclude="*_freeze_*.tar.gz" \
   --exclude="*_freeze_*.sha256" \
   -czf "$ARCHIVE_PATH" \

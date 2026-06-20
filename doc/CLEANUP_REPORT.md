@@ -11,8 +11,8 @@
   - `scripts/smoke_geometry_pipeline.py`
   - `scripts/smoke_advanced_window.py`
 - Updated references:
-  - `readme_rotvib`
-  - `FREEZE_NOTES.md`
+  - `doc/legacy/readme_rotvib`
+  - `doc/legacy/FREEZE_NOTES_2026-02-04.md`
 - Updated active docs/UI labels from `Merlino 2.x` to `Merlino 3.0`.
 
 ## Residual Duplicates (intentional or low priority)

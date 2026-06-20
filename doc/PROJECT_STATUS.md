@@ -65,8 +65,15 @@ Path DVR e Puckering Gaussian:
 - quando il log contiene `QPck/PhiP`, il profilo può scrivere il bridge verso
   componenti Cremer-Pople generalizzate
 - convenzione di numerazione anelli fissata in
-  `doc/RING_NUMBERING_CONVENTION.md`: primo atomo = indice input più basso,
-  direzione = vicino con indice più basso
+  `doc/RING_NUMBERING_CONVENTION.md`: ordine iniziale Prelog/CIP, poi
+  canonicalizzazione deterministica condivisa da Python e Fortran
+
+Repository layout:
+- struttura funzionale documentata in `README.md` e
+  `doc/REPOSITORY_LAYOUT.md`
+- backend Fortran documentati in `doc/FORTRAN_BACKENDS.md`
+- note storiche root spostate in `doc/legacy/`
+- report voluminosi spostati in `doc/reports/`
 
 Verifiche minime fatte
 ---------------------

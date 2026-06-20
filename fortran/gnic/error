@@ -1,7 +1,0 @@
-Undefined symbols for architecture arm64:
-  "_read_connectivity_", referenced from:
-      _MAIN__ in ccGLXI05.o
-  "_read_xyz_", referenced from:
-      _MAIN__ in ccGLXI05.o
-ld: symbol(s) not found for architecture arm64
-collect2: error: ld returned 1 exit status

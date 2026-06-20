@@ -1,2 +1,22 @@
-gfortran -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f pcsgeo.f symang.f rates.f tools1.f tools2.f -o prova 2>error
+#!/usr/bin/env bash
+set -euo pipefail
 
+FC="${FC:-gfortran}"
+SDK_LIB="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
+BUILD_DIR="build"
+LOG="$BUILD_DIR/prova_build.log"
+
+mkdir -p "$BUILD_DIR"
+rm -f "$LOG"
+
+"$FC" \
+  -std=legacy \
+  -w \
+  -L"$SDK_LIB" \
+  dina25.f entors.f coord.f mkprim.f allvib.f mkcyc.f mksalc.f \
+  pcsgeo.f symang.f rates.f tools1.f tools2.f \
+  -o prova \
+  >"$LOG" 2>&1
+
+cp prova ../../bin/prova.x
+echo "Built fortran/prova/prova and bin/prova.x"
