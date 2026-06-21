@@ -13,6 +13,7 @@ rm -f "$LOG"
 "$FC" \
   -std=legacy \
   -w \
+  -I../../merlino_core/parameters/fortran \
   -L"$SDK_LIB" \
   dina25.f entors.f coord.f mkprim.f mkcyc.f mksalc.f \
   gicprune.f gic_type_symmetry.f \

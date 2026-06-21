@@ -24,8 +24,18 @@ python -m survibfit.modify_geom
 ```
 The CLI will ask for the XYZ path, output path, units, and whether to apply BDPCS3.
 
-Use `--bdpcs3-version legacy|updated` to select the formulation when BDPCS3 is enabled
-(default: `legacy`). The updated version follows `docs/newbdpcs3.tex`.
+Use `--bdpcs3-version updated|legacy` to select the formulation when BDPCS3 is
+enabled (default: `updated`). `updated` is the topology/synthon-consistent
+BDPCS3 formulation already implemented in Merlino. The back-transform uses
+physical metric weights by default: stretches are kept stiff, valence and
+out-of-plane coordinates are intermediate, and torsions are softer. Directional
+non-covalent H...Y targets are also included for X-H...Y contacts when
+X-H-Y >= 150 deg; the correction is damped by an error function in the H...Y
+distance so it vanishes for long contacts. Current H-bond values are
+O-H...O = -0.055 Angstrom and N-H...N = -0.055 Angstrom; mixed N/O cases use
+their average. All H-bond and metric parameters are read from
+`merlino_core/parameters/bdpcs3_hbond.toml`; the topology policy is documented
+in `doc/HBOND_TOPOLOGY_POLICY.md`. `legacy` is retained only for older runs.
 
 Example (updated BDPCS3):
 ```

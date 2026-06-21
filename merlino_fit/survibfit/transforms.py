@@ -100,6 +100,7 @@ def internal_to_cart_coords(
     fd_step=1e-4,
     max_iter=50,
     tol=1e-8,
+    metric_weights=None,
 ):
     """Iterative back-transform from internal to Cartesian coords.
 
@@ -113,6 +114,15 @@ def internal_to_cart_coords(
         s_target = np.array(q_or_s, dtype=float)
     else:
         s_target = U @ np.array(q_or_s, dtype=float)
+    if metric_weights is not None:
+        mw = np.array(metric_weights, dtype=float).reshape(-1)
+        if mw.size != len(prims):
+            raise ValueError("metric_weights size does not match primitives")
+        if np.any(mw < 0.0):
+            raise ValueError("metric_weights must be non-negative")
+        row_scale = np.sqrt(mw)
+    else:
+        row_scale = None
 
     for _ in range(max_iter):
         s = eval_primitives(prims, coords)
@@ -120,6 +130,9 @@ def internal_to_cart_coords(
         if np.linalg.norm(ds) < tol:
             break
         B = b_matrix(prims, coords, fd_step)
+        if row_scale is not None:
+            B = B * row_scale[:, None]
+            ds = ds * row_scale
         G1B = compute_fortran_update_matrix(B, masses if mass_weighted else None, tol=1e-5)
         dx = G1B @ ds
         coords = coords + dx.reshape(coords.shape)

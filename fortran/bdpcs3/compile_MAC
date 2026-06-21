@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+mkdir -p build
+gfortran -std=legacy -ffixed-form -ffixed-line-length-none \
+  -I../../merlino_core/parameters/fortran \
+  bdpcs3.f -o build/bdpcs3
+
+echo "Built fortran/bdpcs3/build/bdpcs3"

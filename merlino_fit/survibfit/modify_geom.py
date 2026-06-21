@@ -4,16 +4,43 @@ import argparse
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
+from merlino_core.parameters.bdpcs3 import load_bdpcs3_parameters
+
 from .pipeline import primitives_from_topology, build_topology, b_matrix
-from .primitives import eval_primitives
+from .primitives import Primitive, eval_primitives
 from .transforms import internal_to_cart_coords, compute_fortran_update_matrix
 
 BOHR_TO_ANG = 0.52917721092
 ANG_TO_BOHR = 1.0 / BOHR_TO_ANG
+BDPCS3_VERSIONS = ("updated", "legacy")
+
+_BDPCS3_PARAMETERS = load_bdpcs3_parameters()
+BDPCS3_DEFAULT_WEIGHT_PROFILE = _BDPCS3_PARAMETERS.weights.profile
+BDPCS3_WEIGHT_PROFILES = (BDPCS3_DEFAULT_WEIGHT_PROFILE, "unit")
+BDPCS3_HBOND_DISTANCE_CUTOFF_ANG = _BDPCS3_PARAMETERS.hbond.distance_cutoff_ang
+BDPCS3_HBOND_DISTANCE_WIDTH_ANG = _BDPCS3_PARAMETERS.hbond.distance_width_ang
+BDPCS3_HBOND_SEARCH_CUTOFF_ANG = _BDPCS3_PARAMETERS.hbond.search_cutoff_ang
+BDPCS3_HBOND_ANGLE_THRESHOLD_DEG = _BDPCS3_PARAMETERS.hbond.angle_threshold_deg
+
+BDPCS3_WEIGHT_STRETCH = _BDPCS3_PARAMETERS.weights.stretch
+BDPCS3_WEIGHT_ANGLE = _BDPCS3_PARAMETERS.weights.angle
+BDPCS3_WEIGHT_HBOND = _BDPCS3_PARAMETERS.weights.hbond
+BDPCS3_WEIGHT_TORSION_MIN = _BDPCS3_PARAMETERS.weights.torsion_min
+BDPCS3_WEIGHT_FRAGMENT = _BDPCS3_PARAMETERS.weights.fragment
+
+
+@dataclass(frozen=True)
+class HydrogenBond:
+    donor: int
+    hydrogen: int
+    acceptor: int
+    distance_ang: float
+    angle_deg: float
 
 
 def _load_topology_elements():
@@ -238,6 +265,166 @@ def topology_bond_order_for_pair(i: int, j: int, Z, coords_ang, cache=None) -> f
     return bo_fn(i, j, Z, coords_ang, neighbors, cache=cache)
 
 
+def _angle_deg_center(i: int, j: int, k: int, coords_ang) -> float:
+    """Angle i-j-k in degrees, with j as vertex."""
+    coords_arr = np.array(coords_ang, dtype=float)
+    v1 = coords_arr[i] - coords_arr[j]
+    v2 = coords_arr[k] - coords_arr[j]
+    n1 = float(np.linalg.norm(v1))
+    n2 = float(np.linalg.norm(v2))
+    if n1 <= 1.0e-12 or n2 <= 1.0e-12:
+        return 0.0
+    c = float(np.dot(v1, v2) / (n1 * n2))
+    c = max(-1.0, min(1.0, c))
+    return math.degrees(math.acos(c))
+
+
+def _hbond_base_delta_ang(donor_z: int, acceptor_z: int) -> float:
+    """BDPCS3 hydrogen-bond correction before geometric damping."""
+    return _BDPCS3_PARAMETERS.hbond.correction_ang(donor_z, acceptor_z)
+
+
+def bdpcs3_hbond_delta(
+    donor_z: int,
+    acceptor_z: int,
+    distance_ang: float,
+    angle_deg: float,
+    *,
+    angle_threshold_deg: float = BDPCS3_HBOND_ANGLE_THRESHOLD_DEG,
+    distance_cutoff_ang: float = BDPCS3_HBOND_DISTANCE_CUTOFF_ANG,
+    distance_width_ang: float = BDPCS3_HBOND_DISTANCE_WIDTH_ANG,
+) -> float:
+    """Hydrogen-bond BDPCS3 correction for the H...Y distance in Angstrom."""
+    if angle_deg < angle_threshold_deg:
+        return 0.0
+    base = _hbond_base_delta_ang(donor_z, acceptor_z)
+    if base == 0.0:
+        return 0.0
+    width = max(float(distance_width_ang), 1.0e-6)
+    arg = (float(distance_ang) - float(distance_cutoff_ang)) / width
+    damping = 0.5 * (1.0 - math.erf(arg))
+    damping = max(0.0, min(1.0, damping))
+    return base * damping
+
+
+def detect_hydrogen_bonds(
+    Z,
+    coords_ang,
+    covalent_bonds,
+    *,
+    angle_threshold_deg: float = BDPCS3_HBOND_ANGLE_THRESHOLD_DEG,
+    distance_cutoff_ang: float = BDPCS3_HBOND_SEARCH_CUTOFF_ANG,
+) -> list[HydrogenBond]:
+    """Find X-H...Y contacts compatible with GICForge's hydrogen-bond logic."""
+    Zarr = np.array(Z, dtype=int)
+    coords_arr = np.array(coords_ang, dtype=float)
+    nat = len(Zarr)
+    adjacency = [set() for _ in range(nat)]
+    for i, j in covalent_bonds:
+        i = int(i)
+        j = int(j)
+        adjacency[i].add(j)
+        adjacency[j].add(i)
+
+    selected: list[HydrogenBond] = []
+    for h in range(nat):
+        if Zarr[h] != 1:
+            continue
+        donors = [
+            a
+            for a in adjacency[h]
+            if int(Zarr[a]) in _BDPCS3_PARAMETERS.hbond.donor_atomic_numbers
+        ]
+        if len(donors) != 1:
+            continue
+        donor = donors[0]
+        best = None
+        for acc in range(nat):
+            if acc == h or acc == donor:
+                continue
+            if int(Zarr[acc]) not in _BDPCS3_PARAMETERS.hbond.acceptor_atomic_numbers:
+                continue
+            if acc in adjacency[h]:
+                continue
+            if acc in adjacency[donor]:
+                continue
+            donor_neigh = set(adjacency[donor]) - {h, acc}
+            acc_neigh = set(adjacency[acc]) - {h, donor}
+            if donor_neigh.intersection(acc_neigh):
+                continue
+            dist = float(np.linalg.norm(coords_arr[h] - coords_arr[acc]))
+            if dist > distance_cutoff_ang:
+                continue
+            angle = _angle_deg_center(donor, h, acc, coords_arr)
+            if angle < angle_threshold_deg:
+                continue
+            candidate = HydrogenBond(donor, h, acc, dist, angle)
+            if best is None or candidate.distance_ang < best.distance_ang:
+                best = candidate
+        if best is not None:
+            selected.append(best)
+
+    unique: list[HydrogenBond] = []
+    seen_da = set()
+    for hb in sorted(selected, key=lambda item: item.distance_ang):
+        key = (hb.donor, hb.acceptor)
+        if key in seen_da:
+            continue
+        seen_da.add(key)
+        unique.append(hb)
+    return sorted(unique, key=lambda item: (item.donor, item.hydrogen, item.acceptor))
+
+
+def bdpcs3_metric_weights(
+    prims,
+    Z,
+    coords_ang,
+    *,
+    hbond_pairs=frozenset(),
+    profile: str = BDPCS3_DEFAULT_WEIGHT_PROFILE,
+) -> np.ndarray:
+    """Physical metric weights for internal-to-Cartesian BDPCS3 back-transform."""
+    profile_norm = (profile or BDPCS3_DEFAULT_WEIGHT_PROFILE).strip().lower()
+    if profile_norm == "unit":
+        return np.ones(len(prims), dtype=float)
+    if profile_norm != BDPCS3_DEFAULT_WEIGHT_PROFILE.lower():
+        raise ValueError(f"Unknown BDPCS3 weight profile: {profile}")
+
+    hbond_pairs_norm = {tuple(sorted((int(i), int(j)))) for i, j in hbond_pairs}
+    weights = np.ones(len(prims), dtype=float)
+    bo_cache = {}
+    for idx, prim in enumerate(prims):
+        kind = prim.kind
+        if kind == "bond":
+            pair = tuple(sorted((int(prim.atoms[0]), int(prim.atoms[1]))))
+            weights[idx] = (
+                BDPCS3_WEIGHT_HBOND
+                if pair in hbond_pairs_norm
+                else BDPCS3_WEIGHT_STRETCH
+            )
+        elif kind in {"angle", "linear_bend", "out_of_plane"}:
+            weights[idx] = BDPCS3_WEIGHT_ANGLE
+        elif kind == "dihedral":
+            _, j, k, _ = prim.atoms
+            try:
+                bo = topology_bond_order_for_pair(j, k, Z, coords_ang, cache=bo_cache)
+            except Exception:
+                bo = 1.0
+            weights[idx] = BDPCS3_WEIGHT_TORSION_MIN
+            if np.isfinite(bo) and bo > 1.0:
+                weights[idx] = min(
+                    BDPCS3_WEIGHT_ANGLE,
+                    BDPCS3_WEIGHT_TORSION_MIN
+                    + (float(bo) - 1.0)
+                    * (BDPCS3_WEIGHT_ANGLE - BDPCS3_WEIGHT_TORSION_MIN),
+                )
+        elif kind in {"frag_trans", "frag_rot"}:
+            weights[idx] = BDPCS3_WEIGHT_FRAGMENT
+        else:
+            weights[idx] = 1.0
+    return weights
+
+
 def bdpcs3_delta_and_order_updated(
     z1: int, z2: int, r_ang: float, bond_order_override: float | None = None
 ):
@@ -265,6 +452,15 @@ def bdpcs3_delta_and_order_updated(
     delta_r = (delta_cv + delta_deloc) * f_coord
 
     return delta_r, bond_order
+
+
+def bdpcs3_function(version: str):
+    version_norm = (version or "updated").strip().lower()
+    if version_norm in {"updated", "unified"}:
+        return bdpcs3_delta_and_order_updated
+    if version_norm == "legacy":
+        return bdpcs3_delta_and_order
+    raise ValueError(f"Unknown BDPCS3 version: {version}")
 
 
 def _load_bdpcs3_pair_scales():
@@ -315,8 +511,10 @@ def bdpcs3_delta_and_order(
     return delta_r, bond_order
 
 
-def bdpcs3_correct_length(z1: int, z2: int, r_ang: float) -> float:
-    dlt_r, _ = bdpcs3_delta_and_order(z1, z2, r_ang)
+def bdpcs3_correct_length(
+    z1: int, z2: int, r_ang: float, version: str = "updated"
+) -> float:
+    dlt_r, _ = bdpcs3_function(version)(z1, z2, r_ang)
     return r_ang + dlt_r
 
 
@@ -558,11 +756,21 @@ def _backtransform_iterative(
     mass_weighted=False,
     damping=1.0,
     adaptive=False,
+    metric_weights=None,
     weights=None,
 ):
     coords = coords0.copy()
     prev_norm = None
-    if weights is not None:
+    if metric_weights is not None and weights is not None:
+        raise ValueError("Use metric_weights or legacy weights, not both.")
+    if metric_weights is not None:
+        mw = np.array(metric_weights, dtype=float).reshape(-1)
+        if mw.size != len(prims):
+            raise ValueError("metric_weights size does not match primitives")
+        if np.any(mw < 0.0):
+            raise ValueError("metric_weights must be non-negative")
+        w = np.sqrt(mw)
+    elif weights is not None:
         w = np.array(weights, dtype=float).reshape(-1)
         if w.size != len(prims):
             raise ValueError("weights size does not match primitives")
@@ -614,7 +822,7 @@ def main():
                     help="Apply automatic bond-length rule to all detected bonds.")
     ap.add_argument("--bdpcs3-fit", action="store_true",
                     help="Apply fitted per-pair BDPCS3 scale factors if present.")
-    ap.add_argument("--bdpcs3-version", choices=["legacy", "updated"], default="legacy",
+    ap.add_argument("--bdpcs3-version", choices=BDPCS3_VERSIONS, default="updated",
                     help="Select BDPCS3 formulation when --rule bdpcs3 is enabled.")
     ap.add_argument("--isotopes", default=None,
                     help="Isotope map: i:A (1-based atom index). Example: 1:2,3:13")
@@ -661,21 +869,39 @@ def main():
     iso_map = parse_isotopes(args.isotopes)
     masses, used_isotopes = isotopic_masses_au(Z, iso_map, use_average=args.average_masses)
 
-    prims_all = primitives_from_topology(coords_au, Z, linear_threshold=np.deg2rad(170.0))
-    prims_bond = [p for p in prims_all if p.kind == "bond"]
-    s = eval_primitives(prims_bond, coords_au)
+    prims_base = primitives_from_topology(coords_au, Z, linear_threshold=np.deg2rad(170.0))
+    prims_bond = [p for p in prims_base if p.kind == "bond"]
+    covalent_pairs = {tuple(sorted(p.atoms)) for p in prims_bond}
+    detected_hbonds = detect_hydrogen_bonds(Z, coords_ang_for_bo, covalent_pairs)
+    hbonds = []
+    hbond_prims = []
+    for hb in detected_hbonds:
+        pair = tuple(sorted((hb.hydrogen, hb.acceptor)))
+        if pair in covalent_pairs:
+            continue
+        hbonds.append(hb)
+        hbond_prims.append(Primitive("bond", (hb.hydrogen, hb.acceptor)))
+    prims_all = prims_base + hbond_prims
+    hbond_indices = list(range(len(prims_base), len(prims_all)))
+    hbond_pairs = {
+        tuple(sorted((hb.hydrogen, hb.acceptor)))
+        for hb in hbonds
+        if tuple(sorted((hb.hydrogen, hb.acceptor))) not in covalent_pairs
+    }
+    s = eval_primitives(prims_all, coords_au)
+    bond_index_by_pair = {
+        tuple(sorted(p.atoms)): idx
+        for idx, p in enumerate(prims_all)
+        if p.kind == "bond" and idx < len(prims_base)
+    }
 
     report_rows = []
     if args.rule == "bdpcs3":
         if not args.bdpcs3_fit:
             _disable_bdpcs3_fit()
-        bdpcs3_fn = (
-            bdpcs3_delta_and_order_updated
-            if args.bdpcs3_version == "updated"
-            else bdpcs3_delta_and_order
-        )
+        bdpcs3_fn = bdpcs3_function(args.bdpcs3_version)
         bo_cache = {}
-        for idx, p in enumerate(prims_bond):
+        for idx, p in enumerate(prims_all[: len(prims_base)]):
             if p.kind != "bond":
                 continue
             i, j = p.atoms
@@ -689,6 +915,15 @@ def main():
             r_corr = r_ang + dlt_r
             report_rows.append((i + 1, j + 1, r_ang, r_corr, bndord))
             s[idx] = r_corr * ANG_TO_BOHR
+        for idx, hb in zip(hbond_indices, hbonds):
+            r_ang = s[idx] * BOHR_TO_ANG
+            dlt_r = bdpcs3_hbond_delta(
+                int(Z[hb.donor]), int(Z[hb.acceptor]), r_ang, hb.angle_deg
+            )
+            s[idx] = (r_ang + dlt_r) * ANG_TO_BOHR
+            report_rows.append(
+                (hb.hydrogen + 1, hb.acceptor + 1, r_ang, r_ang + dlt_r, 0.0)
+            )
 
     if args.bond:
         for (i_str, j_str, r_str) in args.bond:
@@ -697,7 +932,7 @@ def main():
             r = float(r_str)
             if args.xyz_units == "ang":
                 r *= ANG_TO_BOHR
-            idx = find_bond_primitive(prims_bond, i, j)
+            idx = bond_index_by_pair.get(tuple(sorted((i, j))))
             if idx is None:
                 raise SystemExit(f"Bond primitive not found for {i+1}-{j+1}")
             r_old = s[idx] * BOHR_TO_ANG
@@ -705,18 +940,23 @@ def main():
             r_new = r * BOHR_TO_ANG
             report_rows.append((i + 1, j + 1, r_old, r_new, 0.0))
 
-    # Bond-only back-transform with fragment placement fixed (COM + rotation constraints)
-    _, dg, _ = build_topology(coords_au, Z)
-    comps = _connected_components(dg.adjacency, len(atoms))
-    ref_idx = max(range(len(comps)), key=lambda i: len(comps[i]))
+    # Weighted internal-coordinate back-transform.
+    metric_weights = bdpcs3_metric_weights(
+        prims_all,
+        Z,
+        coords_ang_for_bo,
+        hbond_pairs=hbond_pairs,
+        profile=BDPCS3_DEFAULT_WEIGHT_PROFILE,
+    )
     coords_new = _backtransform_iterative(
         s,
         coords_au,
-        prims_bond,
+        prims_all,
         masses=masses,
         max_iter=args.max_iter,
         tol=args.tol,
         adaptive=True,
+        metric_weights=metric_weights,
     )
 
     if args.out_units == "ang":
@@ -730,7 +970,10 @@ def main():
         s_new = eval_primitives(prims_bond, coords_new)
         for i, j, r0, r1, bndord in report_rows:
             idx = find_bond_primitive(prims_bond, i - 1, j - 1)
-            r_final = s_new[idx] * BOHR_TO_ANG if idx is not None else r1
+            if idx is not None:
+                r_final = s_new[idx] * BOHR_TO_ANG
+            else:
+                r_final = np.linalg.norm(coords_new[i - 1] - coords_new[j - 1]) * BOHR_TO_ANG
             err_pct = 0.0 if r1 == 0.0 else abs(r_final - r1) / r1 * 100.0
             report_rows_final.append((i, j, r0, r1, err_pct, bndord))
 

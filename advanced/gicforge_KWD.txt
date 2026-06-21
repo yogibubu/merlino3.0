@@ -24,6 +24,6 @@ DEBUG    : Preserve all intermediate files (no cleanup)
 #ADVANCED
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
- HBOND     : Make H-Bonds
+ HBOND     : Detect H-Bonds as non-covalent targets
  BMAT      : Build B Matrix
  BDPCS3    : Make BDPCS3 Bond Lengths

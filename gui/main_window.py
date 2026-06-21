@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
         self._backup_xyzin = self.working_dir / ".xyzin_backup"
         self.advanced_window = None
         self.dvr_window = None
-        self.bdpcs3_version = "legacy"
+        self.bdpcs3_version = "updated"
         self._last_xyzin_stamp = None
         self._refresh_timer = None
 

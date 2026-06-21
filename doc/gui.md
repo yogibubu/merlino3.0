@@ -255,10 +255,24 @@ BDPCS3 report + Gaussian verification
 -------------------------------------
 The toolbar includes a "DPCS3 to BDPCS3 report" action. It:
 
-- Prompts for BDPCS3 version: legacy or updated.
-- Applies BDPCS3 bond corrections while keeping angles/dihedrals fixed.
-- Writes a report with bond lengths, rotational constants (MHz), and coordinates.
+- Prompts for BDPCS3 version: updated or legacy.
+- Applies BDPCS3 bond and directional H-bond corrections with a weighted
+  internal-to-Cartesian back-transform.
+- Writes a report with bond lengths, H-bond targets, rotational constants
+  (MHz), and coordinates.
 - Generates companion files for verification.
+
+`updated` is the default operational mode. It uses the topology/synthon
+BDPCS3 correction already implemented in Merlino. H-bond targets are H...Y
+distances for directional X-H...Y contacts with angle >= 150 deg; the correction
+is multiplied by an error-function distance damping centered at 3.0 Angstrom.
+Current values are O-H...O = -0.055 Angstrom and N-H...N = -0.055 Angstrom,
+with mixed N/O cases set to their average. `legacy` is kept to reproduce older
+Merlino runs.
+
+The shared parameter source is `merlino_core/parameters/bdpcs3_hbond.toml`.
+H-bonds are non-covalent correction targets only; they are not added to the
+GIC/ring topology. See `doc/HBOND_TOPOLOGY_POLICY.md`.
 
 Outputs in working/:
 - bdpcs3.report
@@ -270,8 +284,9 @@ After generation, the GUI shows quick actions to open/copy report and
 Gaussian input paths.
 
 The Gaussian input uses DPCS3 Cartesian coordinates and ModRedundant
-bond targets (BDPCS3) so you can reproduce the same back-transform in
-Gaussian (single-point + ModRedundant geometry update). The route line is:
+bond/H-bond distance targets (BDPCS3) so you can reproduce the same
+back-transform in Gaussian (single-point + ModRedundant geometry update).
+The route line is:
 
 #HF geom=modredundant output=pickett
 

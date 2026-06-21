@@ -15,6 +15,7 @@ from gui.zmat_reader import read_zmat
 # --------------------------------------------------
 HERE = Path(__file__).resolve().parent
 ZMAT_TEST_DIR = HERE / "tests" / "zmat"
+ROOT = HERE.parent
 
 
 # --------------------------------------------------
@@ -35,6 +36,19 @@ def init_xyzin(working_dir: Path):
         "group c1\n"
     )
     return xyzin
+
+
+def _snapshot(path: Path):
+    return path.read_bytes() if path.exists() else None
+
+
+def _restore(path: Path, payload):
+    if payload is None:
+        if path.exists():
+            path.unlink()
+    else:
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(payload)
 
 
 def check_xyz(xyzin_text: str):
@@ -84,30 +98,34 @@ def test_zmat_outputs(tmp_path):
 
     assert zmat_files, "No Z-matrix test files found"
 
-    for zfile in zmat_files:
-        working = tmp_path / zfile.stem
-        working.mkdir(exist_ok=True)
+    global_xyzin = ROOT / "working" / "xyzin"
+    global_xyzin_snapshot = _snapshot(global_xyzin)
+    try:
+        for zfile in zmat_files:
+            working = tmp_path / zfile.stem
+            working.mkdir(exist_ok=True)
 
-        xyzin = init_xyzin(working)
+            xyzin = init_xyzin(working)
 
-        # Run reader
-        read_zmat(zfile)
+            # Run reader
+            read_zmat(zfile)
 
-        # Validate xyzin
-        text = xyzin.read_text()
+            # Validate xyzin
+            text = xyzin.read_text()
 
-        # XYZ block must exist and be valid
-        check_xyz(text)
+            # XYZ block must exist and be valid
+            check_xyz(text)
 
-        # BASIC section must be preserved
-        basic = parse_basic(text)
-        assert "charge" in basic
-        assert "multiplicity" in basic
+            # BASIC section must be preserved
+            basic = parse_basic(text)
+            assert "charge" in basic
+            assert "multiplicity" in basic
 
-        print(
-            f"OK {zfile.name}: "
-            f"nat={text.splitlines()[0]} "
-            f"charge={basic['charge']} "
-            f"multiplicity={basic['multiplicity']}"
-        )
-
+            print(
+                f"OK {zfile.name}: "
+                f"nat={text.splitlines()[0]} "
+                f"charge={basic['charge']} "
+                f"multiplicity={basic['multiplicity']}"
+            )
+    finally:
+        _restore(global_xyzin, global_xyzin_snapshot)

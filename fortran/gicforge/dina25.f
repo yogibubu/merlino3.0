@@ -758,7 +758,7 @@ C      write(IOut,'(A80)') CLine
      $ ''GNIC blocks'')')
       If(Kwd(15)) write(IOut,'('' FINDFR    : Find Fragments'')')
       If(Kwd(16)) write(IOut,'('' JOINFR    : Join Fragments'')')
-      If(Kwd(17)) write(IOut,'('' HBOND     : Make H-Bonds'')')
+      If(Kwd(17)) write(IOut,'('' HBOND     : Detect H-Bonds only'')')
       If(Kwd(19)) write(IOut,'('' BMAT      : Build B Matrix'')')
       If(Kwd(20)) write(IOut,'('' SCAN      : Scan for Soft DOF'')')
       If(Kwd(21)) write(IOut,'('' RIGID     : Freeze Hard Modes'',

@@ -16,7 +16,7 @@
  SYMMALL   : Symmetrize same-type GNIC blocks
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
- HBOND     : Make H-Bonds
+ HBOND     : Detect H-Bonds as non-covalent targets
  BMAT      : Build B Matrix
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan

@@ -42,22 +42,38 @@ def init_working():
     return xyzin
 
 
+def _snapshot(path: Path):
+    return path.read_bytes() if path.exists() else None
+
+
+def _restore(path: Path, payload):
+    if payload is None:
+        if path.exists():
+            path.unlink()
+    else:
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(payload)
+
+
 # --------------------------------------------------
 # TEST
 # --------------------------------------------------
 def test_xyz_reader():
+    root = get_project_root()
+    xyzin_path = root / "working" / "xyzin"
+    xyzin_snapshot = _snapshot(xyzin_path)
     xyzin = init_working()
 
-    xyz = get_project_root() / "test.xyz"
-    xyz.write_text(
-        "3\n"
-        "water\n"
-        "O 0 0 0\n"
-        "H 0 0 1\n"
-        "H 1 0 0\n"
-    )
+    xyz = root / "test.xyz"
 
     try:
+        xyz.write_text(
+            "3\n"
+            "water\n"
+            "O 0 0 0\n"
+            "H 0 0 1\n"
+            "H 1 0 0\n"
+        )
         inp = DummyInput(kind="xyz", path=xyz)
         read_structure(inp)
 
@@ -69,4 +85,4 @@ def test_xyz_reader():
         # cleanup
         if xyz.exists():
             xyz.unlink()
-
+        _restore(xyzin_path, xyzin_snapshot)

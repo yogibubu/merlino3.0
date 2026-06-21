@@ -12,6 +12,9 @@ GICForge is intentionally narrow:
   symmetry engine
 - build topology, primitive stretch coordinates and redundant non-stretch GIC
   candidates
+- use only the covalent graph for topology, ring detection and GIC generation;
+  hydrogen bonds are non-covalent correction targets and must not create
+  pseudo-rings in the GIC graph
 - reduce non-stretch candidates to non-redundant GICs by coordinate-type
   blocks, so bends, linear bends, torsions and out-of-plane coordinates are
   never mixed during the final rank pruning
@@ -26,6 +29,10 @@ GICForge is intentionally narrow:
 Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
 checks and user-facing workflow logic.
+
+Hydrogen-bond detection is documented in `doc/HBOND_TOPOLOGY_POLICY.md`.
+GICForge may report H-bonds through `FindHBnd`, but the standard workflow does
+not insert them into `NBond/IBond`.
 
 ## Utility Architecture
 

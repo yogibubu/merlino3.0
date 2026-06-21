@@ -68,7 +68,7 @@ KWD_SPEC = {
             "HBOND": {
                 "type": "flag",
                 "default": False,
-                "description": "Construct hydrogen bonds",
+                "description": "Detect/report non-covalent H-bond targets without adding them to GIC topology",
             },
         },
     },

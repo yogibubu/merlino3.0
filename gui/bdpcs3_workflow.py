@@ -10,10 +10,14 @@ from geometry.thermo_trasl import read_xyz_from_xyzin
 from merlino_fit.survibfit.modify_geom import (
     ANG_TO_BOHR,
     BOHR_TO_ANG,
+    BDPCS3_DEFAULT_WEIGHT_PROFILE,
+    BDPCS3_VERSIONS,
+    bdpcs3_hbond_delta,
+    bdpcs3_metric_weights,
+    detect_hydrogen_bonds,
     _load_topology_elements,
     _disable_bdpcs3_fit,
-    bdpcs3_delta_and_order,
-    bdpcs3_delta_and_order_updated,
+    bdpcs3_function,
     topology_bond_order_for_pair,
     primitives_from_topology,
     eval_primitives,
@@ -22,6 +26,7 @@ from merlino_fit.survibfit.modify_geom import (
     rotational_constants,
     write_xyz,
 )
+from merlino_fit.survibfit.primitives import Primitive
 
 
 @dataclass
@@ -31,14 +36,17 @@ class Bdpcs3Result:
     coords_bdpcs3_ang: np.ndarray
     bond_orders: list[float]
     bond_targets: list[tuple[int, int, float, float]]  # i, j, r_corr(Ang), bond order
+    hbond_targets: list[tuple[int, int, int, float, float, float, float, float]]
     s0_bond: np.ndarray
     s1_bond: np.ndarray
     bond_target_lengths: list[float]
     bond_residuals: list[float]
+    hbond_residuals: list[float]
     backtransform_resid_norm: float
     backtransform_max_abs: float
     worst_primitives: list[tuple[str, tuple[int, ...], float]]
     backtransform_used_weights: bool
+    backtransform_weight_profile: str
     B0_mhz: np.ndarray
     B1_mhz: np.ndarray
 
@@ -48,8 +56,8 @@ def ask_bdpcs3_version(parent, current_version: str) -> str | None:
     dlg.setWindowTitle("BDPCS3 settings")
     layout = QFormLayout(dlg)
     combo = QComboBox(dlg)
-    combo.addItems(["legacy", "updated"])
-    combo.setCurrentText(current_version)
+    combo.addItems(list(BDPCS3_VERSIONS))
+    combo.setCurrentText(current_version if current_version in BDPCS3_VERSIONS else "updated")
     layout.addRow("BDPCS3 version", combo)
 
     buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -110,24 +118,46 @@ def compute_bdpcs3(
 
     masses, _ = isotopic_masses_au(Z)
 
-    prims_all = primitives_from_topology(coords_au, Z, linear_threshold=np.deg2rad(170.0))
-    prims_bond = [p for p in prims_all if p.kind == "bond"]
+    prims_base = primitives_from_topology(coords_au, Z, linear_threshold=np.deg2rad(170.0))
+    prims_bond = [p for p in prims_base if p.kind == "bond"]
     if not prims_bond:
         raise ValueError("No bond primitives detected.")
+
+    covalent_pairs = {tuple(sorted(p.atoms)) for p in prims_bond}
+    detected_hbonds = detect_hydrogen_bonds(Z, coords_ang, covalent_pairs)
+    hbonds = []
+    hbond_prims = []
+    for hb in detected_hbonds:
+        pair = tuple(sorted((hb.hydrogen, hb.acceptor)))
+        if pair in covalent_pairs:
+            continue
+        hbonds.append(hb)
+        hbond_prims.append(Primitive("bond", (hb.hydrogen, hb.acceptor)))
+    prims_all = prims_base + hbond_prims
+    hbond_start = len(prims_base)
+    hbond_indices = list(range(hbond_start, hbond_start + len(hbond_prims)))
+    hbond_pairs = {
+        tuple(sorted((hb.hydrogen, hb.acceptor)))
+        for hb in hbonds
+        if tuple(sorted((hb.hydrogen, hb.acceptor))) not in covalent_pairs
+    }
 
     s0_bond = eval_primitives(prims_bond, coords_au)
     s_all = eval_primitives(prims_all, coords_au)
     s_target_all = s_all.copy()
 
     _disable_bdpcs3_fit()
-    bdpcs3_fn = bdpcs3_delta_and_order_updated if bdpcs3_version == "updated" else bdpcs3_delta_and_order
+    bdpcs3_fn = bdpcs3_function(bdpcs3_version)
 
     bond_orders = []
     bond_targets = []
+    hbond_targets = []
     bond_target_lengths = []
     bo_cache = {}
     for idx, p in enumerate(prims_all):
         if p.kind != "bond":
+            continue
+        if idx >= hbond_start:
             continue
         i, j = p.atoms
         r_ang = s_all[idx] * BOHR_TO_ANG
@@ -143,6 +173,34 @@ def compute_bdpcs3(
         bond_targets.append((i, j, r_corr, bndord))
         bond_orders.append(bndord)
         bond_target_lengths.append(r_corr)
+
+    hbond_target_lengths = []
+    for idx, hb in zip(hbond_indices, hbonds):
+        r_ang = s_all[idx] * BOHR_TO_ANG
+        delta = bdpcs3_hbond_delta(
+            int(Z[hb.donor]),
+            int(Z[hb.acceptor]),
+            r_ang,
+            hb.angle_deg,
+        )
+        r_corr = r_ang + delta
+        s_target_all[idx] = r_corr * ANG_TO_BOHR
+        hbond_target_lengths.append(r_corr)
+        hbond_targets.append(
+            (hb.donor, hb.hydrogen, hb.acceptor, r_ang, r_corr, hb.angle_deg, delta, 0.0)
+        )
+
+    weight_profile = BDPCS3_DEFAULT_WEIGHT_PROFILE
+    metric_weights = bdpcs3_metric_weights(
+        prims_all,
+        Z,
+        coords_ang,
+        hbond_pairs=hbond_pairs,
+        profile=weight_profile,
+    )
+    for out_idx, prim_idx in enumerate(hbond_indices):
+        target = hbond_targets[out_idx]
+        hbond_targets[out_idx] = (*target[:-1], float(metric_weights[prim_idx]))
 
     def _eval_backtransform(coords_bdpcs3_au):
         s1_bond = eval_primitives(prims_bond, coords_bdpcs3_au)
@@ -167,10 +225,15 @@ def compute_bdpcs3(
             bond_residuals.append(resid_bond)
             if abs(resid_bond) > max_bond_resid:
                 max_bond_resid = abs(resid_bond)
+        hbond_residuals = []
+        for idx, r_target in zip(hbond_indices, hbond_target_lengths):
+            resid_hbond = (s1_all[idx] * BOHR_TO_ANG) - r_target
+            hbond_residuals.append(resid_hbond)
         return (
             s1_bond,
             coords_bdpcs3_ang,
             bond_residuals,
+            hbond_residuals,
             backtransform_resid_norm,
             backtransform_max_abs,
             worst_primitives,
@@ -186,20 +249,21 @@ def compute_bdpcs3(
         tol=1e-8,
         damping=1.0,
         adaptive=True,
+        metric_weights=metric_weights,
     )
     (
         s1_bond,
         coords_bdpcs3_ang,
         bond_residuals,
+        hbond_residuals,
         backtransform_resid_norm,
         backtransform_max_abs,
         worst_primitives,
         max_bond_resid,
     ) = _eval_backtransform(coords_bdpcs3_au)
 
-    used_weights = False
+    used_weights = True
     if max_bond_resid > 0.02:
-        weights = [1.0 if p.kind == "bond" else 0.2 for p in prims_all]
         coords_bdpcs3_au = _backtransform_iterative(
             s_target_all,
             coords_au,
@@ -209,12 +273,13 @@ def compute_bdpcs3(
             tol=1e-8,
             damping=0.8,
             adaptive=True,
-            weights=weights,
+            metric_weights=metric_weights,
         )
         (
             s1_bond,
             coords_bdpcs3_ang,
             bond_residuals,
+            hbond_residuals,
             backtransform_resid_norm,
             backtransform_max_abs,
             worst_primitives,
@@ -231,14 +296,17 @@ def compute_bdpcs3(
         coords_bdpcs3_ang=coords_bdpcs3_ang,
         bond_orders=bond_orders,
         bond_targets=bond_targets,
+        hbond_targets=hbond_targets,
         s0_bond=s0_bond,
         s1_bond=s1_bond,
         bond_target_lengths=bond_target_lengths,
         bond_residuals=bond_residuals,
+        hbond_residuals=hbond_residuals,
         backtransform_resid_norm=backtransform_resid_norm,
         backtransform_max_abs=backtransform_max_abs,
         worst_primitives=worst_primitives,
         backtransform_used_weights=used_weights,
+        backtransform_weight_profile=weight_profile,
         B0_mhz=B0,
         B1_mhz=B1,
     )
@@ -280,6 +348,7 @@ def write_bdpcs3_outputs(
     lines.append("")
     lines.append("Backtransform residuals (internal units; bonds in Angstrom)")
     lines.append(f"  Weighted backtransform: {'yes' if result.backtransform_used_weights else 'no'}")
+    lines.append(f"  Weight profile: {result.backtransform_weight_profile}")
     lines.append(f"  L2 norm: {result.backtransform_resid_norm:.6f}")
     lines.append(f"  Max abs: {result.backtransform_max_abs:.6f}")
     if result.worst_primitives:
@@ -289,6 +358,21 @@ def write_bdpcs3_outputs(
                 lines.append(f"    {kind} {tuple(a + 1 for a in atoms)} {diff: .6f} A")
             else:
                 lines.append(f"    {kind} {tuple(a + 1 for a in atoms)} {diff: .6f}")
+    if result.hbond_targets:
+        lines.append("")
+        lines.append("Hydrogen-bond targets (Angstrom, degrees)")
+        lines.append("")
+        lines.append("  X  El |  H  El |  Y  El |       H...Y |      Target |    Delta |  X-H-Y |  Resid | Weight")
+        lines.append("--------+--------+--------+-------------+-------------+----------+--------+--------+--------")
+        for target, resid in zip(result.hbond_targets, result.hbond_residuals):
+            donor, h_atom, acceptor, r0, r_target, angle_deg, delta, weight = target
+            lines.append(
+                f"{donor+1:3d} {result.symbols[donor]:2s} |"
+                f" {h_atom+1:3d} {result.symbols[h_atom]:2s} |"
+                f" {acceptor+1:3d} {result.symbols[acceptor]:2s} |"
+                f" {r0: 11.6f} | {r_target: 11.6f} | {delta: 8.6f} |"
+                f" {angle_deg: 6.2f} | {resid: 6.3f} | {weight: 6.1f}"
+            )
     lines.append("")
     lines.append("Rotational constants (MHz)")
     lines.append("")
@@ -332,6 +416,8 @@ def write_bdpcs3_outputs(
     gjf_lines.append("")
     for (i, j, _, _), r_target in zip(result.bond_targets, result.bond_target_lengths):
         gjf_lines.append(f"B {i+1} {j+1} {r_target:.6f}")
+    for donor, h_atom, acceptor, _r0, r_target, _angle, _delta, _weight in result.hbond_targets:
+        gjf_lines.append(f"B {h_atom+1} {acceptor+1} {r_target:.6f}")
     gjf_lines.append("")
     bdpcs3_gjf_path.write_text("\n".join(gjf_lines) + "\n", encoding="utf-8")
 

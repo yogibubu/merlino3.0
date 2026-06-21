@@ -27,6 +27,7 @@ C Local
       Dimension IStart(100),IZIZ(4)
       Dimension CInp(3),Values(MaxNZ)
       Dimension IstL(100),IStA(100),IStB(100)
+      Dimension IDnHB(100),IHAtHB(100),ICcHB(100)
       Dimension TMom(6)
 C Dimensions for Rotational Constants 
       Dimension XYZCM(3),Rotcm1(3),Dip(3),PMomB(3),RotMat(3,3)
@@ -169,8 +170,14 @@ C Make Bond Orders (Bonder) with  Del(i) in Scr(idel)
      $  IScr(INPI),IScr(INLP),Scr(IDel),Bonder,C)
 C Find H-Bonds
       AllHB=.true.
-      if(DoHBnd) call MkHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,
-     $  IAn,NBond,IBond,IFrag,C)
+      if(DoHBnd) then
+       call FindHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,
+     $  IAn,NBond,IBond,IFrag,C,IDnHB,IHAtHB,ICcHB)
+       If(NHB.gt.0) then
+        write(IOut,'(I5,'' H-Bonds detected as non-covalent targets'',
+     $   '' (not added to GIC topology)'')') NHB
+       EndIf
+      EndIf
 C Make Coordination Numbers, Synthons, Sigma and Pi bonds, Lone Pairs and Unpair.El.
       call MKEAN(IOut,IPrint,MxBnd,NAtoms,IAN,NBond,IBond,C,Bonder,
      $ EAN,EANZ)
@@ -179,10 +186,12 @@ C Find Fragments
       NFrag=IrMax1(IFrag,NAtoms,.True.,NAtFrM)
       If(NFrag.gt.1.and.JoinFr) then 
        AllHB=.false.
-       call MkHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,IAn,NBond,
-     $   IBond,IFrag,C)
-       call FndFrg(MxBnd,NAtoms,IBond,NBond,IFrag,IScr)
-       NFrag=IrMax1(IFrag,NAtoms,.True.,NAtFrM)
+       call FindHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,IAn,
+     $   NBond,IBond,IFrag,C,IDnHB,IHAtHB,ICcHB)
+       If(NHB.gt.0) then
+        write(IOut,'(I5,'' Inter-Molecular H-Bonds detected but not'',
+     $   '' added to GIC topology'')') NHB
+       EndIf
       EndIf
       If(NFrag.gt.1) then
        If(JoinFr) then

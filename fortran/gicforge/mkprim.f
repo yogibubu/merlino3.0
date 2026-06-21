@@ -541,27 +541,31 @@ C Do not apply the correction to H-Bonds
    10 continue
       return
       end
-*Deck MkHBnd
-      Subroutine MkHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,IAn,
-     $  NBond,IBond,IFrag,C)
+*Deck FindHBnd
+      Subroutine FindHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,
+     $  IAn,NBond,IBond,IFrag,C,IDn,IHAt,ICc)
       Implicit Real*8 (A-H,O-Z)
       Logical FndHB,AllHB,GemIJ,VicIJ
       Dimension C(3,*)
       Dimension IAn(*),IFrag(*),NBond(*),IBond(MxBnd,*)
-C Local
-      Dimension IDn(100),ICc(100),IHAt(100) 
+      Dimension IDn(*),ICc(*),IHAt(*)
+      INCLUDE 'bdpcs3_hbond_params.inc'
+C Find H-bonds without modifying the covalent topology.
+C GIC construction must use only the covalent graph; these contacts are
+C non-covalent targets for geometry correction/constraints.
       NHB=0
-      R0=3.0d0
+      ToDeg=45.0d0/ATan(1.0d0)
       If(.Not.AllHB.and.NFrag.eq.1) return
       Do 10 IAt=1,NAtoms
-       RIJMin=R0
+       RIJMin=BDPCS3_HB_SEARCH_CUTOFF
        FndHB=.false.
        IAI=IAn(IAt)
        If(IAI.ne.1) go to 10
+       If(NBond(IAt).lt.1) go to 10
        IDon=IBond(1,IAt)
        IADon=IAn(IDon)
-C Added SH donor
-       If(IADon.ne.7.and.IADon.ne.8.and.IADon.ne.16) go to 10 
+C N-H, O-H and S-H donors.
+       If(IADon.ne.7.and.IADon.ne.8.and.IADon.ne.16) go to 10
        Do 20 IAcc=1,NAtoms
         If(IAcc.eq.IAt.or.IAcc.eq.IDon) go to 20
         IAAcc=IAn(IAcc)
@@ -570,14 +574,16 @@ C Added SH donor
          If(.not.AllHB) go to 20
         EndIf
         RIJ=Distan(C,IAt,IAcc,0)
-        if(RIJ.ge.R0) go to 20
+        if(RIJ.ge.BDPCS3_HB_SEARCH_CUTOFF) go to 20
+        AngXHY=ValAng(C(1,IDon),C(1,IAt),C(1,IAcc))*ToDeg
+        If(AngXHY.lt.BDPCS3_HB_ANGLE_MIN) go to 20
 C do not consider geminal atoms
         GemIJ=.false.
         Do 30 IGJ=1,NBond(IAcc)
          VicIJ=.false.
          IGAt=IBond(IGJ,IAcc)
          If(IGAt.eq.IAt.or.IGAt.eq.IDon) go to 30
-         If(IGAt.eq.IDon) then 
+         If(IGAt.eq.IDon) then
            Write(IOut,'('' No H-Bond between Geminal Atoms:'',2I5)')
      $       IAcc,IDon
            GemIJ=.true.
@@ -587,27 +593,40 @@ C do not consider vicinal atoms
          Do 40 IVJ=1,NBond(IDon)
           IVAt=IBond(IVJ,IDon)
           If(IVAt.eq.IAt.or.IVAt.eq.IAcc) go to 40
-          If(IVAt.eq.IGAt) then 
+          If(IVAt.eq.IGAt) then
            Write(IOut,'('' No H-Bond between Vicinal Atoms:'',2I5)')
      $       IAcc,IDon
            VicIJ=.true.
            go to 20
-          EndIf 
+          EndIf
    40    Continue
    30   Continue
-C only 1 H-bond for each Hydrogen atom 
+C only 1 H-bond for each Hydrogen atom
         If(GemIJ.or.VicIJ) go to 20
         If(RIJ.ge.RIJMin) go to 20
         FndHB=.true.
-        RIJMin=RIJ 
+        RIJMin=RIJ
         JHBI=IAcc
    20  Continue
        If(.not.FndHB) go to 10
        NHB=NHB+1
        IDn(NHB)=IDon
        ICc(NHB)=JHBI
-       IHAt(NHB)=IAt 
+       IHAt(NHB)=IAt
    10 Continue
+      Return
+      End
+*Deck MkHBnd
+      Subroutine MkHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,IAn,
+     $  NBond,IBond,IFrag,C)
+      Implicit Real*8 (A-H,O-Z)
+      Logical AllHB
+      Dimension C(3,*)
+      Dimension IAn(*),IFrag(*),NBond(*),IBond(MxBnd,*)
+C Local
+      Dimension IDn(100),ICc(100),IHAt(100)
+      Call FindHBnd(IOut,IPrint,MxBnd,AllHB,NAtoms,NFrag,NHB,IAn,
+     $  NBond,IBond,IFrag,C,IDn,IHAt,ICc)
       if(NHB.gt.0) then
        NHBr=0
        Do 50 i1=1,NHB
@@ -618,10 +637,9 @@ C only 1 H-bond for each Donor-Acceptor pair
         Do 60 i2=1,i1
          if(i2.eq.i1) go to 60
          IAt2=IDn(i2)
-         JAt2=IHAt(i2)
          KAt2=ICc(i2)
          If(IAt.eq.IAt2.and.KAt.eq.KAt2) go to 50
-   60   Continue    
+   60   Continue
         NHBr=NHBr+1
         NBond(JAt)=NBond(JAt)+1
         NBond(KAt)=NBond(KAt)+1
@@ -632,9 +650,9 @@ C only 1 H-bond for each Donor-Acceptor pair
      $    '' are bridged by H'',I5)') IAt,KAt,RIJ,JAt
    50  Continue
        NHB=NHBr
-       if(AllHB) write(IOut,'(I5,'' H-Bonds detected'')') NHB
+       if(AllHB) write(IOut,'(I5,'' H-Bonds added to topology'')') NHB
        if(.not.allHB) write(IOut,'(I5,'' Inter-Molecular H-Bonds'',
-     $   '' Detected'')') NHB
+     $   '' Added to Topology'')') NHB
       EndIf
       Return
       End
@@ -1199,6 +1217,41 @@ C Print G matrix
   150 Continue
       Return
       End
+*Deck MakeGW
+      Subroutine MakeGW(IOut,IPrint,DoMW,NAtoms,NInt,AtMass,WInt,
+     $ BMat,GMat)
+      Implicit Real*8 (A-H,O-Z)
+      Logical DoMW
+      Dimension AtMass(*),WInt(*),BMat(3*NAtoms,*),GMat(NInt,*)
+C Weighted internal-coordinate metric:
+C   G(I,J)=sqrt(WI)*sqrt(WJ)*B(I) M^-1 B(J)^T.
+C WInt are physical least-squares weights, not row scale factors.
+      Call AClear(NInt*NInt,GMat)
+      Do 10 I=1,NInt
+       WI=DSqrt(DMax1(0.0d0,WInt(I)))
+       Do 20 J=1,NInt
+        WJ=DSqrt(DMax1(0.0d0,WInt(J)))
+        GMAt(I,J)=0.0d0
+        Do 30 K=1,3*NAtoms
+         If(DoMW) then
+          IAt=Float((K-1)/3+1)
+          FactK=1.0d0/AtMass(IAt)
+         Else
+          FactK=1.0d0
+         EndIf
+         GMat(I,J)=GMat(I,J)+WI*WJ*BMAt(K,I)*BMAt(K,J)*FactK
+   30   Continue
+   20  Continue
+   10 Continue
+      If(IPrint.eq.0) Return
+      Write(IOut,'(/,'' Weighted internal-coordinate metric'')')
+      Do 150 IInt=1,NInt
+       Write(IOut,'('' Internal:'',I5,'' Weight:'',D12.5)')
+     $  IInt,WInt(IInt)
+       Write(IOut,'(6F10.5)') (GMat(iint,ii),ii=1,NInt)
+  150 Continue
+      Return
+      End
 *Deck MakGm1
       Subroutine MakGm1(IOut,IPrint,DoMW,NTotR,NRed,GMat,D,IScr)
       Implicit Real*8 (A-H,O-Z)
@@ -1324,6 +1377,33 @@ C
 C Print Gm1B matrix
       If(IPrint.eq.0) Return
       Write(IOut,'(/,'' (BB+)-1B Matrix'')')
+      Do 40 IXYZ=1,3*NAtoms
+       Write(IOut,'('' Cartesian:'',I5)') IXYZ
+       Write(IOut,'(6F10.5)') (G1BMat(IXYZ,Int),Int=1,NInt)
+   40 Continue
+      Return
+      End
+*Deck MkGm1BW
+      Subroutine MkGm1BW(IOut,IPrint,NAtoms,NInt,WInt,BMAt,G1MAt,
+     $ G1BMat)
+      Implicit Real*8 (A-H,O-Z)
+      Dimension WInt(*),BMat(3*NAtoms,*),G1Mat(NInt,*)
+      Dimension G1BMat(3*NAtoms,*)
+C Effective Cartesian update matrix for raw internal displacements dQ:
+C   dX = B'^T (B'B'^T)^-1 S dQ, with B'=S B.
+      Call AClear(NInt*3*NAtoms,G1BMat)
+      Do 10 I=1,3*NAtoms
+       Do 20 J=1,NInt
+        WJ=DSqrt(DMax1(0.0d0,WInt(J)))
+        G1BMAt(I,J)=0.0d0
+        Do 30 K=1,NInt
+         WK=DSqrt(DMax1(0.0d0,WInt(K)))
+         G1BMat(I,J)=G1BMat(I,J)+BMat(I,K)*WK*G1MAt(K,J)*WJ
+   30   Continue
+   20  Continue
+   10 Continue
+      If(IPrint.eq.0) Return
+      Write(IOut,'(/,'' Weighted (BB+)-1B Matrix'')')
       Do 40 IXYZ=1,3*NAtoms
        Write(IOut,'('' Cartesian:'',I5)') IXYZ
        Write(IOut,'(6F10.5)') (G1BMat(IXYZ,Int),Int=1,NInt)
@@ -2416,4 +2496,3 @@ C
        EndIf
        Return
        End
-

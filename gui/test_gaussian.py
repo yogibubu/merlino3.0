@@ -15,6 +15,7 @@ from gui.gaussian import read_gaussian
 # --------------------------------------------------
 HERE = Path(__file__).resolve().parent
 GAUSSIAN_TEST_DIR = HERE / "tests" / "gaussian"
+ROOT = HERE.parent
 
 
 # --------------------------------------------------
@@ -33,6 +34,19 @@ def init_xyzin(working_dir: Path):
         "group c1\n"
     )
     return xyzin
+
+
+def _snapshot(path: Path):
+    return path.read_bytes() if path.exists() else None
+
+
+def _restore(path: Path, payload):
+    if payload is None:
+        if path.exists():
+            path.unlink()
+    else:
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(payload)
 
 
 def parse_basic(xyzin_text: str):
@@ -79,26 +93,30 @@ def test_gaussian_outputs(tmp_path):
 
     assert gaussian_files, "No Gaussian test files found"
 
-    for gfile in gaussian_files:
-        working = tmp_path / gfile.stem
-        working.mkdir(exist_ok=True)
+    global_xyzin = ROOT / "working" / "xyzin"
+    global_xyzin_snapshot = _snapshot(global_xyzin)
+    try:
+        for gfile in gaussian_files:
+            working = tmp_path / gfile.stem
+            working.mkdir(exist_ok=True)
 
-        xyzin = init_xyzin(working)
+            xyzin = init_xyzin(working)
 
-        # Run reader
-        read_gaussian(gfile)
+            # Run reader
+            read_gaussian(gfile)
 
-        # Validate xyzin
-        text = xyzin.read_text()
-        check_xyz(text)
+            # Validate xyzin
+            text = xyzin.read_text()
+            check_xyz(text)
 
-        basic = parse_basic(text)
-        assert "charge" in basic
-        assert "multiplicity" in basic
+            basic = parse_basic(text)
+            assert "charge" in basic
+            assert "multiplicity" in basic
 
-        print(
-            f"OK {gfile.name}: "
-            f"charge={basic['charge']} "
-            f"multiplicity={basic['multiplicity']}"
-        )
-
+            print(
+                f"OK {gfile.name}: "
+                f"charge={basic['charge']} "
+                f"multiplicity={basic['multiplicity']}"
+            )
+    finally:
+        _restore(global_xyzin, global_xyzin_snapshot)
