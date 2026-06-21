@@ -2136,16 +2136,15 @@ propagation to the structural quantities of interest. \texttt{SEfit} implements
 this strategy as a reproducible workflow that can be
 reused by other coordinate-dependent modules.
 
-In this form, \texttt{SEfit} is positioned as the natural successor to MSR. The
-statistical core of MSR, automated starting-geometry generation, fast
-vibrational-correction workflows, and reduced-dimensionality treatments of
-missing C--H deuteration are retained. The coordinate model, however, is no
-longer a manual Z-matrix: it is generated from topology, constrained through
-primitive internal coordinates, exposed through a more flexible interface, and
-reported with uniform propagated uncertainties. The same code base separates
-covalent topology from auxiliary reference information, so model-dependent
-geometry corrections do not alter rank, ring perception, or GIC symmetry
-classification.
+The implementation remains compatible with MSR-style statistical information,
+automated starting-geometry generation, fast vibrational-correction workflows,
+and reduced-dimensionality treatments of missing C--H deuteration. The
+coordinate model, however, is no longer a manual Z-matrix: it is generated from
+topology, constrained through primitive internal coordinates, exposed through a
+more flexible interface, and reported with uniform propagated uncertainties.
+The same code base separates covalent topology from auxiliary reference
+information, so model-dependent geometry corrections do not alter rank, ring
+perception, or GIC symmetry classification.
 
 \section*{Supporting Information Available}
 
