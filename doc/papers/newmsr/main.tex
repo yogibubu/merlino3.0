@@ -1203,12 +1203,12 @@ Feature & Z-matrix semiexperimental workflows & User-defined GIC or \texttt{STRF
 \midrule
 Primary geometry model & User-selected internal coordinates & User-supplied structural or generalized-coordinate model & Cartesian input with automatic topology perception \\
 Ring and fused-ring treatment & Manual reference-tree choices & Manual parameter or coordinate selection & Automatic ring primitives and non-redundant active spaces \\
-Symmetry handling & User-imposed relations & Workflow-dependent & Automatic point-group detection and symmetry completion \\
+Symmetry handling & Specified in the chosen coordinate model & Defined by the supplied structural model & Automatic point-group detection and symmetry completion \\
 Active variables & User-selected structural parameters & User-selected fitted parameters or GICs & Totally symmetric GICs or symmetry Cartesians \\
 Constraints and classes & Expressed in the selected model & Expressed in the supplied model & Expressed as primitive internals and projected automatically \\
 Missing substitution data & Reduced-dimensionality choices in the model & Fixed or selected parameters & Constraints, predicates, classes, or symmetry-complete local frames \\
-Derived structural uncertainties & Model-dependent & Limited when quantities are post-fit derivatives & Propagated from the optimized Cartesian structure \\
-Diagnostics & Established least-squares diagnostics & Program- and workflow-dependent & Rank, conditioning, robust weights, correlations, and leave-one-out checks \\
+Derived structural uncertainties & Propagated according to the selected coordinate model & Propagated according to the supplied fitted-parameter model & Propagated from the optimized Cartesian structure \\
+Diagnostics & Established least-squares diagnostics & Diagnostics provided by the selected program and workflow & Rank, conditioning, robust weights, correlations, and leave-one-out checks \\
 \bottomrule
 \end{tabular}
 \end{table*}
