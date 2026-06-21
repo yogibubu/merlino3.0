@@ -1,0 +1,234 @@
+\providecommand{\latin}[1]{#1}
+\makeatletter
+\providecommand{\doi}
+  {\begingroup\let\do\@makeother\dospecials
+  \catcode`\{=1 \catcode`\}=2 \doi@aux}
+\providecommand{\doi@aux}[1]{\endgroup\texttt{#1}}
+\makeatother
+\providecommand*\mcitethebibliography{\thebibliography}
+\csname @ifundefined\endcsname{endmcitethebibliography}
+  {\let\endmcitethebibliography\endthebibliography}{}
+\begin{mcitethebibliography}{23}
+\providecommand*\natexlab[1]{#1}
+\providecommand*\mciteSetBstSublistMode[1]{}
+\providecommand*\mciteSetBstMaxWidthForm[2]{}
+\providecommand*\mciteBstWouldAddEndPuncttrue
+  {\def\EndOfBibitem{\unskip.}}
+\providecommand*\mciteBstWouldAddEndPunctfalse
+  {\let\EndOfBibitem\relax}
+\providecommand*\mciteSetBstMidEndSepPunct[3]{}
+\providecommand*\mciteSetBstSublistLabelBeginEnd[3]{}
+\providecommand*\EndOfBibitem{}
+\mciteSetBstSublistMode{f}
+\mciteSetBstMaxWidthForm{subitem}{(\alph{mcitesubitemcount})}
+\mciteSetBstSublistLabelBeginEnd
+  {\mcitemaxwidthsubitemform\space}
+  {\relax}
+  {\relax}
+
+\bibitem[Demaison \latin{et~al.}(2011)Demaison, Boggs, and
+  Cs{\'a}sz{\'a}r]{Demaison2011EquilibriumStructures}
+Demaison,~J., Boggs,~J.~E., Cs{\'a}sz{\'a}r,~A.~G., Eds. \emph{Equilibrium
+  Molecular Structures: From Spectroscopy to Quantum Chemistry}; CRC Press:
+  Boca Raton, 2011\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Puzzarini and Stanton(2023)Puzzarini, and
+  Stanton]{PuzzariniStanton2023}
+Puzzarini,~C.; Stanton,~J.~F. Connections between the Accuracy of Rotational
+  Constants and Equilibrium Molecular Structures. \emph{Physical Chemistry
+  Chemical Physics} \textbf{2023}, \emph{25}, 1421--1429\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Costain(1958)]{Costain1958}
+Costain,~C.~C. Determination of Molecular Structures from Ground State
+  Rotational Constants. \emph{The Journal of Chemical Physics} \textbf{1958},
+  \emph{29}, 864--874\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Pawlowski \latin{et~al.}(2002)Pawlowski, J{\o}rgensen, Olsen,
+  Hegelund, Helgaker, Gauss, Bak, and Stanton]{Pawlowski2002}
+Pawlowski,~F.; J{\o}rgensen,~P.; Olsen,~J.; Hegelund,~F.; Helgaker,~T.;
+  Gauss,~J.; Bak,~K.~L.; Stanton,~J.~F. Molecular Equilibrium Structures from
+  Experimental Rotational Constants and Calculated Vibration--Rotation
+  Interaction Constants. \emph{The Journal of Chemical Physics} \textbf{2002},
+  \emph{116}, 6482--6496\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Piccardo \latin{et~al.}(2015)Piccardo, Penocchio, Puzzarini, Biczysko,
+  and Barone]{Piccardo2015B3LYP}
+Piccardo,~M.; Penocchio,~E.; Puzzarini,~C.; Biczysko,~M.; Barone,~V.
+  Semi-Experimental Equilibrium Structure Determinations by Employing
+  {B3LYP/SNSD} Anharmonic Force Fields: Validation and Application to Semirigid
+  Organic Molecules. \emph{The Journal of Physical Chemistry A} \textbf{2015},
+  \emph{119}, 2058--2082\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Penocchio \latin{et~al.}(2015)Penocchio, Piccardo, and
+  Barone]{Penocchio2015B2PLYP}
+Penocchio,~E.; Piccardo,~M.; Barone,~V. Semiexperimental Equilibrium Structures
+  for Building Blocks of Organic and Biological Molecules: The {B2PLYP} Route.
+  \emph{Journal of Chemical Theory and Computation} \textbf{2015}, \emph{11},
+  4689--4707\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Mendolicchio \latin{et~al.}(2017)Mendolicchio, Penocchio, Licari,
+  Tasinato, and Barone]{Mendolicchio2017MSR}
+Mendolicchio,~M.; Penocchio,~E.; Licari,~D.; Tasinato,~N.; Barone,~V.
+  Development and Implementation of Advanced Fitting Methods for the
+  Calculation of Accurate Molecular Structures. \emph{Journal of Chemical
+  Theory and Computation} \textbf{2017}, \emph{13}, 3060--3075\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Kisiel()]{KisielPROSPE}
+Kisiel,~Z. {PROSPE}: Programs for {RO}tational {SPE}ctroscopy.
+  \url{https://info.ifpan.edu.pl/~kisiel/prospe.htm}, Accessed 21 June
+  2026\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Kanzow \latin{et~al.}(2025)Kanzow, Hartwig, Buschmann, Lengsfeld,
+  H{\"o}hne, Hoke, Kn{\"u}ppe, K{\"o}ster, van Spronsen, Grabow, McNaughton,
+  and Obenchain]{Kanzow2025PCCP}
+Kanzow,~A.; Hartwig,~B.; Buschmann,~P.; Lengsfeld,~K.~G.; H{\"o}hne,~C.~M.;
+  Hoke,~J.~S.; Kn{\"u}ppe,~F.; K{\"o}ster,~F.; van Spronsen,~J.~K.;
+  Grabow,~J.~U.; McNaughton,~D.; Obenchain,~D.~A. Tautomer Identification
+  Troubles: The Molecular Structure of Itaconic and Citraconic Anhydride
+  Revealed by Rotational Spectroscopy. \emph{Physical Chemistry Chemical
+  Physics} \textbf{2025}, \emph{27}, 9491--9503\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Bartell \latin{et~al.}(1975)Bartell, Romenesko, Wong, Sims, and
+  Sutton]{Bartell1975Predicate}
+Bartell,~L.~S.; Romenesko,~D.~J.; Wong,~T.~C.; Sims,~G.; Sutton,~L.~E.
+  Augmented Analyses: Method of Predicate Observations. \emph{Molecular
+  Structure by Diffraction Methods} \textbf{1975}, \emph{3}, 72--80, Chemical
+  Society Specialist Periodical Reports\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Mendolicchio \latin{et~al.}(2025)Mendolicchio, Uribe, Lazzari, Crisci,
+  Scalmani, Frisch, and Barone]{Mendolicchio2025FastDvib}
+Mendolicchio,~M.; Uribe,~L.; Lazzari,~F.; Crisci,~L.; Scalmani,~G.;
+  Frisch,~M.~J.; Barone,~V. Computational Efficiency Meets Spectroscopic
+  Accuracy: An Unsupervised Workflow for Equilibrium Geometries and Vibrational
+  Effects in Gas-Phase Prebiotic Molecules. \emph{Physical Chemistry Chemical
+  Physics} \textbf{2025}, \emph{27}, 16383--16397\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Wilson \latin{et~al.}(1955)Wilson, Decius, and Cross]{Wilson1955}
+Wilson,~E.~B.; Decius,~J.~C.; Cross,~P.~C. \emph{Molecular Vibrations: The
+  Theory of Infrared and Raman Vibrational Spectra}; McGraw-Hill: New York,
+  1955\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Cremer and Pople(1975)Cremer, and Pople]{CremerPople1975}
+Cremer,~D.; Pople,~J.~A. General Definition of Ring Puckering Coordinates.
+  \emph{Journal of the American Chemical Society} \textbf{1975}, \emph{97},
+  1354--1358\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Pulay and Fogarasi(1992)Pulay, and Fogarasi]{PulayFogarasi1992}
+Pulay,~P.; Fogarasi,~G. Geometry Optimization in Redundant Internal
+  Coordinates. \emph{The Journal of Chemical Physics} \textbf{1992}, \emph{96},
+  2856--2860\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Peng \latin{et~al.}(1996)Peng, Ayala, Schlegel, and
+  Frisch]{Peng1996Redundant}
+Peng,~C.; Ayala,~P.~Y.; Schlegel,~H.~B.; Frisch,~M.~J. Using Redundant Internal
+  Coordinates to Optimize Equilibrium Geometries and Transition States.
+  \emph{Journal of Computational Chemistry} \textbf{1996}, \emph{17},
+  49--56\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Baker \latin{et~al.}(1996)Baker, Kessi, and
+  Delley]{Baker1996Delocalized}
+Baker,~J.; Kessi,~A.; Delley,~B. The Generation and Use of Delocalized Internal
+  Coordinates in Geometry Optimization. \emph{The Journal of Chemical Physics}
+  \textbf{1996}, \emph{105}, 192--212\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Bakken and Helgaker(2002)Bakken, and Helgaker]{BakkenHelgaker2002}
+Bakken,~V.; Helgaker,~T. The Efficient Optimization of Molecular Geometries
+  Using Redundant Internal Coordinates. \emph{The Journal of Chemical Physics}
+  \textbf{2002}, \emph{117}, 9160--9174\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Golub and Reinsch(1970)Golub, and Reinsch]{GolubReinsch1970}
+Golub,~G.~H.; Reinsch,~C. Singular Value Decomposition and Least Squares
+  Solutions. \emph{Numerische Mathematik} \textbf{1970}, \emph{14},
+  403--420\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Mor{\'e}(1978)]{More1978LevenbergMarquardt}
+Mor{\'e},~J.~J. The Levenberg--Marquardt Algorithm: Implementation and Theory.
+  \emph{Lecture Notes in Mathematics} \textbf{1978}, \emph{630}, 105--116,
+  Numerical Analysis\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Kraitchman(1953)]{Kraitchman1953}
+Kraitchman,~J. Determination of Molecular Structure from Microwave
+  Spectroscopic Data. \emph{American Journal of Physics} \textbf{1953},
+  \emph{21}, 17--24\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Marenich \latin{et~al.}(2025)Marenich, Brothers, Hratchian, and
+  Frisch]{Marenich2025GIC}
+Marenich,~A.~V.; Brothers,~E.~N.; Hratchian,~H.~P.; Frisch,~M.~J. Generalized
+  Internal Coordinates for Creative Exploration of Interatomic Geometries.
+  \emph{Journal of Chemical Theory and Computation} \textbf{2025}, \emph{21},
+  10930--10944\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Kasalov{\'a} \latin{et~al.}(2007)Kasalov{\'a}, Allen, Schaefer,
+  Czinki, and Cs{\'a}sz{\'a}r]{Kasalova2007Glycine}
+Kasalov{\'a},~V.; Allen,~W.~D.; Schaefer,~H.~F.; Czinki,~E.;
+  Cs{\'a}sz{\'a}r,~A.~G. Molecular Structures of the Two Most Stable Conformers
+  of Free Glycine. \emph{Journal of Computational Chemistry} \textbf{2007},
+  \emph{28}, 1373--1383\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\end{mcitethebibliography}

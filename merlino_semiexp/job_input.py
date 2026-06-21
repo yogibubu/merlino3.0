@@ -151,9 +151,16 @@ def _fixed_parameters_from_mapping(constraints: dict) -> tuple[str, ...]:
     modredundant = constraints.get("modredundant", ())
     if isinstance(modredundant, str):
         modredundant = [line for line in modredundant.splitlines() if line.strip()]
-    fixed_gic = constraints.get("fixed_gic_patterns", constraints.get("fixed", ()))
-    if isinstance(fixed_gic, str):
-        fixed_gic = [item.strip() for item in fixed_gic.replace(";", ",").split(",") if item.strip()]
+    fixed_gic = _constraint_items(
+        constraints.get("fixed_gic_patterns", ()),
+        constraints.get("fixed", ()),
+        constraints.get("gic_constraints", ()),
+        constraints.get("expression_constraints", ()),
+        constraints.get("fixed_expressions", ()),
+        constraints.get("gic_definitions", ()),
+        constraints.get("coordinate_definitions", ()),
+        constraints.get("definitions", ()),
+    )
     automatic = []
     if bool(constraints.get("fix_hydrogen_parameters", False)):
         automatic.append(HYDROGEN_PARAMETER_CONSTRAINT)
@@ -163,6 +170,51 @@ def _fixed_parameters_from_mapping(constraints: dict) -> tuple[str, ...]:
             result.append(text)
             seen.add(text)
     return tuple(result)
+
+
+def _constraint_items(*values: object) -> tuple[str, ...]:
+    items: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        if isinstance(value, str):
+            items.extend(item.strip() for item in _split_top_level(value, separators=",;") if item.strip())
+            continue
+        try:
+            iterator = iter(value)  # type: ignore[arg-type]
+        except TypeError:
+            items.append(str(value).strip())
+            continue
+        items.extend(str(item).strip() for item in iterator if str(item).strip())
+    return tuple(items)
+
+
+def _split_top_level(raw: str, *, separators: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    round_depth = 0
+    square_depth = 0
+    brace_depth = 0
+    for char in str(raw):
+        if char == "(":
+            round_depth += 1
+        elif char == ")" and round_depth > 0:
+            round_depth -= 1
+        elif char == "[":
+            square_depth += 1
+        elif char == "]" and square_depth > 0:
+            square_depth -= 1
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+        if char in separators and round_depth == 0 and square_depth == 0 and brace_depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return parts
 
 
 def _qm_predicates_from_mapping(items) -> tuple[QMParameterPredicate, ...]:

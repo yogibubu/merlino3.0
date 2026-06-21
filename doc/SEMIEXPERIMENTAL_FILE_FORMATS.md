@@ -61,7 +61,11 @@ atoms = [
 [constraints]
 fix_hydrogen_parameters = true
 fixed_gic_patterns = [
-  "bond(1,2)",
+  "R(1,2) Frozen",
+]
+gic_constraints = [
+  "QFIX=[GIC001+2*GIC002] Value=0.0",
+  "DR(Frozen,Value=0.0)=R[1,3]-R[1,2]",
 ]
 modredundant = [
   "A 2 1 3 F",
@@ -76,12 +80,12 @@ source = "QM reference"
 [[parameter_classes]]
 name = "CH_stretches"
 mode = "shared"
-patterns = ["bond(1,6)", "bond(2,7)"]
+patterns = ["R(1,6)", "R(2,7)"]
 
 [[parameter_classes]]
 name = "XYH_angles"
 mode = "fixed"
-patterns = ["angle"]
+patterns = ["A("]
 ```
 
 ### Job Tables
@@ -145,6 +149,34 @@ patterns = ["angle"]
   labels. For `coordinate_model = "gic"` these are final GIC labels; for
   `cartesian_symmetry` they are labels such as `SC001`, `A1Cart0001` or
   `irrep=A1`. Matching parameters are reported but excluded from the fit.
+- `gic_constraints`, `expression_constraints`, `fixed_expressions`,
+  `gic_definitions`, `coordinate_definitions` or `definitions`: exact
+  Gaussian-style expression constraints. They are appended to
+  `fixed_gic_patterns` internally but are parsed as constraints, not as label
+  substrings. The implemented syntax follows the Gaussian GIC keyword reference
+  archived in `doc/papers/references/gaussian_gic_keywords.pdf` for the
+  constraint forms needed by SEfit: `Label(Options)=Expression` and
+  `Expression Options`. Accepted primitive functions are `R/B/Bond/Stretch`,
+  `A/Angle/Bend`, `D/Dihedral/Torsion`, `U/out_of_plane`,
+  `L/Linear/LinearBend`, `X/Y/Z`, `Cart/Cartesian` and `DotDiff`, with
+  one-based atom indexes. Final GIC values can be referenced as `GIC001`,
+  `GIC002`, etc. Arithmetic, parentheses, square brackets, braces, powers and
+  elementary functions such as `sin`, `cos`, `arccos`, `sqrt`, `exp`, `log`,
+  `min` and `max` are supported. `NAME=expression` defines a reusable
+  coordinate symbol without constraining it; later expressions can reference
+  that name, and cyclic definitions are rejected. `NAME(Frozen)=expression`,
+  `expression Freeze` or `NAME=[expression] F` freezes the initial value of the
+  expression. `Value=target` imposes an explicit Gaussian-style target in the
+  SEfit constraint channel, for example `NAME(Frozen,Value=target)=expression`
+  or `NAME=[expression] Value=target`.
+  Targets for pure angular expressions use Gaussian default degrees when no
+  unit suffix is present; this angular inference follows reusable definitions.
+  `deg` and `rad` may also be given explicitly.
+  Gaussian coordinate-management options such as `Inactive`, `Remove` and
+  `Active` are recognized as non-constraint actions; for example
+  `RPck001(Inactive,Value=...)` is not treated as a hard SEfit constraint.
+  Tabulated structural constraints should always use `Value=` so that the final
+  fit is not tied to the starting Cartesian geometry.
 - `fix_hydrogen_parameters`: optional boolean. When true, Merlino fixes a
   deterministic local coordinate frame for every H, D or T atom. The generated
   constraints use the corresponding X-H stretch, one local valence or
@@ -193,12 +225,15 @@ C   0.000000   0.000000   0.000000
 H   0.000000   0.000000   1.089000
 
 B 1 2 F
+QFIX=[R(1,3)-R(1,2)] Value=0.0
 ```
 
 Everything after the blank line following the Cartesian block is treated as
 ModRedundant data. Freeze records are converted to primitive-coordinate
 constraints, expanded over the detected symmetry orbit and projected onto the
-active GIC space. Gaussian route sections containing `zmat` are rejected.
+active GIC space. Gaussian-style GIC expression constraints in the same block
+are preserved and projected by the SEfit constraint machinery. Gaussian route
+sections containing `zmat` are rejected.
 
 ## 3. Legacy MSR Compatibility Input
 
@@ -224,6 +259,7 @@ H  1.026719  0.000000 -0.363000
 constraints
 B 1 2 F
 A 2 1 3 F
+QFIX=[GIC001+2*GIC002] Value=0.0
 end
 
 12.000000  \parent

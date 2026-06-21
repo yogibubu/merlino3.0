@@ -53,15 +53,24 @@ from merlino_semiexp.fit import (
     SemiexperimentalGeometryParameter,
     SemiexperimentalParameter,
     _atomic_number,
+    _auto_resolve_isotopic_substitutions,
     _dynamic_parameter_scales,
     _fixed_primitives_from_patterns,
+    _gic_expression_definitions_from_patterns,
+    _gic_fixed_patterns,
+    _gic_expression_constraint_targets,
+    _gic_expression_constraint_values,
+    _gic_expression_constraints_from_patterns,
     _gic_model,
     _hydrogen_fixed_primitives,
+    _isotopic_mapping_warning_rows,
     _make_gicforge_backend,
     _primitive_constraint_key,
     _rank_revealing_lm_step,
+    _rotational_residual_stats,
     _robust_sqrt_weights,
     _semiexp_warning_rows,
+    _stationary_point_type,
     _svd_diagnostics_csv,
     _symmetry_expanded_fixed_primitives,
     _warnings_csv,
@@ -273,6 +282,75 @@ def test_semiexperimental_diagnostic_warnings_are_machine_readable():
     assert "iso_low" in csv_text
 
 
+def test_semiexperimental_flags_suspicious_isotopologue_atom_mapping():
+    atoms = ("O", "C", "O", "H")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.25, 0.0, 0.0],
+            [2.55, 0.45, 0.0],
+            [2.95, 1.15, 0.35],
+        ],
+        dtype=float,
+    )
+    parent_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords)))
+    right_o18_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords, [None, None, 18, None])))
+    observations = (
+        IsotopologueObservation("parent", parent_constants),
+        IsotopologueObservation("O18_wrong_atom", right_o18_constants, substitutions={1: 18}),
+    )
+
+    rows = _isotopic_mapping_warning_rows(atoms, coords, observations)
+
+    assert any(row.code == "isotopologue_mapping_suspicious" for row in rows)
+    assert any("input_atom=1" in row.context and "suggested_atom=3" in row.context for row in rows)
+
+
+def test_semiexperimental_autocorrects_clear_single_isotopologue_mapping():
+    atoms = ("O", "C", "O", "H")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.25, 0.0, 0.0],
+            [2.55, 0.45, 0.0],
+            [2.95, 1.15, 0.35],
+        ],
+        dtype=float,
+    )
+    parent_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords)))
+    right_o18_constants = RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords, [None, None, 18, None])))
+    observations = (
+        IsotopologueObservation("parent", parent_constants),
+        IsotopologueObservation("O18_wrong_atom", right_o18_constants, substitutions={1: 18}),
+    )
+
+    resolved, warnings = _auto_resolve_isotopic_substitutions(atoms, coords, observations)
+
+    assert resolved[1].substitutions == {3: 18}
+    assert any(row.code == "isotopologue_mapping_autocorrected" for row in warnings)
+    assert any("input_atom=1" in row.context and "used_atom=3" in row.context for row in warnings)
+
+
+def test_semiexperimental_stationary_point_uses_numerical_eigenvalue_tolerance():
+    assert _stationary_point_type(np.array([5.8e4, 1.0e8, 6.9e12])) == "minimum"
+    assert _stationary_point_type(np.array([-1.0e-2, 1.0, 10.0])) == "transition_state_or_saddle"
+
+
+def test_semiexperimental_rotational_residual_stats_include_mean_square():
+    rows = (
+        SimpleNamespace(difference_MHz=0.1),
+        SimpleNamespace(difference_MHz=-0.3),
+    )
+
+    nrows, rms, mean_square, scaled_mean_square, max_abs = _rotational_residual_stats(rows)
+
+    assert nrows == 2
+    assert rms == pytest.approx((0.05) ** 0.5)
+    assert mean_square == pytest.approx(0.05)
+    assert scaled_mean_square == pytest.approx(50.0)
+    assert max_abs == pytest.approx(0.3)
+
+
 def test_semiexperimental_observations_csv_roundtrip(tmp_path):
     observations = (
         IsotopologueObservation(
@@ -379,6 +457,8 @@ H  0.92660000  0.00000000 -0.23960000
 
 B 1 2 F
 A 2 1 3 F
+QFIX=[R(1,3)-R(1,2)] Value=0.0
+HOH(Frozen)=A(2,1,3)
 """,
         encoding="utf-8",
     )
@@ -389,8 +469,10 @@ A 2 1 3 F
     assert geometry.comment == "water constrained"
     assert geometry.atoms == ("O", "H", "H")
     assert geometry.coordinates_angstrom.shape == (3, 3)
-    assert "bond(1,2)" in geometry.fixed_parameters
-    assert "angle(2,1,3)" in geometry.fixed_parameters
+    assert "R(1,2) Frozen" in geometry.fixed_parameters
+    assert "A(2,1,3) Frozen" in geometry.fixed_parameters
+    assert "QFIX=[R(1,3)-R(1,2)] Value=0.0" in geometry.fixed_parameters
+    assert "HOH(Frozen)=A(2,1,3)" in geometry.fixed_parameters
 
 
 def test_semiexperimental_rejects_gaussian_zmatrix_com(tmp_path):
@@ -475,7 +557,8 @@ fix_hydrogen_parameters = true
 modredundant = [
   "B 1 2 F",
 ]
-fixed_gic_patterns = ["angle(2,1,3)"]
+fixed_gic_patterns = ["A(2,1,3) Frozen"]
+gic_constraints = ["QFIX=[GIC001+2*GIC002] Value=0.0"]
 
 [[qm_predicates]]
 pattern = "GIC001"
@@ -486,7 +569,7 @@ source = "test"
 [[parameter_classes]]
 name = "OH"
 mode = "shared"
-patterns = ["bond(1,2)", "bond(1,3)"]
+patterns = ["R(1,2)", "R(1,3)"]
 """,
         encoding="utf-8",
     )
@@ -497,8 +580,9 @@ patterns = ["bond(1,2)", "bond(1,3)"]
     assert job.observations == observations
     assert job.geometry.atoms == ("O", "H", "H")
     assert geometry.source_format == "merlino_semiexp_job"
-    assert "bond(1,2)" in job.fixed_parameters
-    assert "angle(2,1,3)" in job.fixed_parameters
+    assert "R(1,2) Frozen" in job.fixed_parameters
+    assert "A(2,1,3) Frozen" in job.fixed_parameters
+    assert "QFIX=[GIC001+2*GIC002] Value=0.0" in job.fixed_parameters
     assert HYDROGEN_PARAMETER_CONSTRAINT in job.fixed_parameters
     assert job.qm_predicates[0].source == "test"
     assert job.parameter_classes[0].name == "OH"
@@ -548,7 +632,7 @@ weights
     assert legacy.geometry.source_format == "msr_legacy_zmatrix"
     assert geometry.atoms == ("C", "H")
     assert geometry.coordinates_angstrom.shape == (2, 3)
-    assert "bond(1,2)" in geometry.fixed_parameters
+    assert "R(1,2) Frozen" in geometry.fixed_parameters
     assert observations[0].label == "parent"
     assert observations[1].label == "iso_002"
     assert observations[1].substitutions == {2: 2}
@@ -729,8 +813,8 @@ bexp
 
     assert geometry.source_format == "msr_legacy_cartesian"
     assert geometry.atoms == ("O", "H", "H")
-    assert "bond(1,2)" in geometry.fixed_parameters
-    assert "angle(2,1,3)" in geometry.fixed_parameters
+    assert "R(1,2) Frozen" in geometry.fixed_parameters
+    assert "A(2,1,3) Frozen" in geometry.fixed_parameters
     assert observations[1].substitutions == {2: 2}
 
 
@@ -769,8 +853,8 @@ bexp
     assert geometry.atoms == ("C", "H", "H")
     assert np.isfinite(geometry.coordinates_angstrom).all()
     assert geometry.coordinates_angstrom.shape == (3, 3)
-    assert "bond(1,2)" in geometry.fixed_parameters
-    assert "bond(1,3)" not in geometry.fixed_parameters
+    assert "R(1,2) Frozen" in geometry.fixed_parameters
+    assert "R(1,3) Frozen" not in geometry.fixed_parameters
 
 
 def test_semiexperimental_rejects_forward_zmatrix_references(tmp_path):
@@ -936,6 +1020,8 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     rotconst_text = (tmp_path / "semiexp" / "semiexp_rotational_constants.csv").read_text(encoding="utf-8")
     assert "corrected_experimental_MHz" in rotconst_text
     assert "difference_MHz" in rotconst_text
+    report_text = (tmp_path / "semiexp" / "semiexp_report.txt").read_text(encoding="utf-8")
+    assert "rotational_mean_square_MHz2" in report_text
 
 
 def test_semiexperimental_fit_can_use_hessian_free_symmetry_cartesians(tmp_path):
@@ -1200,13 +1286,297 @@ def test_semiexperimental_primitive_constraints_do_not_disable_containing_gics(t
     )
 
     result = fit_semiexperimental_geometry(
-        SemiexperimentalFitRequest(xyz, (observation,), fixed_parameters=("bond(1,2)",)),
+        SemiexperimentalFitRequest(xyz, (observation,), fixed_parameters=("R(1,2) Frozen",)),
         max_iter=1,
     )
 
     active_count = sum(parameter.active for parameter in result.parameters)
-    assert any("bond(1,2)" in parameter.name and parameter.active for parameter in result.parameters)
+    assert any("R(1,2)" in parameter.name and parameter.active for parameter in result.parameters)
     assert result.jacobian.shape[1] < active_count
+
+
+@pytest.mark.parametrize("coordinate_model", ("gic", "cartesian_symmetry"))
+def test_semiexperimental_primitive_constraints_preserve_fixed_values(tmp_path, coordinate_model):
+    xyz = tmp_path / f"water_{coordinate_model}.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.757000 0.586000",
+                "H 0.000000 -0.757000 0.586000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    target_coords = coords.copy()
+    target_coords[1:] *= 1.08
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, target_coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            fixed_parameters=("R(1,2) Frozen",),
+            coordinate_model=coordinate_model,
+        ),
+        max_iter=8,
+        outdir=tmp_path / f"fixed_{coordinate_model}",
+    )
+
+    initial_r12 = float(np.linalg.norm(coords[0] - coords[1]))
+    final = result.final_coordinates_angstrom
+    assert float(np.linalg.norm(final[0] - final[1])) == pytest.approx(initial_r12, abs=1.0e-8)
+    assert float(np.linalg.norm(final[0] - final[2])) == pytest.approx(initial_r12, abs=1.0e-8)
+
+
+@pytest.mark.parametrize("coordinate_model", ("gic", "cartesian_symmetry"))
+def test_semiexperimental_linear_primitive_constraints_preserve_combinations(tmp_path, coordinate_model):
+    xyz = tmp_path / f"water_linear_{coordinate_model}.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.757000 0.586000",
+                "H 0.000000 -0.757000 0.586000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    target_coords = coords.copy()
+    target_coords[1] *= 1.12
+    target_coords[2] *= 0.95
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, target_coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            fixed_parameters=("DR(Frozen,Value=0.0)=R[1,3]-R[1,2]",),
+            coordinate_model=coordinate_model,
+        ),
+        max_iter=10,
+        outdir=tmp_path / f"linear_fixed_{coordinate_model}",
+    )
+
+    final = result.final_coordinates_angstrom
+    r12 = float(np.linalg.norm(final[0] - final[1]))
+    r13 = float(np.linalg.norm(final[0] - final[2]))
+    assert r13 - r12 == pytest.approx(0.0, abs=1.0e-8)
+
+
+@pytest.mark.parametrize("coordinate_model", ("gic", "cartesian_symmetry"))
+def test_semiexperimental_gaussian_expression_constraints_preserve_combinations(tmp_path, coordinate_model):
+    xyz = tmp_path / f"water_gic_expression_{coordinate_model}.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.757000 0.586000",
+                "H 0.000000 -0.757000 0.586000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    target_coords = coords.copy()
+    target_coords[1] *= 1.12
+    target_coords[2] *= 0.95
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, target_coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            fixed_parameters=("DR(Frozen,Value=0.0)=R[1,3]-R[1,2]",),
+            coordinate_model=coordinate_model,
+        ),
+        max_iter=10,
+        outdir=tmp_path / f"gic_expression_fixed_{coordinate_model}",
+    )
+
+    final = result.final_coordinates_angstrom
+    r12 = float(np.linalg.norm(final[0] - final[1]))
+    r13 = float(np.linalg.norm(final[0] - final[2]))
+    assert r13 - r12 == pytest.approx(0.0, abs=1.0e-8)
+
+
+def test_semiexperimental_gaussian_expression_constraints_can_reference_gic_names(tmp_path):
+    atoms = ("O", "H", "H")
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+    prims, u_matrix, labels = _gic_model(
+        coords,
+        z_numbers,
+        backend=_make_gicforge_backend(atoms, tmp_path),
+    )
+
+    constraints = _gic_expression_constraints_from_patterns(("QFIX=[GIC001+2*GIC002] Value=0.0",))
+    values = _gic_expression_constraint_values(constraints, coords, prims, u_matrix, labels)
+    targets = _gic_expression_constraint_targets(constraints, coords, prims, u_matrix, labels)
+
+    assert len(constraints) == 1
+    assert constraints[0].name == "QFIX"
+    assert targets[0] == pytest.approx(0.0)
+    assert values[0] == pytest.approx(_gic_expression_constraint_values(constraints, coords, prims, u_matrix, labels)[0])
+
+
+def test_semiexperimental_gaussian_gic_keyword_syntax_is_accepted():
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]])
+    prims = ()
+    u_matrix = np.zeros((0, 0))
+    labels = ()
+    constraints = _gic_expression_constraints_from_patterns(
+        (
+            "HOH(Frozen)=A(2,1,3)",
+            "QFIX(Frozen,Value=0.0)=R[1,3]-R[1,2]",
+            "R[1,3]-R[1,2] Freeze",
+            "BondFix(F,Value=1.09)=B[1,2]",
+            "AngleFix(Frozen,Value=90.0)=Angle(2,1,3)",
+            "CartZ(Frozen,Value=1.0)=Z(2)",
+            "DD(Frozen,Value=0.0)=DotDiff(1,2,3,4)",
+        )
+    )
+    values = _gic_expression_constraint_values(constraints, coords, prims, u_matrix, labels)
+    targets = _gic_expression_constraint_targets(constraints, coords, prims, u_matrix, labels)
+
+    assert _fixed_primitives_from_patterns(("HOH(Frozen)=A(2,1,3)",))[0].kind == "angle"
+    assert [item.name for item in constraints] == ["QFIX", "R[1,3]-R[1,2] Freeze", "BondFix", "AngleFix", "CartZ", "DD"]
+    assert targets[0] == pytest.approx(0.0)
+    assert targets[1] == pytest.approx(values[1])
+    assert targets[2] == pytest.approx(1.09)
+    assert targets[3] == pytest.approx(np.pi / 2.0)
+    assert targets[4] == pytest.approx(1.0)
+    assert targets[5] == pytest.approx(0.0)
+    inactive = _gic_expression_constraints_from_patterns(("RPck001(Inactive,Value=1.0)=D(1,2,3,4)",))
+    assert inactive == ()
+    assert _gic_fixed_patterns(("RPck001(Inactive,Value=1.0)=D(1,2,3,4)",)) == ()
+
+
+def test_semiexperimental_gaussian_gic_definitions_are_reusable_constraints():
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]])
+    prims = ()
+    u_matrix = np.zeros((0, 0))
+    labels = ()
+    records = (
+        "R12=R(1,2)",
+        "R13=R(1,3)",
+        "ADEF=A(2,1,3)",
+        "DR(Frozen,Value=0.0)=R13-R12",
+        "COSANG(Frozen,Value=0.0)=cos(A(2,1,3))",
+        "AFIX(Frozen,Value=90.0)=ADEF",
+    )
+
+    definitions = _gic_expression_definitions_from_patterns(records)
+    constraints = _gic_expression_constraints_from_patterns(records)
+    values = _gic_expression_constraint_values(
+        constraints,
+        coords,
+        prims,
+        u_matrix,
+        labels,
+        definitions=definitions,
+    )
+    targets = _gic_expression_constraint_targets(
+        constraints,
+        coords,
+        prims,
+        u_matrix,
+        labels,
+        definitions=definitions,
+    )
+
+    assert [definition.name for definition in definitions] == ["R12", "R13", "ADEF", "DR", "COSANG", "AFIX"]
+    assert [constraint.name for constraint in constraints] == ["DR", "COSANG", "AFIX"]
+    assert values[0] == pytest.approx(0.0)
+    assert values[1] == pytest.approx(0.0, abs=1.0e-12)
+    assert targets == pytest.approx([0.0, 0.0, np.pi / 2.0])
+
+
+def test_semiexperimental_gaussian_gic_definition_cycles_are_rejected():
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    records = ("ADEF=BDEF+1", "BDEF=ADEF+1", "LOCK(Frozen,Value=0.0)=ADEF")
+    definitions = _gic_expression_definitions_from_patterns(records)
+    constraints = _gic_expression_constraints_from_patterns(records)
+
+    with pytest.raises(ValueError, match="Cyclic GIC expression definition"):
+        _gic_expression_constraint_values(
+            constraints,
+            coords,
+            (),
+            np.zeros((0, 0)),
+            (),
+            definitions=definitions,
+        )
+
+
+def test_semiexperimental_value_constraints_do_not_use_starting_geometry(tmp_path):
+    atoms = ["O", "H", "H"]
+    base = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    starts = [
+        np.vstack((base[0], 0.94 * base[1], 0.94 * base[2])),
+        np.vstack((base[0], 1.06 * base[1], 1.06 * base[2])),
+    ]
+    target = 0.9572
+    finals = []
+    for idx, coords in enumerate(starts):
+        xyz = tmp_path / f"water_value_{idx}.xyz"
+        xyz.write_text(
+            "\n".join(
+                [
+                    "3",
+                    "water",
+                    *(
+                        f"{atom} {row[0]:.8f} {row[1]:.8f} {row[2]:.8f}"
+                        for atom, row in zip(atoms, coords)
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        observation = IsotopologueObservation(
+            "parent",
+            RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+        )
+        result = fit_semiexperimental_geometry(
+            SemiexperimentalFitRequest(
+                xyz,
+                (observation,),
+                fixed_parameters=(
+                    f"R12=[R(1,2)] Value={target}",
+                    f"R13=[R(1,3)] Value={target}",
+                ),
+            ),
+            max_iter=0,
+        )
+        finals.append(result.final_coordinates_angstrom)
+
+    for final in finals:
+        assert float(np.linalg.norm(final[0] - final[1])) == pytest.approx(target, abs=1.0e-8)
+        assert float(np.linalg.norm(final[0] - final[2])) == pytest.approx(target, abs=1.0e-8)
 
 
 def test_semiexperimental_primitive_constraints_expand_by_symmetry(tmp_path):
@@ -1218,7 +1588,7 @@ def test_semiexperimental_primitive_constraints_expand_by_symmetry(tmp_path):
         z_numbers,
         backend=_make_gicforge_backend(atoms, tmp_path),
     )
-    fixed = _fixed_primitives_from_patterns(("bond(1,2)",))
+    fixed = _fixed_primitives_from_patterns(("R(1,2) Frozen",))
 
     expanded = _symmetry_expanded_fixed_primitives(atoms, coords, prims, fixed)
     expanded_keys = {_primitive_constraint_key(primitive) for primitive in expanded}
@@ -1277,7 +1647,7 @@ def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
             xyz,
             (observation,),
             parameter_classes=(
-                ParameterClassConstraint("OH_stretches", ("bond(1,2)", "bond(1,3)"), "shared"),
+                ParameterClassConstraint("OH_stretches", ("R(1,2)", "R(1,3)"), "shared"),
                 ParameterClassConstraint("antisymmetric_stretch", ("GIC002",), "fixed"),
             ),
         ),
@@ -1398,7 +1768,7 @@ def test_semiexperimental_validation_and_conditioning_preview(tmp_path):
     request = SemiexperimentalFitRequest(
         xyz,
         observations,
-        parameter_classes=(ParameterClassConstraint("OH_stretches", ("bond(1,2)", "bond(1,3)"), "shared"),),
+        parameter_classes=(ParameterClassConstraint("OH_stretches", ("R(1,2)", "R(1,3)"), "shared"),),
     )
 
     issues = validate_semiexperimental_request(request)
@@ -1437,7 +1807,7 @@ def test_semiexperimental_gic_preview_keeps_angstrom_topology_for_cyclopentadien
     preview = preview_semiexperimental_gics(xyz)
 
     assert preview.gic_labels
-    assert any("dihedral" in label for label in preview.gic_labels)
+    assert any("D(" in label for label in preview.gic_labels)
 
 
 def test_semiexperimental_fit_uses_adaptive_gicforge_model(tmp_path, monkeypatch):

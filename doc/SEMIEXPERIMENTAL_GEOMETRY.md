@@ -155,6 +155,24 @@ generic `.inp` is not auto-detected as MSR. If the Gaussian input contains a Mod
 `B/A/D/O/L ... F` are converted into primitive-coordinate constraints. Each
 fixed primitive is expanded automatically to all symmetry-equivalent primitives
 before the constraint projector is built in the active GIC space.
+The same constraint channel also accepts Gaussian-style GIC expression
+constraints such as `QFIX=[GIC001+2*GIC002] Value=0.0` or
+`DR(Frozen,Value=0.0)=R[1,3]-R[1,2]`. These are treated as equations to be
+projected, not as label substrings that simply deactivate a coordinate.
+The accepted forms are the Gaussian GIC forms `Label(Options)=Expression` and
+`Expression Options`; the reference PDF is archived as
+`doc/papers/references/gaussian_gic_keywords.pdf`. For example,
+`HOH(Frozen)=A(2,1,3)` freezes the starting angle, while
+`CH2ROCK(Frozen,Value=0.1168)=A(7,5,8)+A(7,5,3)-A(6,5,8)-A(6,5,3)` imposes an
+absolute target. Primitive aliases such as `B`, `Bond`, `Stretch`, `Angle`,
+`Bend`, `Torsion`, `LinearBend`, `X/Y/Z`, `Cart` and `DotDiff` are accepted.
+Named definitions are reusable: `RCH7=R(5,7)` defines a coordinate, and a later
+constraint can use `DRCH(Frozen,Value=0.0)=RCH8-RCH7`. Definitions can refer to
+primitive coordinates, Cartesian components, final `GIC###` labels and earlier
+definitions; cyclic definitions are rejected.
+Use `Value=` for tabulated constraints; a bare `F`, `Freeze` or `Frozen`
+freezes the value present in the starting geometry. Gaussian `Inactive`,
+`Remove` and `Active` records are not converted into hard SEfit constraints.
 For limited-isotopologue data sets, `[constraints] fix_hydrogen_parameters =
 true` builds a deterministic local coordinate frame for every H, D or T atom
 and fixes those primitive constraints in the same projected-constraint
@@ -173,11 +191,14 @@ C   0.000000   0.000000   0.000000
 H   0.000000   0.000000   1.089000
 
 B 1 2 F
+QFIX=[R(1,2)-R(1,3)] Value=0.0
 ```
 
 Everything after the blank line following the Cartesian block is interpreted as
 Gaussian ModRedundant data. Fixed parameters must be expressed there with the
-standard freeze action `F`.
+standard freeze action `F`; GIC expression constraints use the same
+Gaussian-style bracket syntax and may freeze the initial expression value or
+set an explicit target.
 
 Legacy MSR files are translated at input time into the same Cartesian geometry
 and observation objects used by native Merlino jobs. They may contain either an
@@ -332,6 +353,7 @@ The Merlino4 dashboard exposes the semiexperimental solver from the
 - moment or rotational-constant target;
 - rotational-constant component policy;
 - fixed GIC patterns;
+- Gaussian-style GIC/function constraints;
 - automatic fixing of local hydrogen/deuterium/tritium geometry constraints;
 - QM predicate observations;
 - shared or fixed parameter classes.
@@ -470,8 +492,8 @@ together:
 
 ```bash
 python -m merlino semiexp ... \
-  --parameter-class "CH:shared:bond(1,2)|bond(1,3)" \
-  --parameter-class "XYH:fixed:angle"
+  --parameter-class "CH:shared:R(1,2)|R(1,3)" \
+  --parameter-class "XYH:fixed:A("
 ```
 
 The format is:

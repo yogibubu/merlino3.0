@@ -47,8 +47,19 @@ def primitive_label(primitive: object) -> str:
     kind = getattr(primitive, "kind")
     atoms = tuple(int(i) + 1 for i in getattr(primitive, "atoms"))
     mode = int(getattr(primitive, "mode", 0))
+    atoms_text = ",".join(str(i) for i in atoms)
+    if kind == "bond":
+        return f"R({atoms_text})"
+    if kind == "angle":
+        return f"A({atoms_text})"
+    if kind == "dihedral":
+        return f"D({atoms_text})"
+    if kind == "out_of_plane":
+        return f"U({atoms_text})"
+    if kind == "linear_bend":
+        return f"L({atoms_text},0,{mode})"
     suffix = f":{mode}" if mode else ""
-    return f"{kind}{suffix}({','.join(str(i) for i in atoms)})"
+    return f"{kind}{suffix}({atoms_text})"
 
 
 def gic_labels_from_u(u_matrix: np.ndarray, primitive_labels: tuple[str, ...], *, threshold: float = 0.15) -> tuple[str, ...]:

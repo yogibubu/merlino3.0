@@ -369,15 +369,15 @@ def _gic_aliases(terms: list[tuple[float, Primitive]]) -> str:
 def _primitive_alias(primitive: Primitive) -> str:
     atoms = ",".join(str(atom + 1) for atom in primitive.atoms)
     if primitive.kind == "bond":
-        return f"bond({atoms})"
+        return f"R({atoms})"
     if primitive.kind == "angle":
-        return f"angle({atoms})"
+        return f"A({atoms})"
     if primitive.kind == "dihedral":
-        return f"dihedral({atoms})"
+        return f"D({atoms})"
     if primitive.kind == "out_of_plane":
-        return f"out_of_plane({atoms})"
+        return f"U({atoms})"
     if primitive.kind == "linear_bend":
-        return f"linear_bend({atoms};mode={primitive.mode})"
+        return f"L({atoms},0,{primitive.mode})"
     return f"{primitive.kind}({atoms})"
 
 

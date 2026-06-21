@@ -260,8 +260,8 @@ def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
     assert result.force_constants.shape == (3, 3)
     assert result.g_matrix.shape == (3, 3)
     assert result.ped.values.shape == (3, 3)
-    assert "bond(1,2)" in result.gic_labels[0]
-    assert "angle(1,2,3)" in result.gic_labels[2]
+    assert "R(1,2)" in result.gic_labels[0]
+    assert "A(1,2,3)" in result.gic_labels[2]
     assert np.all(result.frequencies_cm > 0.0)
     assert np.allclose(result.ped.values.sum(axis=0), np.full(3, 100.0))
     assert np.allclose(result.frequencies_cm, [2169.878, 4141.256, 4392.363], atol=1.0e-3)

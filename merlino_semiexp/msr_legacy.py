@@ -16,7 +16,11 @@ from .contracts import (
     RotationalConstants,
     VibrationalCorrection,
 )
-from .geometry_input import SemiexperimentalGeometryInput, _modredundant_fixed_patterns
+from .geometry_input import (
+    SemiexperimentalGeometryInput,
+    _looks_like_gic_expression_constraint,
+    _modredundant_fixed_patterns,
+)
 
 
 MSR_LEGACY_SUFFIXES = (".msr", ".msr.inp", "_msr.inp")
@@ -287,18 +291,16 @@ def _zmatrix_frozen_constraints(zmat: tuple[_ZMatrixLine, ...], physical_map: tu
         if _is_frozen_token(row.distance_token) and z_zero >= 1:
             atoms = _physical_atoms(z_to_physical, z_index, row.refs[0] + 1)
             if atoms is not None:
-                _append_unique_constraint(constraints, seen, f"bond({atoms[0]},{atoms[1]})")
-                _append_unique_constraint(constraints, seen, f"bond({atoms[1]},{atoms[0]})")
+                i, j = sorted(atoms[:2])
+                _append_unique_constraint(constraints, seen, f"R({i},{j}) Frozen")
         if _is_frozen_token(row.angle_token) and z_zero >= 2:
             atoms = _physical_atoms(z_to_physical, z_index, row.refs[0] + 1, row.refs[1] + 1)
             if atoms is not None:
-                _append_unique_constraint(constraints, seen, f"angle({atoms[0]},{atoms[1]},{atoms[2]})")
-                _append_unique_constraint(constraints, seen, f"angle({atoms[2]},{atoms[1]},{atoms[0]})")
+                _append_unique_constraint(constraints, seen, f"A({atoms[0]},{atoms[1]},{atoms[2]}) Frozen")
         if _is_frozen_token(row.dihedral_token) and z_zero >= 3:
             atoms = _physical_atoms(z_to_physical, z_index, row.refs[0] + 1, row.refs[1] + 1, row.refs[2] + 1)
             if atoms is not None:
-                _append_unique_constraint(constraints, seen, f"dihedral({atoms[0]},{atoms[1]},{atoms[2]},{atoms[3]})")
-                _append_unique_constraint(constraints, seen, f"dihedral({atoms[3]},{atoms[2]},{atoms[1]},{atoms[0]})")
+                _append_unique_constraint(constraints, seen, f"D({atoms[0]},{atoms[1]},{atoms[2]},{atoms[3]}) Frozen")
     return tuple(constraints)
 
 
@@ -337,6 +339,10 @@ def _extract_cartesian_constraints(lines: list[str]) -> tuple[tuple[str, ...], l
             idx += 1
             break
         if _is_modredundant_constraint_line(line):
+            constraints.append(line)
+            idx += 1
+            continue
+        if _looks_like_gic_expression_constraint(line):
             constraints.append(line)
             idx += 1
             continue

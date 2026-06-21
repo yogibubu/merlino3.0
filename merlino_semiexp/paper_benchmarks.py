@@ -13,11 +13,12 @@ from typing import Any
 PAPER_BENCHMARK_SCHEMA = "merlino.semiexp.paper_regression.v1"
 DEFAULT_SNAPSHOT = Path("benchmarks/semiexp_msr/golden/semiexp_paper_regression.json")
 DEFAULT_OUTPUT_DIR = Path("benchmarks/semiexp_msr/generated")
-CASE_ORDER = ("glycolaldehyde", "cyclopentadiene", "nitrobenzene", "azulene", "norcamphor")
+CASE_ORDER = ("glycolaldehyde", "glycine_II", "cyclopentadiene", "nitrobenzene", "azulene", "norcamphor")
 PAIR_ORDER = ("AB", "AC", "BC")
 
 SYSTEM_LABELS = {
     "glycolaldehyde": "Glycolaldehyde",
+    "glycine_II": "Glycine II",
     "cyclopentadiene": "Cyclopentadiene",
     "nitrobenzene": "Nitrobenzene",
     "azulene": "Azulene",
@@ -535,6 +536,8 @@ def _components_to_pair(components: tuple[str, ...]) -> str:
 def _constraint_label(system: str, count: int) -> str:
     if count == 0:
         return "none"
+    if system == "glycine_II":
+        return f"{count} function"
     if system == "norcamphor":
         return f"{count} H primitive"
     return f"{count} primitive"
@@ -562,7 +565,27 @@ def _default_pair_run_dir(system: str, pair: str) -> str | None:
 def _unique_primitive_constraints(parameters: Any) -> set[str]:
     if not isinstance(parameters, list):
         return set()
-    return {_canonical_primitive_constraint(str(parameter)) for parameter in parameters}
+    return {
+        _canonical_primitive_constraint(str(parameter))
+        for parameter in parameters
+        if _looks_like_hard_constraint_record(str(parameter))
+    }
+
+
+def _looks_like_hard_constraint_record(parameter: str) -> bool:
+    text = parameter.strip()
+    if not text:
+        return False
+    low = text.lower()
+    if "inactive" in low or "remove" in low or "active" in low:
+        return False
+    if re.search(r"\b(value|frozen|freeze|fixed)\b", low):
+        return True
+    if re.search(r"\(\s*f\s*(?:[,)]|$)", low):
+        return True
+    if "=" in text:
+        return False
+    return bool(re.match(r"^(r|a|d|u|l|bond|angle|dihedral|out_of_plane|linear)", low))
 
 
 def _canonical_primitive_constraint(parameter: str) -> str:

@@ -1,0 +1,7 @@
+system,selected,pair,rank,condition_number,rotational_rms_MHz,rotational_max_MHz,run_dir
+nitrobenzene,AB,AB,13,27464.444022609037,0.1479783904355257,0.260455141268,working/semiexp/nitrobenzene/run_pair_AB
+nitrobenzene,AB,AC,13,56007.68068604262,0.25926687398540516,0.459684669806,working/semiexp/nitrobenzene/run_pair_AC
+nitrobenzene,AB,BC,13,10623.284504191244,2.4601526847100397,4.36931801779,working/semiexp/nitrobenzene/run_pair_BC
+azulene,AB,AB,10,956.6899599969396,0.07306079646893053,0.289989156513,working/semiexp/azulene/run_msr_like_planar_AB
+azulene,AB,AC,10,1779.9573220597053,0.10860747184296211,0.422157689226,working/semiexp/azulene/run_msr_like_planar_AC
+azulene,AB,BC,10,950.1551628683592,0.3232420715804039,0.754110470134,working/semiexp/azulene/run_msr_like_planar_BC

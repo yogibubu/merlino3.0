@@ -561,9 +561,14 @@ class DashboardWindow(QMainWindow):
         option_form.addRow("Rotational components:", self.semiexp_components)
 
         self.semiexp_fixed = QLineEdit()
-        self.semiexp_fixed.setPlaceholderText("e.g. GIC001, angle(2,1,3)")
+        self.semiexp_fixed.setPlaceholderText("e.g. GIC001, A(2,1,3) Frozen")
         self.semiexp_fixed.textChanged.connect(lambda _text: self._update_semiexp_preview())
         option_form.addRow("Fixed GIC patterns:", self.semiexp_fixed)
+
+        self.semiexp_gic_constraints = QLineEdit()
+        self.semiexp_gic_constraints.setPlaceholderText("DR(Frozen,Value=0.0)=R[1,3]-R[1,2]; HOH(Frozen)=A(2,1,3)")
+        self.semiexp_gic_constraints.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("GIC/function constraints:", self.semiexp_gic_constraints)
 
         self.semiexp_fix_hydrogens = QCheckBox("Freeze local H/D/T geometry constraints")
         self.semiexp_fix_hydrogens.toggled.connect(lambda _checked: self._update_semiexp_preview())
@@ -575,7 +580,7 @@ class DashboardWindow(QMainWindow):
         option_form.addRow("QM predicates:", self.semiexp_qm)
 
         self.semiexp_classes = QLineEdit()
-        self.semiexp_classes.setPlaceholderText("CH:shared:bond(1,2)|bond(1,3); XYH:fixed:angle")
+        self.semiexp_classes.setPlaceholderText("CH:shared:R(1,2)|R(1,3); XYH:fixed:A(")
         self.semiexp_classes.textChanged.connect(lambda _text: self._update_semiexp_preview())
         option_form.addRow("Parameter classes:", self.semiexp_classes)
 
@@ -694,8 +699,9 @@ class DashboardWindow(QMainWindow):
             "--robust-scale",
             f"{self.semiexp_robust_scale.value():.12g}",
         ]
-        if self.semiexp_fixed.text().strip():
-            args.extend(["--fixed", self.semiexp_fixed.text().strip()])
+        fixed = _join_semiexp_fixed_items(self.semiexp_fixed.text(), self.semiexp_gic_constraints.text())
+        if fixed:
+            args.extend(["--fixed", fixed])
         if self.semiexp_fix_hydrogens.isChecked():
             args.append("--fix-hydrogens")
         if self.semiexp_leave_one_out.isChecked():
@@ -827,6 +833,7 @@ class DashboardWindow(QMainWindow):
             "observable": self.semiexp_observable.currentText(),
             "components": self.semiexp_components.currentText(),
             "fixed": self.semiexp_fixed.text().strip(),
+            "gic_constraints": self.semiexp_gic_constraints.text().strip(),
             "fix_hydrogens": self.semiexp_fix_hydrogens.isChecked(),
             "qm": self.semiexp_qm.text().strip(),
             "classes": self.semiexp_classes.text().strip(),
@@ -854,6 +861,7 @@ class DashboardWindow(QMainWindow):
         self.semiexp_observable.setCurrentText(str(data.get("observable", "moments")))
         self.semiexp_components.setCurrentText(str(data.get("components", "auto")))
         self.semiexp_fixed.setText(str(data.get("fixed", "")))
+        self.semiexp_gic_constraints.setText(str(data.get("gic_constraints", "")))
         self.semiexp_fix_hydrogens.setChecked(bool(data.get("fix_hydrogens", False)))
         self.semiexp_qm.setText(str(data.get("qm", "")))
         self.semiexp_classes.setText(str(data.get("classes", "")))
@@ -927,7 +935,8 @@ class DashboardWindow(QMainWindow):
         return "\n".join(lines)
 
     def _semiexp_job_toml(self, geometry, observations_path: Path) -> str:
-        fixed = tuple(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";")))
+        fixed = tuple(_split_semiexp_fixed_items(self.semiexp_fixed.text()))
+        expression_constraints = tuple(_split_semiexp_fixed_items(self.semiexp_gic_constraints.text()))
         fixed = tuple(dict.fromkeys((*geometry.fixed_parameters, *fixed)))
         lines = [
             f'schema = "{SEMIEXP_JOB_SCHEMA}"',
@@ -969,6 +978,10 @@ class DashboardWindow(QMainWindow):
             lines.append("]")
         else:
             lines.append("fixed_gic_patterns = []")
+        if expression_constraints:
+            lines.append("gic_constraints = [")
+            lines.extend(f'  "{_toml_string(item)}",' for item in expression_constraints)
+            lines.append("]")
         for predicate in _parse_semiexp_qm_predicates(self.semiexp_qm.text()):
             lines.extend(
                 [
@@ -1025,7 +1038,10 @@ class DashboardWindow(QMainWindow):
             parts = item.split(":", 2)
             if len(parts) == 3:
                 classes.append(ParameterClassConstraint(parts[0], tuple(p for p in parts[2].split("|") if p), parts[1]))
-        fixed = list(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";")))
+        fixed = [
+            *_split_semiexp_fixed_items(self.semiexp_fixed.text()),
+            *_split_semiexp_fixed_items(self.semiexp_gic_constraints.text()),
+        ]
         if self.semiexp_fix_hydrogens.isChecked():
             fixed.append(HYDROGEN_PARAMETER_CONSTRAINT)
         return SemiexperimentalFitRequest(
@@ -1262,6 +1278,42 @@ def _select_directory(parent: QWidget, edit: QLineEdit) -> None:
 
 def _split_semiexp_items(text: str) -> list[str]:
     return [item.strip() for item in text.split(";") if item.strip()]
+
+
+def _split_semiexp_fixed_items(text: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    round_depth = 0
+    square_depth = 0
+    brace_depth = 0
+    for char in str(text):
+        if char == "(":
+            round_depth += 1
+        elif char == ")" and round_depth > 0:
+            round_depth -= 1
+        elif char == "[":
+            square_depth += 1
+        elif char == "]" and square_depth > 0:
+            square_depth -= 1
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+        if char in {";", ","} and round_depth == 0 and square_depth == 0 and brace_depth == 0:
+            item = "".join(current).strip()
+            if item:
+                parts.append(item)
+            current = []
+            continue
+        current.append(char)
+    item = "".join(current).strip()
+    if item:
+        parts.append(item)
+    return parts
+
+
+def _join_semiexp_fixed_items(*texts: str) -> str:
+    return ";".join(item for text in texts for item in _split_semiexp_fixed_items(text))
 
 
 def _parse_semiexp_qm_predicates(text: str) -> list[QMParameterPredicate]:

@@ -1,0 +1,86 @@
+\documentclass[11pt]{letter}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{url}
+
+\signature{Vincenzo Barone\\
+INSTM, National Interuniversity Consortium for Materials Science and Technology\\
+via G. Giusti 9\\
+50121 Firenze, Italy\\
+\texttt{vincebarone52@gmail.com}}
+
+\address{Vincenzo Barone\\
+INSTM, National Interuniversity Consortium for Materials Science and Technology\\
+via G. Giusti 9\\
+50121 Firenze, Italy\\
+\texttt{vincebarone52@gmail.com}}
+
+\date{\today}
+
+\begin{document}
+
+\begin{letter}{Editor\\
+Journal of Chemical Theory and Computation}
+
+\opening{Dear Editor,}
+
+Please consider the manuscript entitled
+``Non-Redundant and Symmetry-Adapted Coordinates for Black-Box Molecular
+Structure Refinement'' for publication in the \emph{Journal of Chemical
+Theory and Computation}.
+
+The manuscript addresses a persistent limitation of semiexperimental molecular
+structure refinement: the fitted geometry often depends on a user-defined
+Z-matrix or on manually selected internal-coordinate models. This dependence is
+benign for simple acyclic molecules, but it becomes problematic for rings,
+fused systems, bridged frameworks, planar molecules, and cases with incomplete
+isotopic substitution data.
+
+We introduce \texttt{SEfit}, a framework in which the structure is read as
+Cartesian coordinates and the active refinement space is generated
+automatically from molecular topology and symmetry. Two non-redundant,
+symmetry-adapted coordinate representations are available: generalized internal
+coordinates (GICs) built from homogeneous primitive blocks, and
+symmetry-adapted Cartesian displacements with
+translations and rotations removed. Chemical constraints, predicates, and
+parameter classes remain defined in primitive internal coordinates and are
+projected onto the chosen active basis, so the method preserves chemical
+interpretability without requiring a Z-matrix.
+
+The work extends the semiexperimental structure-refinement capabilities
+developed in the \texttt{MSR} molecular-structure-refinement workflow. It
+retains moment-of-inertia fitting, vibrational and electronic corrections,
+parameter classes, reduced-dimensionality hydrogen models, covariance
+propagation, Kraitchman diagnostics, and human-readable reports, while moving
+coordinate construction and constraint handling to a fully automatic
+Cartesian/topology layer.
+
+The approach is validated on glycolaldehyde, glycine II, cyclopentadiene,
+nitrobenzene, azulene, and norcamphor. These examples span standard acyclic,
+functional-constraint, cyclic, planar aromatic, fused-ring, and bridged cases.
+The results show that the
+symmetry-adapted GIC and Cartesian active spaces give consistent ranks,
+effective dimensionalities, and rotational residuals, while final bond lengths,
+angles, dihedrals, and their uncertainties are obtained from the optimized
+Cartesian structures with rigorous error propagation.
+
+We believe the manuscript is appropriate for the \emph{Journal of Chemical
+Theory and Computation} (JCTC) because it presents a general computational
+methodology for coordinate-dependent inverse problems, not only a
+molecule-specific refinement. The same coordinate layer is designed to support
+semiexperimental structures, Gaussian input generation, Wilson G/F matrix and
+potential-energy-distribution (PED) analysis, and related vibrational
+workflows.
+
+The manuscript is original, has not been published previously, and is not under
+consideration elsewhere. The author has approved the submission and declares no
+competing financial interest. The software, benchmark inputs, generated tables,
+and regression tests can be made available to reviewers and, upon publication,
+under the distribution model selected by the author.
+
+\closing{Sincerely,}
+
+\end{letter}
+
+\end{document}

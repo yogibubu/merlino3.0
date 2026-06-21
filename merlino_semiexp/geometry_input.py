@@ -177,6 +177,9 @@ def _modredundant_fixed_patterns(lines: list[str] | tuple[str, ...]) -> tuple[st
         kind = parts[0].upper()
         expected = {"B": 2, "A": 3, "D": 4, "O": 4, "L": 3}.get(kind)
         if expected is None:
+            if _looks_like_gic_expression_constraint(line) and line not in seen:
+                patterns.append(line)
+                seen.add(line)
             continue
         atoms: list[int] = []
         actions: list[str] = []
@@ -194,20 +197,38 @@ def _modredundant_fixed_patterns(lines: list[str] | tuple[str, ...]) -> tuple[st
     return tuple(patterns)
 
 
+def _looks_like_gic_expression_constraint(line: str) -> bool:
+    text = str(line).strip()
+    low = text.lower()
+    if low.startswith(("gic(", "constraint(", "freeze(", "fixed(")):
+        return True
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_'\"]*(?:\([^)]*\))?\s*=", text):
+        return True
+    if re.search(r"(?i)\bvalue\s*=", text):
+        return True
+    if re.search(r"(?i)\b(?:freeze|frozen|fixed)\b", text):
+        return True
+    if re.search(r"(?i)\((?:[^)]*,\s*)?f(?:reeze|rozen|ixed)?(?:\s*,[^)]*)?\)\s*=", text):
+        return True
+    if "=[" in text and "]" in text:
+        return True
+    return False
+
+
 def _fixed_patterns_for_coordinate(kind: str, atoms: tuple[int, ...]) -> tuple[str, ...]:
     if kind == "B":
         i, j = atoms
-        return (f"bond({i},{j})", f"bond({j},{i})")
+        return (f"R({i},{j}) Frozen",)
     if kind == "A":
         i, j, k = atoms
-        return (f"angle({i},{j},{k})", f"angle({k},{j},{i})")
+        return (f"A({i},{j},{k}) Frozen",)
     if kind == "D":
         i, j, k, l = atoms
-        return (f"dihedral({i},{j},{k},{l})", f"dihedral({l},{k},{j},{i})")
+        return (f"D({i},{j},{k},{l}) Frozen",)
     if kind == "O":
         i, j, k, l = atoms
-        return (f"out_of_plane({i},{j},{k},{l})", f"out_of_plane({l},{k},{j},{i})")
+        return (f"U({i},{j},{k},{l}) Frozen",)
     if kind == "L":
         i, j, k = atoms
-        return (f"linear_bend({i},{j},{k})", f"linear_bend({k},{j},{i})")
+        return (f"L({i},{j},{k},0,-1) Frozen", f"L({i},{j},{k},0,-2) Frozen")
     return ()

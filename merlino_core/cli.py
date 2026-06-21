@@ -154,7 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
-    semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings or primitive constraints to keep fixed")
+    semiexp.add_argument(
+        "--fixed",
+        default="",
+        help="Comma/semicolon-separated fixed GIC label patterns, primitive constraints or Gaussian-style GIC constraints such as NAME(Frozen,Value=0.0)=R[1,3]-R[1,2]",
+    )
     semiexp.add_argument(
         "--fix-hydrogens",
         action="store_true",
@@ -525,7 +529,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{rms_label}: {result.rms_MHz:.8g}")
         rot_diffs = [row.difference_MHz for row in result.rotational_constants]
         rotational_rms = math.sqrt(sum(diff * diff for diff in rot_diffs) / len(rot_diffs)) if rot_diffs else 0.0
+        rotational_mse = sum(diff * diff for diff in rot_diffs) / len(rot_diffs) if rot_diffs else 0.0
         print(f"rotational_rms_MHz: {rotational_rms:.8g}")
+        print(f"rotational_mean_square_MHz2: {rotational_mse:.8g}")
+        print(f"rotational_mean_square_1e3_MHz2: {1000.0 * rotational_mse:.8g}")
         print(f"iterations: {result.iterations}")
         print(f"stationary_point: {result.stationary_point}")
         print(f"convergence: {result.diagnostics.convergence_reason}")
@@ -620,7 +627,35 @@ def _parse_active_modes(raw: str) -> tuple[int, ...] | None:
 
 
 def _parse_fixed_parameters(raw: str) -> tuple[str, ...]:
-    return tuple(part.strip() for part in raw.replace(";", ",").split(",") if part.strip())
+    return tuple(part.strip() for part in _split_top_level(raw, separators=",;") if part.strip())
+
+
+def _split_top_level(raw: str, *, separators: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    round_depth = 0
+    square_depth = 0
+    brace_depth = 0
+    for char in str(raw):
+        if char == "(":
+            round_depth += 1
+        elif char == ")" and round_depth > 0:
+            round_depth -= 1
+        elif char == "[":
+            square_depth += 1
+        elif char == "]" and square_depth > 0:
+            square_depth -= 1
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+        if char in separators and round_depth == 0 and square_depth == 0 and brace_depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return parts
 
 
 def _parse_qm_predicates(items: list[str]) -> tuple[QMParameterPredicate, ...]:

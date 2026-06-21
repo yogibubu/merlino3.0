@@ -27,6 +27,31 @@
       "stationary_point": "minimum",
       "run_dir": "working/semiexp/glycolaldehyde/run_pcs4"
     },
+    "glycine_II": {
+      "point_group": "C1",
+      "coordinate_model": "gic",
+      "rotational_pair": "ABC",
+      "components": [
+        "Ia",
+        "Ib",
+        "Ic"
+      ],
+      "isotopologues": 10,
+      "reported_constants": 30,
+      "final_gics": 24,
+      "totally_symmetric_gics": 24,
+      "effective_parameters": 19,
+      "rank": 19,
+      "primitive_constraints": 5,
+      "accepted_steps": 16,
+      "rejected_steps": 30,
+      "condition_number": 10543.7338411,
+      "rotational_rms_MHz": 0.249116285855,
+      "rotational_max_MHz": 0.670672236074,
+      "minimum_hessian_eigenvalue": 61995.9401444,
+      "stationary_point": "minimum",
+      "run_dir": "working/semiexp/glycine_II_dpcs3_table5_repo_gic_fortran"
+    },
     "cyclopentadiene": {
       "point_group": "C2v",
       "coordinate_model": "cartesian_symmetry",

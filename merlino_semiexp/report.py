@@ -241,11 +241,16 @@ def suggest_parameter_classes(
     h_atoms = tuple(idx + 1 for idx, atom in enumerate(atoms) if atom.upper() == "H")
     if h_atoms:
         for heavy in sorted({heavy for heavy, h in _heavy_h_bonds(atoms, gic_labels)}):
-            patterns = tuple(f"bond({heavy},{h})" for h in h_atoms if _matches_any(gic_labels, f"bond({heavy},{h})"))
+            patterns = tuple(
+                f"R({heavy},{h})"
+                for h in h_atoms
+                if _matches_any(gic_labels, f"R({heavy},{h})") or _matches_any(gic_labels, f"R({h},{heavy})")
+            )
             if len(patterns) >= 2:
                 name = f"{atoms[heavy - 1].upper()}H_stretches"
                 suggestions.append(ParameterClassConstraint(name, patterns, "shared"))
-        angle_patterns = tuple(label.split(maxsplit=1)[1] for label in gic_labels if "angle(" in label and _angle_has_h(label, atoms))
+        angle_patterns = tuple(_first_gic_expression(label, "angle") for label in gic_labels if _gic_kind(label) == "angle" and _angle_has_h(label, atoms))
+        angle_patterns = tuple(pattern for pattern in angle_patterns if pattern)
         if angle_patterns and not h_substituted:
             suggestions.append(ParameterClassConstraint("XH_angles", angle_patterns, "fixed"))
     return tuple(suggestions)
@@ -394,8 +399,8 @@ def _preview_rows(
 
 
 def _gic_kind(label: str) -> str:
-    for kind in ("bond", "angle", "dihedral", "out_of_plane", "linear_bend"):
-        if f"{kind}(" in label:
+    for kind, markers in _GIC_KIND_MARKERS.items():
+        if any(marker in label for marker in markers):
             return kind
     if "ring" in label.lower():
         return "ring"
@@ -404,7 +409,32 @@ def _gic_kind(label: str) -> str:
 
 def _gic_atoms(label: str) -> tuple[int, ...]:
     atoms = []
-    for marker in ("bond(", "angle(", "dihedral(", "out_of_plane(", "linear_bend("):
+    for markers in _GIC_KIND_MARKERS.values():
+        for marker in markers:
+            start = 0
+            while True:
+                pos = label.find(marker, start)
+                if pos < 0:
+                    break
+                end = label.find(")", pos)
+                if end < 0:
+                    break
+                atoms.extend(int(part.strip()) for part in label[pos + len(marker):end].split(",") if part.strip().lstrip("-").isdigit() and int(part.strip()) > 0)
+                start = end + 1
+    return tuple(sorted(set(atoms)))
+
+
+_GIC_KIND_MARKERS = {
+    "bond": ("R(", "B(", "Bond(", "Stretch(", "bond("),
+    "angle": ("A(", "Angle(", "Bend(", "angle("),
+    "dihedral": ("D(", "Dihedral(", "Torsion(", "dihedral("),
+    "out_of_plane": ("U(", "out_of_plane("),
+    "linear_bend": ("L(", "Linear(", "LinearBend(", "linear_bend("),
+}
+
+
+def _first_gic_expression(label: str, kind: str) -> str:
+    for marker in _GIC_KIND_MARKERS.get(kind, ()):
         start = 0
         while True:
             pos = label.find(marker, start)
@@ -413,9 +443,8 @@ def _gic_atoms(label: str) -> tuple[int, ...]:
             end = label.find(")", pos)
             if end < 0:
                 break
-            atoms.extend(int(part.strip()) for part in label[pos + len(marker):end].split(",") if part.strip().isdigit())
-            start = end + 1
-    return tuple(sorted(set(atoms)))
+            return label[pos:end + 1]
+    return ""
 
 
 def _substituted_hydrogens(atoms: tuple[str, ...], observations: tuple[IsotopologueObservation, ...]) -> set[int]:
@@ -440,19 +469,20 @@ def _heavy_h_bonds(atoms: tuple[str, ...], labels: tuple[str, ...]) -> tuple[tup
 
 def _label_atom_pairs(label: str, kind: str) -> tuple[tuple[int, int], ...]:
     pairs = []
-    marker = f"{kind}("
-    start = 0
-    while True:
-        pos = label.find(marker, start)
-        if pos < 0:
-            break
-        end = label.find(")", pos)
-        if end < 0:
-            break
-        parts = [int(part.strip()) for part in label[pos + len(marker):end].split(",")]
-        if len(parts) >= 2:
-            pairs.append((parts[0], parts[-1]))
-        start = end + 1
+    for marker in _GIC_KIND_MARKERS.get(kind, (f"{kind}(",)):
+        start = 0
+        while True:
+            pos = label.find(marker, start)
+            if pos < 0:
+                break
+            end = label.find(")", pos)
+            if end < 0:
+                break
+            parts = [int(part.strip()) for part in label[pos + len(marker):end].split(",") if part.strip().lstrip("-").isdigit()]
+            parts = [part for part in parts if part > 0]
+            if len(parts) >= 2:
+                pairs.append((parts[0], parts[-1]))
+            start = end + 1
     return tuple(pairs)
 
 
@@ -462,14 +492,11 @@ def _matches_any(labels: tuple[str, ...], pattern: str) -> bool:
 
 
 def _angle_has_h(label: str, atoms: tuple[str, ...]) -> bool:
-    marker = "angle("
-    pos = label.find(marker)
-    if pos < 0:
+    expr = _first_gic_expression(label, "angle")
+    if not expr:
         return False
-    end = label.find(")", pos)
-    if end < 0:
-        return False
-    atom_ids = [int(part.strip()) for part in label[pos + len(marker):end].split(",")]
+    atom_text = expr[expr.find("(") + 1 : -1]
+    atom_ids = [int(part.strip()) for part in atom_text.split(",") if part.strip().lstrip("-").isdigit()]
     return any(1 <= idx <= len(atoms) and atoms[idx - 1].upper() == "H" for idx in atom_ids)
 
 

@@ -196,13 +196,15 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     window.semiexp_observations.setText(str(tmp_path / "isotopologues.toml"))
     window.semiexp_outdir.setText(str(tmp_path / "semiexp"))
     window.semiexp_fixed.setText("GIC001")
+    window.semiexp_gic_constraints.setText("QFIX=[GIC001+2*GIC002] Value=0.0; DR(Frozen,Value=0.0)=R[1,3]-R[1,2]")
     window.semiexp_fix_hydrogens.setChecked(True)
     window.semiexp_qm.setText("GIC002:1.0:0.1:qm")
-    window.semiexp_classes.setText("CH:shared:bond(1,2)|bond(1,3);XYH:fixed:angle")
+    window.semiexp_classes.setText("CH:shared:R(1,2)|R(1,3);XYH:fixed:A(")
     args = window.semiexp_command_args()
     assert "--backend" in args
     assert "fortran77" in args
     assert "--fix-hydrogens" in args
+    assert args[args.index("--fixed") + 1] == "GIC001;QFIX=[GIC001+2*GIC002] Value=0.0;DR(Frozen,Value=0.0)=R[1,3]-R[1,2]"
     assert args[args.index("--prune-condition") + 1] == "0"
     assert args.count("--parameter-class") == 2
     assert window.semiexp_run_button.isEnabled()
@@ -218,12 +220,16 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     assert 'schema = "merlino.semiexp.job.v1"' in job_text
     assert '["O", 0, 0, 0]' in job_text
     assert "fix_hydrogen_parameters = true" in job_text
+    assert "gic_constraints = [" in job_text
+    assert "QFIX=[GIC001+2*GIC002] Value=0.0" in job_text
     preset = window.save_semiexp_preset()
     assert preset.exists()
     window.semiexp_fixed.clear()
+    window.semiexp_gic_constraints.clear()
     window.semiexp_fix_hydrogens.setChecked(False)
     window.load_semiexp_preset(preset)
     assert window.semiexp_fixed.text() == "GIC001"
+    assert window.semiexp_gic_constraints.text() == "QFIX=[GIC001+2*GIC002] Value=0.0; DR(Frozen,Value=0.0)=R[1,3]-R[1,2]"
     assert window.semiexp_fix_hydrogens.isChecked()
 
 
@@ -331,8 +337,9 @@ def test_semiexp_dashboard_builds_advanced_sefit_command_and_job(tmp_path, qtbot
     window.semiexp_checkpoint.setText(str(tmp_path / "checkpoint.json"))
     window.semiexp_restart.setText(str(tmp_path / "restart.json"))
     window.semiexp_fix_hydrogens.setChecked(True)
-    window.semiexp_qm.setText("bond(1,2):0.9572:0.002:BDPCS3")
-    window.semiexp_classes.setText("OH:shared:bond(1,2)|bond(1,3)")
+    window.semiexp_gic_constraints.setText("DR(Frozen,Value=0.0)=R[1,3]-R[1,2]")
+    window.semiexp_qm.setText("R(1,2):0.9572:0.002:BDPCS3")
+    window.semiexp_classes.setText("OH:shared:R(1,2)|R(1,3)")
 
     args = window.semiexp_command_args()
 
@@ -347,8 +354,9 @@ def test_semiexp_dashboard_builds_advanced_sefit_command_and_job(tmp_path, qtbot
     assert args[args.index("--checkpoint") + 1] == str(tmp_path / "checkpoint.json")
     assert args[args.index("--restart") + 1] == str(tmp_path / "restart.json")
     assert "--fix-hydrogens" in args
-    assert args[args.index("--qm-predicate") + 1] == "bond(1,2):0.9572:0.002:BDPCS3"
-    assert args[args.index("--parameter-class") + 1] == "OH:shared:bond(1,2)|bond(1,3)"
+    assert args[args.index("--fixed") + 1] == "DR(Frozen,Value=0.0)=R[1,3]-R[1,2]"
+    assert args[args.index("--qm-predicate") + 1] == "R(1,2):0.9572:0.002:BDPCS3"
+    assert args[args.index("--parameter-class") + 1] == "OH:shared:R(1,2)|R(1,3)"
     job = window.save_semiexp_job_toml()
     assert job is not None
     text = job.read_text(encoding="utf-8")
@@ -361,7 +369,8 @@ def test_semiexp_dashboard_builds_advanced_sefit_command_and_job(tmp_path, qtbot
     assert f'checkpoint = "{tmp_path / "checkpoint.json"}"' in text
     assert f'restart = "{tmp_path / "restart.json"}"' in text
     assert "fix_hydrogen_parameters = true" in text
-    assert 'pattern = "bond(1,2)"' in text
+    assert "gic_constraints = [" in text
+    assert 'pattern = "R(1,2)"' in text
 
 
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):

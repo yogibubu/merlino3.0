@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, replace
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -55,6 +56,8 @@ DIAGNOSTIC_ROBUST_WEIGHT_WARNING = 0.50
 DIAGNOSTIC_ROBUST_WEIGHT_SEVERE = 0.25
 DIAGNOSTIC_BOND_SIGMA_WARNING_ANGSTROM = 5.0e-3
 DIAGNOSTIC_ANGLE_SIGMA_WARNING_DEGREE = 0.50
+DIAGNOSTIC_ISOTOPE_SHIFT_WARNING_MHZ = 5.0
+DIAGNOSTIC_ISOTOPE_SHIFT_IMPROVEMENT_RATIO = 0.50
 
 
 @dataclass(frozen=True)
@@ -169,6 +172,28 @@ class MeasurementModel:
     weights: np.ndarray
     n_experimental_rows: int
     planar: bool
+
+
+@dataclass(frozen=True)
+class PrimitiveLinearConstraint:
+    name: str
+    primitives: tuple[Primitive, ...]
+    coefficients: tuple[float, ...]
+    target: float
+    angular: bool = False
+
+
+@dataclass(frozen=True)
+class GICExpressionConstraint:
+    name: str
+    expression: str
+    target: float | None = None
+
+
+@dataclass(frozen=True)
+class GICExpressionDefinition:
+    name: str
+    expression: str
 
 
 @dataclass(frozen=True)
@@ -297,12 +322,23 @@ def fit_semiexperimental_geometry(
     geometry_input = read_geometry_input(Path(request.initial_geometry))
     atoms = list(geometry_input.atoms)
     coords = np.asarray(geometry_input.coordinates_angstrom, dtype=float)
+    request, preflight_warnings = _request_with_auto_resolved_isotopologues(request, atoms, coords)
     if restart is not None:
         coords = _read_semiexp_checkpoint(Path(restart), expected_atoms=len(atoms))
     coords0 = coords.copy()
     fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
     fixed_gic_patterns = _gic_fixed_patterns(fixed_parameters)
     fixed_primitives = _fixed_primitives_from_patterns(fixed_parameters)
+    linear_constraints = _linear_primitive_constraints_from_patterns(fixed_parameters)
+    expression_constraints = _gic_expression_constraints_from_patterns(fixed_parameters)
+    expression_definitions = _gic_expression_definitions_from_patterns(fixed_parameters)
+    if fixed_primitives or linear_constraints:
+        coords = _project_fixed_primitives(
+            coords,
+            fixed_primitives,
+            _fixed_primitive_targets(fixed_primitives, coords),
+            linear_constraints=linear_constraints,
+        )
     z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
     _validate_observations(request.observations, len(atoms))
     gicforge_backend = _make_gicforge_backend(tuple(atoms), outdir)
@@ -313,6 +349,28 @@ def fit_semiexperimental_geometry(
         _hydrogen_fixed_primitives(atoms, prims, fixed_parameters, coords=coords),
     )
     fixed_primitives = _symmetry_expanded_fixed_primitives(atoms, coords, prims, fixed_primitives)
+    fixed_primitive_targets = _fixed_primitive_targets(fixed_primitives, coords)
+    expression_targets = _gic_expression_constraint_targets(
+        expression_constraints,
+        coords,
+        prims,
+        u_matrix,
+        labels,
+        definitions=expression_definitions,
+    )
+    if fixed_primitives or linear_constraints or expression_constraints:
+        coords = _project_fixed_primitives(
+            coords,
+            fixed_primitives,
+            fixed_primitive_targets,
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
     reference_gic_signature = _gic_model_signature(labels)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
     active_mask = _active_mask(labels, fixed_gic_patterns, request.parameter_classes) & _gicforge_a1_mask(labels)
@@ -320,7 +378,18 @@ def fit_semiexperimental_geometry(
         labels, active_mask, request.parameter_classes
     )
     initial_transform, _initial_names = _primitive_constrained_transform(
-        coords, prims, u_matrix, active_mask, initial_transform, _initial_names, fixed_primitives
+        coords,
+        prims,
+        u_matrix,
+        active_mask,
+        initial_transform,
+        _initial_names,
+        fixed_primitives,
+        linear_constraints=linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_targets,
+        expression_definitions=expression_definitions,
+        labels=labels,
     )
     auto_pruned_patterns: tuple[str, ...] = ()
     if prune_condition > 0.0 and initial_transform.shape[1] > 1:
@@ -344,7 +413,18 @@ def fit_semiexperimental_geometry(
                     labels, active_mask, request.parameter_classes
                 )
                 initial_transform, _initial_names = _primitive_constrained_transform(
-                    coords, prims, u_matrix, active_mask, initial_transform, _initial_names, fixed_primitives
+                    coords,
+                    prims,
+                    u_matrix,
+                    active_mask,
+                    initial_transform,
+                    _initial_names,
+                    fixed_primitives,
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    expression_definitions=expression_definitions,
+                    labels=labels,
                 )
         except Exception:
             # Pruning is an observability refinement; unsupported mock/legacy primitives must not block the fit.
@@ -424,6 +504,11 @@ def fit_semiexperimental_geometry(
             _reduced_names,
             fixed_primitives,
             cartesian_from_q=projector_state.cartesian_from_q,
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            expression_definitions=expression_definitions,
+            labels=labels,
         )
         jac = jac_gic @ transform
         base_scales = _reduced_parameter_scales(labels, active_mask, transform)
@@ -461,6 +546,12 @@ def fit_semiexperimental_geometry(
             jac_weighted=jac_weighted_scaled,
             reduced_step=dq_scaled,
             robust_sqrt_weights=robust_sqrt,
+            fixed_primitives=fixed_primitives,
+            fixed_primitive_targets=fixed_primitive_targets,
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            expression_definitions=expression_definitions,
         )
         last_trust_ratio = line_search.ratio
         last_line_search_scale = line_search.scale
@@ -589,7 +680,18 @@ def fit_semiexperimental_geometry(
     )
     transform, reduced_names, class_by_gic = _parameter_class_transform(labels, active_mask, request.parameter_classes)
     transform, reduced_names = _primitive_constrained_transform(
-        coords, prims, u_matrix, active_mask, transform, reduced_names, fixed_primitives
+        coords,
+        prims,
+        u_matrix,
+        active_mask,
+        transform,
+        reduced_names,
+        fixed_primitives,
+        linear_constraints=linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_targets,
+        expression_definitions=expression_definitions,
+        labels=labels,
     )
     jac = jac_gic @ transform
     sqrt_weights = np.sqrt(measurement_model.weights)
@@ -716,6 +818,7 @@ def fit_semiexperimental_geometry(
             weighted_jacobian=weighted_jac,
             weighted_residual=weighted_residual,
             robust_sqrt_weights=robust_sqrt,
+            preflight_warnings=preflight_warnings,
         )
     return SemiexperimentalFitResult(
         atoms=tuple(atoms),
@@ -760,12 +863,42 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
     geometry_input = read_geometry_input(Path(request.initial_geometry))
     atoms = list(geometry_input.atoms)
     coords = np.asarray(geometry_input.coordinates_angstrom, dtype=float)
+    request, preflight_warnings = _request_with_auto_resolved_isotopologues(request, atoms, coords)
     if restart is not None:
         coords = _read_semiexp_checkpoint(Path(restart), expected_atoms=len(atoms))
     coords0 = coords.copy()
     fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
     fixed_mode_patterns = _gic_fixed_patterns(fixed_parameters)
     fixed_primitives = _fixed_primitives_from_patterns(fixed_parameters)
+    linear_constraints = _linear_primitive_constraints_from_patterns(fixed_parameters)
+    expression_constraints = _gic_expression_constraints_from_patterns(fixed_parameters)
+    expression_definitions = _gic_expression_definitions_from_patterns(fixed_parameters)
+    if (
+        expression_constraints
+        and any(_gic_expression_uses_gic_names(item.expression) for item in expression_constraints)
+    ) or any(_gic_expression_uses_gic_names(item.expression) for item in expression_definitions):
+        raise ScientificValidationError("GIC### expression constraints require coordinate_model='gic'")
+    expression_targets = _gic_expression_constraint_targets(
+        expression_constraints,
+        coords,
+        (),
+        np.zeros((0, 0), dtype=float),
+        (),
+        definitions=expression_definitions,
+    )
+    if fixed_primitives or linear_constraints or expression_constraints:
+        coords = _project_fixed_primitives(
+            coords,
+            fixed_primitives,
+            _fixed_primitive_targets(fixed_primitives, coords),
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=(),
+            u_matrix=np.zeros((0, 0), dtype=float),
+            labels=(),
+            expression_definitions=expression_definitions,
+        )
     _validate_observations(request.observations, len(atoms))
     mode_model = cartesian_symmetry_coordinate_model(tuple(atoms), coords0)
     labels = mode_model.labels
@@ -775,6 +908,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         _hydrogen_fixed_primitives(atoms, constraint_prims, fixed_parameters, coords=coords),
     )
     fixed_primitives = _symmetry_expanded_fixed_primitives(atoms, coords, constraint_prims, fixed_primitives)
+    fixed_primitive_targets = _fixed_primitive_targets(fixed_primitives, coords)
 
     measurement_model = _build_measurement_model_cartesian_basis(
         request,
@@ -793,6 +927,10 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         transform,
         reduced_names,
         fixed_primitives,
+        linear_constraints=linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_targets,
+        expression_definitions=expression_definitions,
     )
     auto_pruned_patterns: tuple[str, ...] = ()
     if prune_condition > 0.0 and transform.shape[1] > 1:
@@ -818,6 +956,10 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
                 transform,
                 reduced_names,
                 fixed_primitives,
+                linear_constraints=linear_constraints,
+                expression_constraints=expression_constraints,
+                expression_targets=expression_targets,
+                expression_definitions=expression_definitions,
             )
 
     n_optimized_parameters = transform.shape[1]
@@ -881,6 +1023,10 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             transform,
             reduced_names,
             fixed_primitives,
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            expression_definitions=expression_definitions,
         )
         jac = _active_coordinate_jacobian(jac_modes, active_mask) @ transform
         base_scales = np.ones(jac.shape[1], dtype=float)
@@ -916,6 +1062,12 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             jac_weighted=jac_weighted_scaled,
             reduced_step=dq_scaled,
             robust_sqrt_weights=robust_sqrt,
+            fixed_primitives=fixed_primitives,
+            fixed_primitive_targets=fixed_primitive_targets,
+            linear_constraints=linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            expression_definitions=expression_definitions,
         )
         last_trust_ratio = line_search.ratio
         last_line_search_scale = line_search.scale
@@ -986,6 +1138,10 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         transform,
         reduced_names,
         fixed_primitives,
+        linear_constraints=linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_targets,
+        expression_definitions=expression_definitions,
     )
     jac = _active_coordinate_jacobian(jac_modes, active_mask) @ transform
     sqrt_weights = np.sqrt(measurement_model.weights)
@@ -1104,6 +1260,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             measurement_model=measurement_model,
             weighted_jacobian=weighted_jac,
             weighted_residual=weighted_residual,
+            preflight_warnings=preflight_warnings,
         )
     return SemiexperimentalFitResult(
         atoms=tuple(atoms),
@@ -1157,6 +1314,7 @@ def write_semiexperimental_outputs(
     weighted_jacobian: np.ndarray | None = None,
     weighted_residual: np.ndarray | None = None,
     robust_sqrt_weights: np.ndarray | None = None,
+    preflight_warnings: tuple[SemiexperimentalDiagnosticWarning, ...] = (),
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     xyz = outdir / "semiexp_geometry.xyz"
@@ -1188,14 +1346,18 @@ def write_semiexperimental_outputs(
     fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, input_fixed_parameters)
     svd_summary = _svd_summary_lines(active_names, weighted_jacobian)
     constraint_summary = _constraint_summary_lines(fixed_parameters, fixed_primitives, request.parameter_classes, parameters)
-    diagnostic_warnings = _semiexp_warning_rows(
-        diagnostics,
-        active_names,
-        parameters,
-        geometry_rows,
-        weighted_jacobian,
-        measurement_model,
-        robust_sqrt_weights,
+    diagnostic_warnings = (
+        preflight_warnings
+        + _isotopic_mapping_warning_rows(atoms, coords, request.observations)
+        + _semiexp_warning_rows(
+            diagnostics,
+            active_names,
+            parameters,
+            geometry_rows,
+            weighted_jacobian,
+            measurement_model,
+            robust_sqrt_weights,
+        )
     )
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
     params.write_text(parameters_csv(parameters), encoding="utf-8")
@@ -1331,6 +1493,7 @@ def write_semiexperimental_outputs(
             "rank": diagnostics.rank if diagnostics else None,
             "incremental_rank": diagnostics.incremental_rank if diagnostics else None,
             "condition_number": diagnostics.condition_number if diagnostics else None,
+            **_rotational_residual_manifest_stats(rotconst_rows),
             "weighted_rms": diagnostics.weighted_rms if diagnostics else None,
             "reduced_chi_square": diagnostics.reduced_chi_square if diagnostics else None,
             "n_warnings": len(diagnostic_warnings),
@@ -1592,6 +1755,35 @@ def rotational_constants_csv(rows: tuple[SemiexperimentalRotationalConstantCompa
     return stream.getvalue()
 
 
+def _rotational_residual_stats(
+    rows: tuple[SemiexperimentalRotationalConstantComparison, ...],
+) -> tuple[int, float, float, float, float]:
+    diffs = np.asarray([row.difference_MHz for row in rows], dtype=float)
+    if diffs.size == 0:
+        return 0, 0.0, 0.0, 0.0, 0.0
+    mean_square = float(np.mean(diffs * diffs))
+    return (
+        int(diffs.size),
+        float(np.sqrt(mean_square)),
+        mean_square,
+        1000.0 * mean_square,
+        float(np.max(np.abs(diffs))),
+    )
+
+
+def _rotational_residual_manifest_stats(
+    rows: tuple[SemiexperimentalRotationalConstantComparison, ...],
+) -> dict[str, float | int]:
+    nrows, rms, mean_square, scaled_mean_square, max_abs = _rotational_residual_stats(rows)
+    return {
+        "n_rotational_constant_residuals": nrows,
+        "rotational_rms_MHz": rms,
+        "rotational_mean_square_MHz2": mean_square,
+        "rotational_mean_square_1e3_MHz2": scaled_mean_square,
+        "rotational_max_abs_MHz": max_abs,
+    }
+
+
 def semiexperimental_text_report(
     request: SemiexperimentalFitRequest,
     parameters: tuple[SemiexperimentalParameter, ...],
@@ -1647,6 +1839,9 @@ def semiexperimental_text_report(
     lines.extend(constraint_summary or ("constraint_diagnostics = not_available",))
     lines.extend(["", "[fit_statistics]"])
     if diagnostics is not None:
+        nrot, rotational_rms, rotational_mean_square, rotational_mean_square_scaled, rotational_max = (
+            _rotational_residual_stats(rotational_constants)
+        )
         lines.extend(
             [
                 f"convergence = {diagnostics.convergence_reason}",
@@ -1678,6 +1873,21 @@ def semiexperimental_text_report(
                 f"last_b_projector_secant_error = {diagnostics.last_b_projector_secant_error:.12g}",
                 f"parameter_scale_min = {diagnostics.parameter_scale_min:.12g}",
                 f"parameter_scale_max = {diagnostics.parameter_scale_max:.12g}",
+            ]
+        )
+        lines.extend(
+            [
+                "",
+                "[rotational_residual_statistics]",
+                f"n_rotational_constants = {nrot}",
+                f"rotational_rms_MHz = {rotational_rms:.12g}",
+                f"rotational_mean_square_MHz2 = {rotational_mean_square:.12g}",
+                f"rotational_mean_square_1e3_MHz2 = {rotational_mean_square_scaled:.12g}",
+                f"rotational_max_abs_MHz = {rotational_max:.12g}",
+                (
+                    "note = RMS is sqrt(mean(diff_MHz^2)); mean_square_1e3 is printed "
+                    "to compare unambiguously with legacy residual conventions."
+                ),
             ]
         )
     else:
@@ -2042,9 +2252,11 @@ def _constraints_csv(
     writer = csv.writer(stream)
     writer.writerow(["kind", "name", "mode", "pattern_or_primitive", "matched_active_parameters", "matched_labels"])
     active_labels = tuple(item.name for item in parameters if item.active)
+    expression_definitions = _gic_expression_definitions_from_patterns(fixed_parameters)
     for item in fixed_parameters:
         matches = _matched_labels(item, active_labels)
-        writer.writerow(["input_fixed", item, "fixed", item, len(matches), ";".join(matches)])
+        kind, mode = _input_constraint_record_kind(item, expression_definitions)
+        writer.writerow([kind, item, mode, item, len(matches), ";".join(matches)])
     for primitive in fixed_primitives:
         writer.writerow(["expanded_primitive", _primitive_text(primitive), "fixed", _primitive_text(primitive), "", ""])
     for parameter_class in parameter_classes:
@@ -2067,14 +2279,27 @@ def _constraint_summary_lines(
     parameters: tuple[SemiexperimentalParameter, ...],
 ) -> tuple[str, ...]:
     active_labels = tuple(item.name for item in parameters if item.active)
+    expression_definitions = _gic_expression_definitions_from_patterns(fixed_parameters)
+    n_expression_constraints = sum(
+        1 for item in fixed_parameters if _parse_gic_expression_constraint_pattern(item, definitions=expression_definitions)
+    )
+    n_definitions = sum(
+        1
+        for item in fixed_parameters
+        if _parse_gic_expression_definition_pattern(item) is not None
+        and _parse_gic_expression_constraint_pattern(item, definitions=expression_definitions) is None
+    )
     lines = [
-        f"input_fixed_patterns = {len(fixed_parameters)}",
+        f"input_records = {len(fixed_parameters)}",
+        f"input_expression_constraints = {n_expression_constraints}",
+        f"input_coordinate_definitions = {n_definitions}",
         f"symmetry_expanded_fixed_primitives = {len(fixed_primitives)}",
         f"parameter_classes = {len(parameter_classes)}",
     ]
     for item in fixed_parameters:
         matches = _matched_labels(item, active_labels)
-        lines.append(f"fixed_pattern = {item}; active_label_matches={len(matches)}")
+        kind, _mode = _input_constraint_record_kind(item, expression_definitions)
+        lines.append(f"{kind} = {item}; active_label_matches={len(matches)}")
     for parameter_class in parameter_classes:
         matches = tuple(label for label in active_labels if _class_matches(parameter_class, label))
         lines.append(
@@ -2084,6 +2309,19 @@ def _constraint_summary_lines(
     return tuple(lines)
 
 
+def _input_constraint_record_kind(
+    item: str,
+    definitions: tuple[GICExpressionDefinition, ...],
+) -> tuple[str, str]:
+    if _parse_gic_expression_constraint_pattern(item, definitions=definitions) is not None:
+        return "constraint_record", "constraint"
+    if _parse_gic_expression_definition_pattern(item) is not None:
+        return "definition_record", "definition"
+    if _primitives_from_fixed_pattern(item):
+        return "primitive_record", "fixed"
+    return "input_fixed", "fixed"
+
+
 def _matched_labels(pattern: str, labels: tuple[str, ...]) -> tuple[str, ...]:
     low = str(pattern).lower()
     return tuple(label for label in labels if low in label.lower())
@@ -2091,8 +2329,16 @@ def _matched_labels(pattern: str, labels: tuple[str, ...]) -> tuple[str, ...]:
 
 def _primitive_text(primitive: Primitive) -> str:
     atoms = ",".join(str(idx + 1) for idx in primitive.atoms)
+    if primitive.kind == "bond":
+        return f"R({atoms})"
+    if primitive.kind == "angle":
+        return f"A({atoms})"
+    if primitive.kind == "dihedral":
+        return f"D({atoms})"
+    if primitive.kind == "out_of_plane":
+        return f"U({atoms})"
     if primitive.kind == "linear_bend":
-        return f"{primitive.kind}({atoms};mode={primitive.mode})"
+        return f"L({atoms},0,{primitive.mode})"
     return f"{primitive.kind}({atoms})"
 
 
@@ -2161,6 +2407,214 @@ def _warnings_csv(rows: tuple[SemiexperimentalDiagnosticWarning, ...]) -> str:
     for row in rows:
         writer.writerow([row.severity, row.code, row.message, row.context])
     return stream.getvalue()
+
+
+def _request_with_auto_resolved_isotopologues(
+    request: SemiexperimentalFitRequest,
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+) -> tuple[SemiexperimentalFitRequest, tuple[SemiexperimentalDiagnosticWarning, ...]]:
+    observations, warnings = _auto_resolve_isotopic_substitutions(atoms, coords, request.observations)
+    if observations == request.observations:
+        return request, warnings
+    return replace(request, observations=observations), warnings
+
+
+def _auto_resolve_isotopic_substitutions(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    observations: tuple[IsotopologueObservation, ...],
+) -> tuple[tuple[IsotopologueObservation, ...], tuple[SemiexperimentalDiagnosticWarning, ...]]:
+    if not observations:
+        return observations, ()
+    parent = next((obs for obs in observations if not obs.substitutions), observations[0])
+    try:
+        parent_exp = np.asarray(parent.corrected.as_tuple(), dtype=float)
+        parent_calc = _rotational_constants_for_substitution(atoms, coords, parent.substitutions)
+    except Exception:
+        return observations, ()
+    atom_symbols = tuple(str(atom).strip().capitalize() for atom in atoms)
+    resolved: list[IsotopologueObservation] = []
+    warnings: list[SemiexperimentalDiagnosticWarning] = []
+    used_single_substitutions: set[tuple[int, int, str]] = set()
+    for obs in observations:
+        replacement = obs
+        if len(obs.substitutions) == 1:
+            atom_index, isotope = next(iter(obs.substitutions.items()))
+            best = _best_single_isotopic_substitution(
+                atom_symbols,
+                coords,
+                parent_exp,
+                parent_calc,
+                obs,
+                int(atom_index),
+                int(isotope),
+            )
+            if best is not None:
+                used_atom, input_rms, used_rms = best
+                if used_atom != atom_index:
+                    key = (used_atom, int(isotope), obs.label)
+                    if key not in used_single_substitutions:
+                        replacement = replace(obs, substitutions={used_atom: int(isotope)})
+                        used_single_substitutions.add(key)
+                        warnings.append(
+                            SemiexperimentalDiagnosticWarning(
+                                "warning",
+                                "isotopologue_mapping_autocorrected",
+                                "Single-substitution isotopologue was reassigned to the atom that best reproduces the observed isotopic shift.",
+                                (
+                                    f"isotopologue={obs.label};isotope={int(isotope)};input_atom={int(atom_index)};"
+                                    f"used_atom={used_atom};input_shift_rms_MHz={input_rms:.6g};"
+                                    f"used_shift_rms_MHz={used_rms:.6g}"
+                                ),
+                            )
+                        )
+        resolved.append(replacement)
+    return tuple(resolved), tuple(warnings)
+
+
+def _best_single_isotopic_substitution(
+    atom_symbols: tuple[str, ...],
+    coords: np.ndarray,
+    parent_exp: np.ndarray,
+    parent_calc: np.ndarray,
+    obs: IsotopologueObservation,
+    atom_index: int,
+    isotope: int,
+) -> tuple[int, float, float] | None:
+    if atom_index < 1 or atom_index > len(atom_symbols):
+        return None
+    symbol = atom_symbols[atom_index - 1]
+    candidates = tuple(idx + 1 for idx, item in enumerate(atom_symbols) if item == symbol)
+    if len(candidates) < 2:
+        return None
+    try:
+        exp_shift = np.asarray(obs.corrected.as_tuple(), dtype=float) - parent_exp
+    except Exception:
+        return None
+    candidate_rms: list[tuple[float, int]] = []
+    for candidate in candidates:
+        try:
+            candidate_calc = _rotational_constants_for_substitution(
+                atom_symbols,
+                coords,
+                {candidate: isotope},
+            )
+        except Exception:
+            continue
+        candidate_shift = candidate_calc - parent_calc
+        rms = float(np.sqrt(np.mean((exp_shift - candidate_shift) ** 2)))
+        candidate_rms.append((rms, candidate))
+    if not candidate_rms:
+        return None
+    candidate_rms.sort()
+    best_rms, best_atom = candidate_rms[0]
+    input_rms = next((rms for rms, candidate in candidate_rms if candidate == atom_index), best_rms)
+    if best_atom == atom_index:
+        return (best_atom, input_rms, best_rms)
+    clear_absolute = input_rms - best_rms >= DIAGNOSTIC_ISOTOPE_SHIFT_WARNING_MHZ
+    clear_relative = best_rms <= DIAGNOSTIC_ISOTOPE_SHIFT_IMPROVEMENT_RATIO * input_rms
+    if not (clear_absolute or clear_relative):
+        return (atom_index, input_rms, input_rms)
+    if len(candidate_rms) > 1:
+        second_rms = candidate_rms[1][0]
+        if second_rms > 0.0 and best_rms > 0.90 * second_rms:
+            return (atom_index, input_rms, input_rms)
+    return (best_atom, input_rms, best_rms)
+
+
+def _isotopic_mapping_warning_rows(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    observations: tuple[IsotopologueObservation, ...],
+) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
+    if not observations:
+        return ()
+    parent = next((obs for obs in observations if not obs.substitutions), observations[0])
+    try:
+        parent_exp = np.asarray(parent.corrected.as_tuple(), dtype=float)
+        parent_calc = _rotational_constants_for_substitution(atoms, coords, parent.substitutions)
+    except Exception:
+        return ()
+    rows: list[SemiexperimentalDiagnosticWarning] = []
+    atom_symbols = tuple(str(atom).strip().capitalize() for atom in atoms)
+    for obs in observations:
+        if len(obs.substitutions) != 1:
+            continue
+        atom_index, isotope = next(iter(obs.substitutions.items()))
+        if atom_index < 1 or atom_index > len(atom_symbols):
+            continue
+        symbol = atom_symbols[atom_index - 1]
+        candidates = tuple(idx + 1 for idx, item in enumerate(atom_symbols) if item == symbol)
+        if len(candidates) < 2:
+            continue
+        try:
+            exp_shift = np.asarray(obs.corrected.as_tuple(), dtype=float) - parent_exp
+            current_calc = _rotational_constants_for_substitution(atoms, coords, {atom_index: isotope})
+        except Exception:
+            continue
+        current_shift = current_calc - parent_calc
+        current_rms = float(np.sqrt(np.mean((exp_shift - current_shift) ** 2)))
+        best_atom = atom_index
+        best_rms = current_rms
+        for candidate in candidates:
+            if candidate == atom_index:
+                continue
+            try:
+                candidate_calc = _rotational_constants_for_substitution(atoms, coords, {candidate: isotope})
+            except Exception:
+                continue
+            candidate_shift = candidate_calc - parent_calc
+            candidate_rms = float(np.sqrt(np.mean((exp_shift - candidate_shift) ** 2)))
+            if candidate_rms < best_rms:
+                best_atom = candidate
+                best_rms = candidate_rms
+        if best_atom != atom_index and (
+            current_rms - best_rms >= DIAGNOSTIC_ISOTOPE_SHIFT_WARNING_MHZ
+            or best_rms <= DIAGNOSTIC_ISOTOPE_SHIFT_IMPROVEMENT_RATIO * current_rms
+        ):
+            rows.append(
+                SemiexperimentalDiagnosticWarning(
+                    "warning",
+                    "isotopologue_mapping_suspicious",
+                    "Single-substitution isotopic shift is much better reproduced by another atom of the same element.",
+                    (
+                        f"isotopologue={obs.label};isotope={isotope};input_atom={atom_index};"
+                        f"suggested_atom={best_atom};input_shift_rms_MHz={current_rms:.6g};"
+                        f"suggested_shift_rms_MHz={best_rms:.6g}"
+                    ),
+                )
+            )
+        elif current_rms >= 10.0 * DIAGNOSTIC_ISOTOPE_SHIFT_WARNING_MHZ:
+            rows.append(
+                SemiexperimentalDiagnosticWarning(
+                    "info",
+                    "large_isotopic_shift_mismatch",
+                    "Single-substitution isotopic shift is poorly reproduced by the current geometry and atom mapping.",
+                    (
+                        f"isotopologue={obs.label};isotope={isotope};input_atom={atom_index};"
+                        f"shift_rms_MHz={current_rms:.6g}"
+                    ),
+                )
+            )
+    return tuple(rows)
+
+
+def _rotational_constants_for_substitution(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    substitutions: dict[int, int],
+) -> np.ndarray:
+    isotopes: list[int | None] = [None] * len(atoms)
+    for atom_index, isotope in substitutions.items():
+        if 1 <= atom_index <= len(isotopes):
+            isotopes[atom_index - 1] = int(isotope)
+    structure = Structure.from_atoms_coords(
+        list(atoms),
+        [tuple(row) for row in np.asarray(coords, dtype=float)],
+        isotopes=isotopes,
+    )
+    return np.asarray(rotational_constants_MHz(structure, isotopic=True), dtype=float)
 
 
 def _semiexp_warning_rows(
@@ -2526,7 +2980,15 @@ def _active_mask(
 
 def _gic_fixed_patterns(fixed: tuple[str, ...]) -> tuple[str, ...]:
     """Return fixed patterns that target whole GICs, not primitive coordinates."""
-    return tuple(item for item in fixed if not _is_hydrogen_parameter_constraint(item) and not _primitives_from_fixed_pattern(item))
+    return tuple(
+        item
+        for item in fixed
+        if not _is_hydrogen_parameter_constraint(item)
+        and not _is_linear_constraint_pattern(item)
+        and not _is_gic_expression_constraint_pattern(item)
+        and not _is_gaussian_gic_definition_record(item)
+        and not _primitives_from_fixed_pattern(item)
+    )
 
 
 def _fixed_primitives_from_patterns(fixed: tuple[str, ...]) -> tuple[Primitive, ...]:
@@ -2540,6 +3002,40 @@ def _fixed_primitives_from_patterns(fixed: tuple[str, ...]) -> tuple[Primitive, 
             primitives.append(primitive)
             seen.add(key)
     return tuple(primitives)
+
+
+def _linear_primitive_constraints_from_patterns(fixed: tuple[str, ...]) -> tuple[PrimitiveLinearConstraint, ...]:
+    constraints: list[PrimitiveLinearConstraint] = []
+    for item in fixed:
+        parsed = _parse_linear_constraint_pattern(item)
+        if parsed is not None:
+            constraints.append(parsed)
+    return tuple(constraints)
+
+
+def _gic_expression_constraints_from_patterns(fixed: tuple[str, ...]) -> tuple[GICExpressionConstraint, ...]:
+    constraints: list[GICExpressionConstraint] = []
+    definitions = _gic_expression_definitions_from_patterns(fixed)
+    for item in fixed:
+        parsed = _parse_gic_expression_constraint_pattern(item, definitions=definitions)
+        if parsed is not None:
+            constraints.append(parsed)
+    return tuple(constraints)
+
+
+def _gic_expression_definitions_from_patterns(fixed: tuple[str, ...]) -> tuple[GICExpressionDefinition, ...]:
+    definitions: list[GICExpressionDefinition] = []
+    seen: set[str] = set()
+    for item in fixed:
+        parsed = _parse_gic_expression_definition_pattern(item)
+        if parsed is None:
+            continue
+        key = parsed.name.lower()
+        if key in seen:
+            definitions = [definition for definition in definitions if definition.name.lower() != key]
+        definitions.append(parsed)
+        seen.add(key)
+    return tuple(definitions)
 
 
 def _hydrogen_fixed_primitives(
@@ -2748,6 +3244,22 @@ def _is_hydrogen_parameter_constraint(item: str) -> bool:
     }
 
 
+def _is_linear_constraint_pattern(item: str) -> bool:
+    return str(item).strip().lower().startswith("linear(")
+
+
+def _is_gic_expression_constraint_pattern(item: str) -> bool:
+    text = str(item).strip()
+    low = text.lower()
+    if low.startswith(("gic(", "constraint(", "freeze(", "fixed(")):
+        return True
+    if _parse_gaussian_named_expression(text) is not None:
+        return True
+    if _parse_gaussian_expression_options(text) is not None:
+        return True
+    return _legacy_expression_target_split(text) is not None
+
+
 def _merge_primitives(*groups: tuple[Primitive, ...]) -> tuple[Primitive, ...]:
     primitives: list[Primitive] = []
     seen: set[tuple[str, tuple[int, ...], int]] = set()
@@ -2840,13 +3352,35 @@ def _map_primitive_by_atoms(primitive: Primitive, atom_map: object) -> Primitive
 
 
 def _primitives_from_fixed_pattern(pattern: str) -> tuple[Primitive, ...]:
+    frozen_primitive = _primitives_from_gaussian_current_freeze(pattern)
+    if frozen_primitive:
+        return frozen_primitive
     text = str(pattern).strip().lower()
-    match = re.match(r"^(bond|angle|dihedral|out_of_plane|linear_bend)\(([^)]*)", text)
+    if _top_level_value_marker(text) is not None:
+        return ()
+    if _first_top_level_equals(text) is not None:
+        return ()
+    match = re.match(
+        r"^(r|b|bond|stretch|a|angle|bend|d|dihedral|torsion|u|out_of_plane|l|linear|linear_bend)\(([^)]*)",
+        text,
+    )
     if not match:
         return ()
     kind, args_text = match.groups()
+    kind = {
+        "r": "bond",
+        "b": "bond",
+        "stretch": "bond",
+        "a": "angle",
+        "bend": "angle",
+        "d": "dihedral",
+        "torsion": "dihedral",
+        "u": "out_of_plane",
+        "l": "linear_bend",
+        "linear": "linear_bend",
+    }.get(kind, kind)
     args = [part.strip() for part in re.split(r"[,;]", args_text) if part.strip()]
-    atoms: list[int] = []
+    values: list[int] = []
     mode: int | None = None
     for arg in args:
         if arg.startswith("mode="):
@@ -2856,27 +3390,1116 @@ def _primitives_from_fixed_pattern(pattern: str) -> tuple[Primitive, ...]:
                 return ()
             continue
         try:
-            atoms.append(int(arg) - 1)
+            values.append(int(arg))
         except ValueError:
             return ()
-    if any(atom < 0 for atom in atoms):
-        return ()
-    if kind == "bond" and len(atoms) >= 2:
-        return (Primitive("bond", tuple(atoms[:2])),)
-    if kind == "angle" and len(atoms) >= 3:
-        return (Primitive("angle", tuple(atoms[:3])),)
-    if kind == "dihedral" and len(atoms) >= 4:
-        return (Primitive("dihedral", tuple(atoms[:4])),)
-    if kind == "out_of_plane" and len(atoms) >= 4:
-        return (Primitive("out_of_plane", tuple(atoms[:4])),)
-    if kind == "linear_bend" and len(atoms) >= 3:
+    if kind == "bond" and len(values) >= 2:
+        atoms = tuple(value - 1 for value in values[:2])
+        if any(atom < 0 for atom in atoms):
+            return ()
+        return (Primitive("bond", atoms),)
+    if kind == "angle" and len(values) >= 3:
+        atoms = tuple(value - 1 for value in values[:3])
+        if any(atom < 0 for atom in atoms):
+            return ()
+        return (Primitive("angle", atoms),)
+    if kind == "dihedral" and len(values) >= 4:
+        atoms = tuple(value - 1 for value in values[:4])
+        if any(atom < 0 for atom in atoms):
+            return ()
+        return (Primitive("dihedral", atoms),)
+    if kind == "out_of_plane" and len(values) >= 4:
+        atoms = tuple(value - 1 for value in values[:4])
+        if any(atom < 0 for atom in atoms):
+            return ()
+        return (Primitive("out_of_plane", atoms),)
+    if kind == "linear_bend" and len(values) >= 3:
+        atoms = tuple(value - 1 for value in values[:3])
+        if any(atom < 0 for atom in atoms):
+            return ()
+        if len(values) >= 5:
+            mode = values[4]
+        elif len(values) == 4 and values[3] in {-1, -2}:
+            mode = values[3]
         if mode in {-1, -2}:
-            return (Primitive("linear_bend", tuple(atoms[:3]), mode=mode),)
+            return (Primitive("linear_bend", atoms, mode=mode),)
         return (
-            Primitive("linear_bend", tuple(atoms[:3]), mode=-1),
-            Primitive("linear_bend", tuple(atoms[:3]), mode=-2),
+            Primitive("linear_bend", atoms, mode=-1),
+            Primitive("linear_bend", atoms, mode=-2),
         )
     return ()
+
+
+def _parse_linear_constraint_pattern(pattern: str) -> PrimitiveLinearConstraint | None:
+    text = str(pattern).strip()
+    if not _is_linear_constraint_pattern(text):
+        return None
+    if not text.endswith(")"):
+        raise ValueError(f"Invalid linear primitive constraint: {pattern}")
+    body = text[text.find("(") + 1 : -1].strip()
+    if "=" not in body:
+        raise ValueError(f"Linear primitive constraint needs '=': {pattern}")
+    expr_text, target_text = body.rsplit("=", 1)
+    terms = _parse_linear_constraint_terms(expr_text)
+    if not terms:
+        raise ValueError(f"Linear primitive constraint has no primitive terms: {pattern}")
+    primitives = tuple(item[1] for item in terms)
+    coefficients = tuple(item[0] for item in terms)
+    angular = any(primitive.kind in {"angle", "dihedral", "out_of_plane", "linear_bend"} for primitive in primitives)
+    if angular and any(primitive.kind == "bond" for primitive in primitives):
+        raise ValueError(f"Linear primitive constraint cannot mix bond and angular primitives: {pattern}")
+    target = _parse_linear_constraint_target(target_text, angular=angular)
+    return PrimitiveLinearConstraint(text, primitives, coefficients, target, angular)
+
+
+def _parse_linear_constraint_terms(expr_text: str) -> list[tuple[float, Primitive]]:
+    expr = re.sub(r"\s+", "", expr_text)
+    if not expr:
+        return []
+    term_re = re.compile(
+        r"(?P<sign>[+-]?)"
+        r"(?:(?P<coeff>(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\*)?"
+        r"(?P<kind>bond|angle|dihedral|out_of_plane|linear_bend)"
+        r"\((?P<args>[^)]*)\)"
+    )
+    terms: list[tuple[float, Primitive]] = []
+    pos = 0
+    for match in term_re.finditer(expr):
+        if match.start() != pos:
+            raise ValueError(f"Invalid linear primitive expression near {expr[pos:]!r}")
+        sign = -1.0 if match.group("sign") == "-" else 1.0
+        coeff = float(match.group("coeff")) if match.group("coeff") else 1.0
+        primitive_text = f"{match.group('kind')}({match.group('args')})"
+        primitives = _primitives_from_fixed_pattern(primitive_text)
+        if len(primitives) != 1:
+            raise ValueError(f"Linear primitive terms must resolve to one primitive: {primitive_text}")
+        terms.append((sign * coeff, primitives[0]))
+        pos = match.end()
+    if pos != len(expr):
+        raise ValueError(f"Invalid linear primitive expression near {expr[pos:]!r}")
+    return terms
+
+
+def _parse_linear_constraint_target(target_text: str, *, angular: bool) -> float:
+    text = str(target_text).strip().lower()
+    if not text:
+        raise ValueError("Linear primitive constraint target cannot be empty")
+    unit = ""
+    if text.endswith("deg"):
+        unit = "deg"
+        text = text[:-3].strip()
+    elif text.endswith("rad"):
+        unit = "rad"
+        text = text[:-3].strip()
+    try:
+        value = float(text.replace("d", "e").replace("D", "E"))
+    except ValueError as exc:
+        raise ValueError(f"Invalid linear primitive constraint target: {target_text}") from exc
+    if angular and unit != "rad":
+        return float(np.deg2rad(value))
+    if not angular and unit in {"deg", "rad"}:
+        raise ValueError("Bond linear constraints cannot use angular units")
+    return value
+
+
+def _parse_gic_expression_constraint_pattern(
+    pattern: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> GICExpressionConstraint | None:
+    text = str(pattern).strip()
+    low = text.lower()
+    if _is_linear_constraint_pattern(text):
+        return None
+    if _primitives_from_gaussian_current_freeze(text):
+        return None
+    wrapper = re.match(r"^(gic|constraint|freeze|fixed)\((.*)\)$", text, flags=re.IGNORECASE | re.DOTALL)
+    if wrapper:
+        return _parse_gic_expression_constraint_body(wrapper.group(2).strip(), text, definitions=definitions)
+    named = _parse_gaussian_named_expression(text, definitions=definitions)
+    if named is not None:
+        return named
+    expression_options = _parse_gaussian_expression_options(text, definitions=definitions)
+    if expression_options is not None:
+        return expression_options
+    if _legacy_expression_target_split(text) is not None:
+        return _parse_gic_expression_constraint_body(text, text, definitions=definitions)
+    return None
+
+
+def _parse_gic_expression_definition_pattern(pattern: str) -> GICExpressionDefinition | None:
+    text = str(pattern).strip()
+    if _is_linear_constraint_pattern(text):
+        return None
+    return _parse_gaussian_named_definition(text)
+
+
+def _primitives_from_gaussian_current_freeze(pattern: str) -> tuple[Primitive, ...]:
+    text = str(pattern).strip()
+    if not text or _top_level_value_marker(text) is not None:
+        return ()
+    parsed = _parse_gaussian_named_expression(text) or _parse_gaussian_expression_options(text)
+    if parsed is None or parsed.target is not None:
+        return ()
+    return _simple_primitives_from_gic_expression(parsed.expression)
+
+
+def _simple_primitives_from_gic_expression(expression: str) -> tuple[Primitive, ...]:
+    try:
+        tree = _parse_gic_expression_ast(expression)
+    except ValueError:
+        return ()
+    if not isinstance(tree.body, ast.Call) or not isinstance(tree.body.func, ast.Name):
+        return ()
+    try:
+        primitive = _primitive_from_gic_expression_call(
+            tree.body.func.id,
+            tree.body.args,
+            tree.body.keywords,
+            np.zeros((10000, 3), dtype=float),
+            {},
+        )
+    except ValueError:
+        return ()
+    if primitive.kind == "linear_bend" and primitive.mode not in {-1, -2}:
+        return (
+            Primitive("linear_bend", primitive.atoms, mode=-1),
+            Primitive("linear_bend", primitive.atoms, mode=-2),
+        )
+    return (primitive,)
+
+
+def _parse_gic_expression_constraint_body(
+    body: str,
+    name: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> GICExpressionConstraint:
+    named = _parse_gaussian_named_expression(body, definitions=definitions)
+    if named is not None:
+        return named
+    expression_options = _parse_gaussian_expression_options(body, definitions=definitions)
+    if expression_options is not None:
+        return expression_options
+    value_split = _split_value_option_from_expression(body, definitions=definitions)
+    if value_split is not None:
+        expression, target = value_split
+    else:
+        split_at = _legacy_expression_target_split(body)
+        if split_at is None:
+            expression = body
+            target = None
+        else:
+            expression = body[:split_at].strip()
+            target = _parse_expression_constraint_target(
+                body[split_at + 1 :],
+                angular_default=_gic_expression_uses_angular_default_units(expression, definitions=definitions),
+            )
+    expression = _strip_outer_square_brackets(expression)
+    if not expression:
+        raise ValueError(f"GIC expression constraint has no expression: {name}")
+    _validate_gic_expression(expression)
+    return GICExpressionConstraint(name=name, expression=expression, target=target)
+
+
+def _split_value_option_from_expression(
+    text: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> tuple[str, float] | None:
+    marker = _top_level_value_marker(text)
+    if marker is None:
+        return None
+    expression = text[:marker].strip(" \t,;")
+    target, has_constraint = _parse_gaussian_constraint_options(
+        text[marker:],
+        angular_default=_gic_expression_uses_angular_default_units(expression, definitions=definitions),
+    )
+    if not has_constraint or target is None:
+        raise ValueError(f"Gaussian Value= constraint needs a numeric target: {text}")
+    return expression, target
+
+
+def _top_level_value_marker(text: str) -> int | None:
+    lower = str(text).lower()
+    round_depth = 0
+    square_depth = 0
+    brace_depth = 0
+    idx = 0
+    while idx < len(text):
+        char = text[idx]
+        if char == "(":
+            round_depth += 1
+        elif char == ")" and round_depth > 0:
+            round_depth -= 1
+        elif char == "[":
+            square_depth += 1
+        elif char == "]" and square_depth > 0:
+            square_depth -= 1
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+        if round_depth == 0 and square_depth == 0 and brace_depth == 0 and lower.startswith("value", idx):
+            before_ok = idx == 0 or not (lower[idx - 1].isalnum() or lower[idx - 1] == "_")
+            after = idx + len("value")
+            probe = after
+            while probe < len(text) and text[probe].isspace():
+                probe += 1
+            if before_ok and probe < len(text) and text[probe] == "=":
+                return idx
+        idx += 1
+    return None
+
+
+_GAUSSIAN_FREEZE_OPTIONS = {"f", "freeze", "frozen", "fixed"}
+_GAUSSIAN_NONCONSTRAINT_OPTIONS = {
+    "a",
+    "active",
+    "activate",
+    "add",
+    "d",
+    "diff",
+    "r",
+    "remove",
+    "inactive",
+    "k",
+    "kill",
+    "removeall",
+    "printonly",
+    "modify",
+    "unfreeze",
+    "unfrozen",
+}
+
+
+def _parse_gaussian_constraint_options(rest: str, *, angular_default: bool = False) -> tuple[float | None, bool]:
+    text = str(rest).strip()
+    if not text:
+        return None, False
+    value_re = re.compile(
+        r"(?i)\bvalue\s*=\s*"
+        r"(?P<target>[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eEdD][+-]?\d+)?(?:\s*(?:deg|rad))?)"
+    )
+    match = value_re.search(text)
+    target: float | None = None
+    cleaned = text
+    if match:
+        target = _parse_expression_constraint_target(match.group("target"), angular_default=angular_default)
+        cleaned = text[: match.start()] + text[match.end() :]
+    elif text.startswith("="):
+        target = _parse_expression_constraint_target(text[1:], angular_default=angular_default)
+        cleaned = ""
+    has_constraint = target is not None
+    saw_freeze = False
+    saw_nonconstraint_action = False
+    cleaned = cleaned.replace(",", " ").replace(";", " ").strip()
+    leftovers: list[str] = []
+    for token in cleaned.split():
+        low = token.lower()
+        option_name = low.split("=", 1)[0]
+        if option_name in _GAUSSIAN_FREEZE_OPTIONS:
+            saw_freeze = True
+            has_constraint = True
+            continue
+        if option_name in _GAUSSIAN_NONCONSTRAINT_OPTIONS:
+            saw_nonconstraint_action = True
+            continue
+        if option_name in {"fc", "forceconstant", "stepsize", "nsteps", "min", "max"}:
+            continue
+        leftovers.append(token)
+    if leftovers:
+        raise ValueError(f"Unsupported Gaussian GIC constraint option(s): {rest}")
+    if saw_nonconstraint_action and not saw_freeze:
+        has_constraint = False
+    return target, has_constraint
+
+
+def _parse_gaussian_expression_options(
+    text: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> GICExpressionConstraint | None:
+    raw = str(text).strip()
+    option_at = _first_top_level_gaussian_option(raw)
+    if option_at is None:
+        return None
+    expression = _strip_outer_square_brackets(raw[:option_at].strip(" \t,;"))
+    if not expression:
+        return None
+    try:
+        target, has_constraint = _parse_gaussian_constraint_options(
+            raw[option_at:],
+            angular_default=_gic_expression_uses_angular_default_units(expression, definitions=definitions),
+        )
+    except ValueError:
+        return None
+    if not has_constraint:
+        return None
+    _validate_gic_expression(expression)
+    return GICExpressionConstraint(name=raw, expression=expression, target=target)
+
+
+def _parse_gaussian_named_expression(
+    text: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> GICExpressionConstraint | None:
+    raw = str(text).strip()
+    if not raw or "=" not in raw:
+        return None
+    eq_at = _first_top_level_equals(raw)
+    if eq_at is None:
+        return None
+    left = raw[:eq_at].strip()
+    right = raw[eq_at + 1 :].strip()
+    name_match = re.match(
+        r"^(?P<name>[A-Za-z_][A-Za-z0-9_'\"]*)(?:\((?P<option>.*)\))?$",
+        left,
+        flags=re.IGNORECASE,
+    )
+    if not name_match:
+        return None
+    try:
+        expression, rest = _split_gaussian_named_expression_rhs(right)
+    except ValueError:
+        return None
+    expression = expression.strip()
+    if not expression:
+        raise ValueError(f"GIC expression constraint has no expression: {text}")
+    _validate_gic_expression(expression)
+    angular_default = _gic_expression_uses_angular_default_units(expression, definitions=definitions)
+    target = None
+    has_constraint = False
+    option = (name_match.group("option") or "").strip()
+    if option:
+        try:
+            target, has_constraint = _parse_gaussian_constraint_options(option, angular_default=angular_default)
+        except ValueError:
+            return None
+    rest = rest.strip()
+    if rest:
+        try:
+            rest_target, rest_has_constraint = _parse_gaussian_constraint_options(
+                rest,
+                angular_default=angular_default,
+            )
+        except ValueError:
+            return None
+        if rest_target is not None:
+            target = rest_target
+        has_constraint = has_constraint or rest_has_constraint
+    if not has_constraint:
+        return None
+    return GICExpressionConstraint(name=name_match.group("name"), expression=expression, target=target)
+
+
+def _parse_gaussian_named_definition(text: str) -> GICExpressionDefinition | None:
+    raw = str(text).strip()
+    if not raw or "=" not in raw:
+        return None
+    eq_at = _first_top_level_equals(raw)
+    if eq_at is None:
+        return None
+    left = raw[:eq_at].strip()
+    right = raw[eq_at + 1 :].strip()
+    name_match = re.match(
+        r"^(?P<name>[A-Za-z_][A-Za-z0-9_'\"]*)(?:\((?P<option>.*)\))?$",
+        left,
+        flags=re.IGNORECASE,
+    )
+    if not name_match:
+        return None
+    try:
+        expression, rest = _split_gaussian_named_expression_rhs(right)
+    except ValueError:
+        return None
+    expression = _strip_outer_square_brackets(expression.strip())
+    if not expression:
+        return None
+    try:
+        _validate_gic_expression(expression)
+        option = (name_match.group("option") or "").strip()
+        angular_default = _gic_expression_uses_angular_default_units(expression)
+        if option:
+            _parse_gaussian_constraint_options(option, angular_default=angular_default)
+        if rest.strip():
+            _parse_gaussian_constraint_options(rest, angular_default=angular_default)
+    except ValueError:
+        return None
+    return GICExpressionDefinition(name=name_match.group("name"), expression=expression)
+
+
+def _is_gaussian_gic_definition_record(text: str) -> bool:
+    raw = str(text).strip()
+    eq_at = _first_top_level_equals(raw)
+    if eq_at is None:
+        return False
+    left = raw[:eq_at].strip()
+    right = raw[eq_at + 1 :].strip()
+    name_match = re.match(
+        r"^(?P<name>[A-Za-z_][A-Za-z0-9_'\"]*)(?:\((?P<option>.*)\))?$",
+        left,
+        flags=re.IGNORECASE,
+    )
+    if not name_match:
+        return False
+    try:
+        expression, rest = _split_gaussian_named_expression_rhs(right)
+        _validate_gic_expression(expression)
+        option = (name_match.group("option") or "").strip()
+        angular_default = _gic_expression_uses_angular_default_units(expression)
+        if option:
+            _parse_gaussian_constraint_options(option, angular_default=angular_default)
+        if rest.strip():
+            _parse_gaussian_constraint_options(rest, angular_default=angular_default)
+    except ValueError:
+        return False
+    return True
+
+
+def _split_gaussian_named_expression_rhs(text: str) -> tuple[str, str]:
+    right = str(text).strip()
+    if not right:
+        raise ValueError("Gaussian GIC expression is empty")
+    if right.startswith("["):
+        return _extract_outer_square_brackets(right)
+    option_at = _first_top_level_gaussian_option(right)
+    if option_at is None:
+        return right, ""
+    return right[:option_at].strip(), right[option_at:].strip()
+
+
+def _legacy_expression_target_split(text: str) -> int | None:
+    split_at = _last_top_level_equals(text)
+    if split_at is None:
+        return None
+    target_text = str(text)[split_at + 1 :]
+    try:
+        _parse_expression_constraint_target(target_text)
+    except ValueError:
+        return None
+    return split_at
+
+
+def _first_top_level_gaussian_option(text: str) -> int | None:
+    for token, start, _end in _top_level_token_spans(text):
+        if _is_gaussian_option_token(token):
+            return start
+    return None
+
+
+def _top_level_token_spans(text: str) -> list[tuple[str, int, int]]:
+    spans: list[tuple[str, int, int]] = []
+    depth_round = 0
+    depth_square = 0
+    depth_brace = 0
+    token_start: int | None = None
+    for idx, char in enumerate(str(text)):
+        top = depth_round == 0 and depth_square == 0 and depth_brace == 0
+        if top and (char.isspace() or char in ",;"):
+            if token_start is not None:
+                spans.append((text[token_start:idx], token_start, idx))
+                token_start = None
+        else:
+            if token_start is None:
+                token_start = idx
+        if char == "(":
+            depth_round += 1
+        elif char == ")" and depth_round > 0:
+            depth_round -= 1
+        elif char == "[":
+            depth_square += 1
+        elif char == "]" and depth_square > 0:
+            depth_square -= 1
+        elif char == "{":
+            depth_brace += 1
+        elif char == "}" and depth_brace > 0:
+            depth_brace -= 1
+    if token_start is not None:
+        spans.append((text[token_start:], token_start, len(text)))
+    return spans
+
+
+def _is_gaussian_option_token(token: str) -> bool:
+    low = str(token).strip().lower()
+    if not low:
+        return False
+    name = low.split("=", 1)[0]
+    return name in (
+        _GAUSSIAN_FREEZE_OPTIONS
+        | _GAUSSIAN_NONCONSTRAINT_OPTIONS
+        | {"value", "fc", "forceconstant", "stepsize", "nsteps", "min", "max"}
+    )
+
+
+def _first_top_level_equals(text: str) -> int | None:
+    depth_round = 0
+    depth_square = 0
+    depth_brace = 0
+    for idx, char in enumerate(text):
+        if char == "(":
+            depth_round += 1
+        elif char == ")":
+            depth_round = max(0, depth_round - 1)
+        elif char == "[":
+            depth_square += 1
+        elif char == "]":
+            depth_square = max(0, depth_square - 1)
+        elif char == "{":
+            depth_brace += 1
+        elif char == "}":
+            depth_brace = max(0, depth_brace - 1)
+        elif char == "=" and depth_round == 0 and depth_square == 0 and depth_brace == 0:
+            return idx
+    return None
+
+
+def _last_top_level_equals(text: str) -> int | None:
+    positions = []
+    depth_round = 0
+    depth_square = 0
+    depth_brace = 0
+    for idx, char in enumerate(text):
+        if char == "(":
+            depth_round += 1
+        elif char == ")":
+            depth_round = max(0, depth_round - 1)
+        elif char == "[":
+            depth_square += 1
+        elif char == "]":
+            depth_square = max(0, depth_square - 1)
+        elif char == "{":
+            depth_brace += 1
+        elif char == "}":
+            depth_brace = max(0, depth_brace - 1)
+        elif char == "=" and depth_round == 0 and depth_square == 0 and depth_brace == 0:
+            positions.append(idx)
+    return positions[-1] if positions else None
+
+
+def _extract_outer_square_brackets(text: str) -> tuple[str, str]:
+    if not text.startswith("["):
+        raise ValueError(f"Expected '[' in GIC expression: {text}")
+    depth = 0
+    for idx, char in enumerate(text):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return text[1:idx], text[idx + 1 :]
+    raise ValueError(f"Unclosed '[' in GIC expression: {text}")
+
+
+def _strip_outer_square_brackets(text: str) -> str:
+    stripped = str(text).strip()
+    if stripped.startswith("["):
+        expression, rest = _extract_outer_square_brackets(stripped)
+        if rest.strip():
+            return stripped
+        return expression.strip()
+    return stripped
+
+
+def _parse_expression_constraint_target(target_text: str, *, angular_default: bool = False) -> float:
+    text = str(target_text).strip()
+    if not text:
+        raise ValueError("GIC expression constraint target cannot be empty")
+    lower = text.lower()
+    unit = ""
+    if lower.endswith("deg"):
+        unit = "deg"
+        text = text[:-3].strip()
+    elif lower.endswith("rad"):
+        unit = "rad"
+        text = text[:-3].strip()
+    try:
+        value = float(text.replace("d", "e").replace("D", "E"))
+    except ValueError as exc:
+        raise ValueError(f"Invalid GIC expression constraint target: {target_text}") from exc
+    if unit == "deg" or (angular_default and unit == ""):
+        return float(np.deg2rad(value))
+    return value
+
+
+def _validate_gic_expression(expression: str) -> None:
+    _parse_gic_expression_ast(expression)
+
+
+def _parse_gic_expression_ast(expression: str) -> ast.Expression:
+    normalized = _normalize_gaussian_gic_expression(expression)
+    try:
+        tree = ast.parse(normalized, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"Invalid GIC expression syntax: {expression}") from exc
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expression | ast.Load | ast.BinOp | ast.UnaryOp | ast.Call | ast.Name | ast.Constant):
+            continue
+        if isinstance(node, ast.operator | ast.unaryop | ast.keyword):
+            continue
+        raise ValueError(f"Unsupported syntax in GIC expression: {expression}")
+    return tree
+
+
+def _normalize_gaussian_gic_expression(expression: str) -> str:
+    """Normalize Gaussian grouping/call delimiters to Python AST syntax."""
+    normalized = str(expression).strip().replace("^", "**")
+    return normalized.translate(str.maketrans({"[": "(", "]": ")", "{": "(", "}": ")"}))
+
+
+def _gic_expression_uses_angular_default_units(
+    expression: str,
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> bool:
+    try:
+        tree = _parse_gic_expression_ast(expression)
+    except ValueError:
+        return False
+    definition_map = _gic_expression_definition_map(definitions)
+    visiting: set[str] = set()
+
+    def name_is_angular(name: str) -> bool:
+        upper = name.upper()
+        if upper in visiting:
+            return False
+        definition = definition_map.get(name) or definition_map.get(upper)
+        if definition is None:
+            return False
+        visiting.add(upper)
+        try:
+            return expression_is_angular(definition.body)
+        finally:
+            visiting.remove(upper)
+
+    def expression_is_angular(root: ast.AST) -> bool:
+        has_angular = False
+        call_function_nodes = {
+            id(node.func)
+            for node in ast.walk(root)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        for node in ast.walk(root):
+            if isinstance(node, ast.Name):
+                if id(node) in call_function_nodes:
+                    continue
+                if node.id in {"pi", "PI"}:
+                    continue
+                if name_is_angular(node.id):
+                    has_angular = True
+                    continue
+                return False
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name):
+                return False
+            kind = node.func.id.lower()
+            if kind in {"a", "angle", "bend", "d", "dihedral", "torsion", "u", "out_of_plane", "l", "linear", "linear_bend"}:
+                has_angular = True
+                continue
+            if kind in {"r", "b", "bond", "stretch"}:
+                return False
+            if kind in {"sin", "cos", "tan", "asin", "acos", "atan", "arcsin", "arccos", "arctan", "sqrt", "exp", "log", "abs", "min", "max"}:
+                return False
+            return False
+        return has_angular
+
+    return expression_is_angular(tree.body)
+
+
+def _gic_expression_uses_gic_names(expression: str) -> bool:
+    try:
+        tree = _parse_gic_expression_ast(expression)
+    except ValueError:
+        return bool(re.search(r"\bGIC\d+\b", expression, flags=re.IGNORECASE))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and re.match(r"^GIC\d+$", node.id, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _gic_expression_constraint_targets(
+    constraints: tuple[GICExpressionConstraint, ...],
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    if not constraints:
+        return np.zeros(0, dtype=float)
+    current = _gic_expression_constraint_values(constraints, coords, prims, u_matrix, labels, definitions=definitions)
+    targets = [
+        float(constraint.target) if constraint.target is not None else float(current[idx])
+        for idx, constraint in enumerate(constraints)
+    ]
+    return np.asarray(targets, dtype=float)
+
+
+def _gic_expression_constraint_values(
+    constraints: tuple[GICExpressionConstraint, ...],
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    values = [
+        _evaluate_gic_expression(constraint.expression, coords, prims, u_matrix, labels, definitions=definitions)
+        for constraint in constraints
+    ]
+    return np.asarray(values, dtype=float)
+
+
+def _gic_expression_constraint_residuals(
+    constraints: tuple[GICExpressionConstraint, ...],
+    targets: np.ndarray,
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    target = np.asarray(targets, dtype=float)
+    if target.size != len(constraints):
+        raise ValueError("GIC expression target size does not match constraints")
+    return target - _gic_expression_constraint_values(
+        constraints,
+        coords,
+        prims,
+        u_matrix,
+        labels,
+        definitions=definitions,
+    )
+
+
+def _gic_expression_constraint_b_matrix(
+    constraints: tuple[GICExpressionConstraint, ...],
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+    *,
+    step: float = 1.0e-5,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    if not constraints:
+        return np.zeros((0, np.asarray(coords, dtype=float).size), dtype=float)
+    base = np.asarray(coords, dtype=float)
+    flat = base.reshape(-1)
+    rows = np.zeros((len(constraints), flat.size), dtype=float)
+    for idx in range(flat.size):
+        delta = step * max(1.0, abs(float(flat[idx])))
+        plus = flat.copy()
+        minus = flat.copy()
+        plus[idx] += delta
+        minus[idx] -= delta
+        values_plus = _gic_expression_constraint_values(
+            constraints,
+            plus.reshape(base.shape),
+            prims,
+            u_matrix,
+            labels,
+            definitions=definitions,
+        )
+        values_minus = _gic_expression_constraint_values(
+            constraints,
+            minus.reshape(base.shape),
+            prims,
+            u_matrix,
+            labels,
+            definitions=definitions,
+        )
+        rows[:, idx] = (values_plus - values_minus) / (2.0 * delta)
+    return rows
+
+
+def _evaluate_gic_expression(
+    expression: str,
+    coords: np.ndarray,
+    prims: object,
+    u_matrix: np.ndarray,
+    labels: tuple[str, ...],
+    *,
+    definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> float:
+    tree = _parse_gic_expression_ast(expression)
+    q_values = _gic_values(prims, u_matrix, coords) if len(labels) else np.zeros(0, dtype=float)
+    symbols = _gic_expression_symbol_values(labels, q_values)
+    value = _evaluate_gic_expression_node(
+        tree.body,
+        np.asarray(coords, dtype=float),
+        symbols,
+        _gic_expression_definition_map(definitions),
+    )
+    if not np.isfinite(value):
+        raise ValueError(f"Non-finite GIC expression value: {expression}")
+    return float(value)
+
+
+def _gic_expression_symbol_values(labels: tuple[str, ...], q_values: np.ndarray) -> dict[str, float]:
+    symbols: dict[str, float] = {"pi": float(np.pi), "PI": float(np.pi)}
+    for idx, value in enumerate(np.asarray(q_values, dtype=float), start=1):
+        default = f"GIC{idx:03d}"
+        for key in {default, f"GIC{idx}"}:
+            symbols[key] = float(value)
+            symbols[key.upper()] = float(value)
+        label = labels[idx - 1] if idx - 1 < len(labels) else ""
+        label_match = re.match(r"\s*(GIC\d+)\b", label)
+        if label_match:
+            key = label_match.group(1)
+            symbols[key] = float(value)
+            symbols[key.upper()] = float(value)
+        name_match = re.search(r"\bGICForge\s+([A-Za-z0-9_'\"]+)", label)
+        if name_match:
+            raw_name = name_match.group(1)
+            for key in {raw_name, _safe_gic_symbol(raw_name)}:
+                if key and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                    symbols[key] = float(value)
+                    symbols[key.upper()] = float(value)
+    return symbols
+
+
+def _safe_gic_symbol(name: str) -> str:
+    safe = re.sub(r"\W+", "_", str(name).strip())
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    if safe and safe[0].isdigit():
+        safe = f"GIC_{safe}"
+    return safe
+
+
+def _gic_expression_definition_map(
+    definitions: tuple[GICExpressionDefinition, ...],
+) -> dict[str, ast.Expression]:
+    mapped: dict[str, ast.Expression] = {}
+    for definition in definitions:
+        tree = _parse_gic_expression_ast(definition.expression)
+        for key in {definition.name, definition.name.upper(), _safe_gic_symbol(definition.name)}:
+            if key:
+                mapped[key] = tree
+                mapped[key.upper()] = tree
+    return mapped
+
+
+def _evaluate_gic_expression_node(
+    node: ast.AST,
+    coords: np.ndarray,
+    symbols: dict[str, float],
+    definitions: dict[str, ast.Expression] | None = None,
+    stack: tuple[str, ...] = (),
+) -> float:
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, int | float):
+            return float(node.value)
+        raise ValueError("GIC expressions only support numeric constants")
+    if isinstance(node, ast.Name):
+        if node.id in symbols:
+            return float(symbols[node.id])
+        upper = node.id.upper()
+        if upper in symbols:
+            return float(symbols[upper])
+        definition = (definitions or {}).get(node.id) or (definitions or {}).get(upper)
+        if definition is not None:
+            key = upper
+            if key in stack:
+                cycle = " -> ".join((*stack, key))
+                raise ValueError(f"Cyclic GIC expression definition: {cycle}")
+            value = _evaluate_gic_expression_node(
+                definition.body,
+                coords,
+                symbols,
+                definitions,
+                (*stack, key),
+            )
+            symbols[node.id] = float(value)
+            symbols[upper] = float(value)
+            return float(value)
+        raise ValueError(f"Unknown GIC expression symbol: {node.id}")
+    if isinstance(node, ast.UnaryOp):
+        value = _evaluate_gic_expression_node(node.operand, coords, symbols, definitions, stack)
+        if isinstance(node.op, ast.UAdd):
+            return value
+        if isinstance(node.op, ast.USub):
+            return -value
+        raise ValueError("Unsupported unary operator in GIC expression")
+    if isinstance(node, ast.BinOp):
+        left = _evaluate_gic_expression_node(node.left, coords, symbols, definitions, stack)
+        right = _evaluate_gic_expression_node(node.right, coords, symbols, definitions, stack)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.Pow):
+            return left**right
+        raise ValueError("Unsupported binary operator in GIC expression")
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name):
+            raise ValueError("GIC expression functions must be named functions")
+        name = node.func.id
+        return _evaluate_gic_expression_call(name, node.args, node.keywords, coords, symbols, definitions, stack)
+    raise ValueError("Unsupported syntax in GIC expression")
+
+
+def _evaluate_gic_expression_call(
+    name: str,
+    args: list[ast.expr],
+    keywords: list[ast.keyword],
+    coords: np.ndarray,
+    symbols: dict[str, float],
+    definitions: dict[str, ast.Expression] | None = None,
+    stack: tuple[str, ...] = (),
+) -> float:
+    lowered = name.lower()
+    unary_functions = {
+        "sin": "sin",
+        "cos": "cos",
+        "tan": "tan",
+        "asin": "asin",
+        "arcsin": "asin",
+        "acos": "acos",
+        "arccos": "acos",
+        "atan": "atan",
+        "arctan": "atan",
+        "sqrt": "sqrt",
+        "exp": "exp",
+        "log": "log",
+    }
+    if lowered in unary_functions:
+        if keywords or len(args) != 1:
+            raise ValueError(f"Function {name} expects one positional argument")
+        value = _evaluate_gic_expression_node(args[0], coords, symbols, definitions, stack)
+        return float(getattr(np, unary_functions[lowered])(value))
+    if lowered == "abs":
+        if keywords or len(args) != 1:
+            raise ValueError("Function abs expects one positional argument")
+        return abs(_evaluate_gic_expression_node(args[0], coords, symbols, definitions, stack))
+    if lowered in {"min", "max"}:
+        if keywords or len(args) < 1:
+            raise ValueError(f"Function {name} expects positional arguments")
+        values = [_evaluate_gic_expression_node(arg, coords, symbols, definitions, stack) for arg in args]
+        return float(min(values) if lowered == "min" else max(values))
+    if lowered in {"x", "y", "z"}:
+        if keywords or len(args) != 1:
+            raise ValueError(f"Cartesian function {name} expects one atom index")
+        atom = _gic_expression_atom_index(args[0], coords, symbols, definitions, stack)
+        axis = {"x": 0, "y": 1, "z": 2}[lowered]
+        return float(coords[atom, axis])
+    if lowered in {"cart", "cartesian"}:
+        if keywords or len(args) != 2:
+            raise ValueError(f"Cartesian function {name} expects atom index and axis")
+        atom = _gic_expression_atom_index(args[0], coords, symbols, definitions, stack)
+        axis = _gic_expression_cartesian_axis(args[1], coords, symbols, definitions, stack)
+        return float(coords[atom, axis])
+    if lowered == "dotdiff":
+        if keywords or len(args) != 4:
+            raise ValueError("DotDiff expects four atom indices")
+        i, j, k, l = [_gic_expression_atom_index(arg, coords, symbols, definitions, stack) for arg in args]
+        return float(np.dot(coords[i] - coords[j], coords[k] - coords[l]))
+    primitive = _primitive_from_gic_expression_call(name, args, keywords, coords, symbols, definitions, stack)
+    return float(eval_primitives([primitive], coords)[0])
+
+
+def _gic_expression_atom_index(
+    node: ast.expr,
+    coords: np.ndarray,
+    symbols: dict[str, float],
+    definitions: dict[str, ast.Expression] | None = None,
+    stack: tuple[str, ...] = (),
+) -> int:
+    value = _evaluate_gic_expression_node(node, coords, symbols, definitions, stack)
+    index = int(round(value))
+    if abs(value - index) > 1.0e-10 or index < 1 or index > len(coords):
+        raise ValueError(f"Invalid atom index in GIC expression: {value}")
+    return index - 1
+
+
+def _gic_expression_cartesian_axis(
+    node: ast.expr,
+    coords: np.ndarray,
+    symbols: dict[str, float],
+    definitions: dict[str, ast.Expression] | None = None,
+    stack: tuple[str, ...] = (),
+) -> int:
+    if isinstance(node, ast.Name):
+        axis_name = node.id.lower()
+        if axis_name in {"x", "y", "z"}:
+            return {"x": 0, "y": 1, "z": 2}[axis_name]
+    value = _evaluate_gic_expression_node(node, coords, symbols, definitions, stack)
+    axis = int(round(value))
+    if abs(value - axis) > 1.0e-10:
+        raise ValueError(f"Invalid Cartesian axis in GIC expression: {value}")
+    if axis in {-1, 1}:
+        return 0
+    if axis in {-2, 2}:
+        return 1
+    if axis in {-3, 3}:
+        return 2
+    raise ValueError(f"Invalid Cartesian axis in GIC expression: {value}")
+
+
+def _primitive_from_gic_expression_call(
+    name: str,
+    args: list[ast.expr],
+    keywords: list[ast.keyword],
+    coords: np.ndarray,
+    symbols: dict[str, float],
+    definitions: dict[str, ast.Expression] | None = None,
+    stack: tuple[str, ...] = (),
+) -> Primitive:
+    lowered = name.lower()
+    numeric_args = [_evaluate_gic_expression_node(arg, coords, symbols, definitions, stack) for arg in args]
+    int_args = [int(round(value)) for value in numeric_args]
+    if any(abs(value - round(value)) > 1.0e-10 for value in numeric_args):
+        raise ValueError(f"Primitive function {name} needs integer atom indices")
+
+    def atoms(count: int) -> tuple[int, ...]:
+        if len(int_args) < count:
+            raise ValueError(f"Primitive function {name} needs {count} atom indices")
+        result = tuple(value - 1 for value in int_args[:count])
+        if any(atom < 0 for atom in result):
+            raise ValueError(f"Primitive function {name} has invalid atom index")
+        return result
+
+    if lowered in {"r", "b", "bond", "stretch"}:
+        if keywords or len(int_args) != 2:
+            raise ValueError(f"Primitive function {name} expects two atoms")
+        return Primitive("bond", atoms(2))
+    if lowered in {"a", "angle", "bend"}:
+        if keywords or len(int_args) != 3:
+            raise ValueError(f"Primitive function {name} expects three atoms")
+        return Primitive("angle", atoms(3))
+    if lowered in {"d", "dihedral", "torsion"}:
+        if keywords or len(int_args) != 4:
+            raise ValueError(f"Primitive function {name} expects four atoms")
+        return Primitive("dihedral", atoms(4))
+    if lowered in {"u", "out_of_plane"}:
+        if keywords or len(int_args) != 4:
+            raise ValueError(f"Primitive function {name} expects four atoms")
+        return Primitive("out_of_plane", atoms(4))
+    if lowered in {"l", "linear", "linear_bend"}:
+        mode = None
+        for keyword in keywords:
+            if keyword.arg != "mode":
+                raise ValueError(f"Unsupported keyword for {name}: {keyword.arg}")
+            mode = int(round(_evaluate_gic_expression_node(keyword.value, coords, symbols, definitions, stack)))
+        if len(int_args) == 5:
+            mode = int_args[4]
+        elif len(int_args) == 4:
+            mode = int_args[3]
+        elif len(int_args) != 3:
+            raise ValueError(f"Primitive function {name} expects three atoms and a mode")
+        if mode not in {-1, -2}:
+            raise ValueError(f"Linear-bend function {name} needs mode -1 or -2")
+        return Primitive("linear_bend", atoms(3), mode=mode)
+    raise ValueError(f"Unsupported GIC expression function: {name}")
 
 
 def _primitive_constraint_key(primitive: Primitive) -> tuple[str, tuple[int, ...], int]:
@@ -2893,6 +4516,216 @@ def _primitive_constraint_key(primitive: Primitive) -> tuple[str, tuple[int, ...
     return (primitive.kind, tuple(atoms), primitive.mode)
 
 
+def _fixed_primitive_targets(fixed_primitives: tuple[Primitive, ...], coords: np.ndarray) -> np.ndarray:
+    if not fixed_primitives:
+        return np.zeros(0, dtype=float)
+    return np.asarray(eval_primitives(list(fixed_primitives), np.asarray(coords, dtype=float)), dtype=float)
+
+
+def _project_fixed_primitives(
+    coords: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    target_values: np.ndarray,
+    *,
+    tolerance: float = 1.0e-11,
+    max_iter: int = 10,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    """Project a candidate geometry back onto fixed primitive values."""
+    if not fixed_primitives and not linear_constraints and not expression_constraints:
+        return np.asarray(coords, dtype=float)
+    target = np.asarray(target_values, dtype=float)
+    if target.size != len(fixed_primitives):
+        raise ValueError("Fixed-primitive target size does not match constraints")
+    expression_target_values = (
+        np.asarray(expression_targets, dtype=float)
+        if expression_targets is not None
+        else _gic_expression_constraint_targets(
+            expression_constraints,
+            coords,
+            prims,
+            np.asarray(u_matrix if u_matrix is not None else np.zeros((0, 0)), dtype=float),
+            labels,
+            definitions=expression_definitions,
+        )
+    )
+    projected = np.asarray(coords, dtype=float).copy()
+    projection_max_iter = max(max_iter, 20) if expression_constraints else max_iter
+    for _ in range(projection_max_iter):
+        residual = _combined_primitive_constraint_residual(
+            projected,
+            fixed_primitives,
+            target,
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_target_values,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
+        if not np.all(np.isfinite(residual)):
+            raise ValueError("Non-finite fixed-primitive residual")
+        if float(np.max(np.abs(residual))) <= tolerance:
+            return projected
+        b_fixed = _combined_primitive_constraint_b_matrix(
+            projected,
+            fixed_primitives,
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
+        dx = np.linalg.pinv(b_fixed, rcond=1.0e-10) @ residual
+        if not np.all(np.isfinite(dx)):
+            raise ValueError("Non-finite fixed-primitive projection step")
+        projected = projected + dx.reshape(projected.shape)
+    residual = _combined_primitive_constraint_residual(
+        projected,
+        fixed_primitives,
+        target,
+        linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_target_values,
+        prims=prims,
+        u_matrix=u_matrix,
+        labels=labels,
+        expression_definitions=expression_definitions,
+    )
+    if float(np.max(np.abs(residual))) > 100.0 * tolerance:
+        raise ValueError("Fixed-primitive projection did not converge")
+    return projected
+
+
+def _primitive_constraint_residual(
+    fixed_primitives: tuple[Primitive, ...],
+    current: np.ndarray,
+    target: np.ndarray,
+) -> np.ndarray:
+    residual = np.asarray(target, dtype=float) - np.asarray(current, dtype=float)
+    for idx, primitive in enumerate(fixed_primitives):
+        if primitive.kind in {"dihedral", "out_of_plane"}:
+            residual[idx] = (residual[idx] + np.pi) % (2.0 * np.pi) - np.pi
+    return residual
+
+
+def _combined_primitive_constraint_residual(
+    coords: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    fixed_targets: np.ndarray,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...],
+    *,
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    parts: list[np.ndarray] = []
+    if fixed_primitives:
+        current = np.asarray(eval_primitives(list(fixed_primitives), coords), dtype=float)
+        parts.append(_primitive_constraint_residual(fixed_primitives, current, fixed_targets))
+    if linear_constraints:
+        parts.append(_linear_constraint_residuals(linear_constraints, coords))
+    if expression_constraints:
+        if expression_targets is None:
+            raise ValueError("GIC expression constraints need target values")
+        parts.append(
+            _gic_expression_constraint_residuals(
+                expression_constraints,
+                expression_targets,
+                coords,
+                prims,
+                np.asarray(u_matrix if u_matrix is not None else np.zeros((0, 0)), dtype=float),
+                labels,
+                definitions=expression_definitions,
+            )
+        )
+    if not parts:
+        return np.zeros(0, dtype=float)
+    return np.concatenate(parts)
+
+
+def _combined_primitive_constraint_b_matrix(
+    coords: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...],
+    *,
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> np.ndarray:
+    rows: list[np.ndarray] = []
+    if fixed_primitives:
+        rows.append(b_matrix_analytic(list(fixed_primitives), coords))
+    if linear_constraints:
+        rows.append(_linear_constraint_b_matrix(linear_constraints, coords))
+    if expression_constraints:
+        rows.append(
+            _gic_expression_constraint_b_matrix(
+                expression_constraints,
+                coords,
+                prims,
+                np.asarray(u_matrix if u_matrix is not None else np.zeros((0, 0)), dtype=float),
+                labels,
+                definitions=expression_definitions,
+            )
+        )
+    if not rows:
+        return np.zeros((0, np.asarray(coords).size), dtype=float)
+    return np.vstack(rows)
+
+
+def _linear_constraint_values(
+    constraints: tuple[PrimitiveLinearConstraint, ...],
+    coords: np.ndarray,
+) -> np.ndarray:
+    values = []
+    for constraint in constraints:
+        primitive_values = np.asarray(eval_primitives(list(constraint.primitives), coords), dtype=float)
+        coeffs = np.asarray(constraint.coefficients, dtype=float)
+        values.append(float(coeffs @ primitive_values))
+    return np.asarray(values, dtype=float)
+
+
+def _linear_constraint_residuals(
+    constraints: tuple[PrimitiveLinearConstraint, ...],
+    coords: np.ndarray,
+) -> np.ndarray:
+    current = _linear_constraint_values(constraints, coords)
+    target = np.asarray([constraint.target for constraint in constraints], dtype=float)
+    residual = target - current
+    for idx, constraint in enumerate(constraints):
+        if constraint.angular:
+            residual[idx] = (residual[idx] + np.pi) % (2.0 * np.pi) - np.pi
+    return residual
+
+
+def _linear_constraint_b_matrix(
+    constraints: tuple[PrimitiveLinearConstraint, ...],
+    coords: np.ndarray,
+) -> np.ndarray:
+    rows = []
+    for constraint in constraints:
+        primitive_b = b_matrix_analytic(list(constraint.primitives), coords)
+        coeffs = np.asarray(constraint.coefficients, dtype=float)
+        rows.append(coeffs @ primitive_b)
+    if not rows:
+        return np.zeros((0, np.asarray(coords).size), dtype=float)
+    return np.vstack(rows)
+
+
 def _primitive_constrained_transform(
     coords: np.ndarray,
     prims: object,
@@ -2903,9 +4736,14 @@ def _primitive_constrained_transform(
     fixed_primitives: tuple[Primitive, ...],
     *,
     cartesian_from_q: np.ndarray | None = None,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+    labels: tuple[str, ...] = (),
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     """Project reduced GIC increments onto the null space of fixed primitives."""
-    if not fixed_primitives or transform.size == 0:
+    if (not fixed_primitives and not linear_constraints and not expression_constraints) or transform.size == 0:
         return transform, names
     active_indices = np.where(active_mask)[0]
     if not len(active_indices):
@@ -2914,7 +4752,16 @@ def _primitive_constrained_transform(
         cartesian_from_q = _gic_cartesian_projector(prims, u_matrix, coords)
     if cartesian_from_q.size == 0:
         return transform, names
-    b_fixed = b_matrix_analytic(list(fixed_primitives), coords)
+    b_fixed = _combined_primitive_constraint_b_matrix(
+        coords,
+        fixed_primitives,
+        linear_constraints,
+        expression_constraints=expression_constraints,
+        prims=prims,
+        u_matrix=u_matrix,
+        labels=labels,
+        expression_definitions=expression_definitions,
+    )
     constraints_active = (b_fixed @ cartesian_from_q)[:, active_indices]
     constraints_reduced = constraints_active @ transform
     constraints_reduced = _independent_rows_incremental(constraints_reduced)
@@ -2932,9 +4779,17 @@ def _primitive_constrained_cartesian_transform(
     transform: np.ndarray,
     names: tuple[str, ...],
     fixed_primitives: tuple[Primitive, ...],
+    *,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+    expression_prims: object = (),
+    expression_u_matrix: np.ndarray | None = None,
+    expression_labels: tuple[str, ...] = (),
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     """Project reduced Cartesian-basis increments onto fixed primitive constraints."""
-    if not fixed_primitives or transform.size == 0:
+    if (not fixed_primitives and not linear_constraints and not expression_constraints) or transform.size == 0:
         return transform, names
     active_indices = np.where(active_mask)[0]
     if not len(active_indices):
@@ -2942,7 +4797,16 @@ def _primitive_constrained_cartesian_transform(
     basis = np.asarray(cartesian_from_q, dtype=float)
     if basis.size == 0:
         return transform, names
-    b_fixed = b_matrix_analytic(list(fixed_primitives), coords)
+    b_fixed = _combined_primitive_constraint_b_matrix(
+        coords,
+        fixed_primitives,
+        linear_constraints,
+        expression_constraints=expression_constraints,
+        prims=expression_prims,
+        u_matrix=expression_u_matrix,
+        labels=expression_labels,
+        expression_definitions=expression_definitions,
+    )
     constraints_active = (b_fixed @ basis)[:, active_indices]
     constraints_reduced = constraints_active @ transform
     constraints_reduced = _independent_rows_incremental(constraints_reduced)
@@ -3142,9 +5006,11 @@ def _reduced_parameter_scales(labels: tuple[str, ...], active_mask: np.ndarray, 
 
 def _gic_coordinate_scale(label: str) -> float:
     low = label.lower()
-    if "bond(" in low or "str" in low:
+    if "bond(" in low or re.search(r"\br\s*\(", low) or "str" in low:
         return 1.0
     if any(token in low for token in ("angle(", "dihedral(", "out_of_plane(", "linear_bend(", "ang", "dih", "oop", "lin", "pck")):
+        return 0.5
+    if re.search(r"\b[adul]\s*\(", low):
         return 0.5
     return 1.0
 
@@ -3557,6 +5423,12 @@ def _line_search_update(
     jac_weighted: np.ndarray,
     reduced_step: np.ndarray,
     robust_sqrt_weights: np.ndarray | None = None,
+    fixed_primitives: tuple[Primitive, ...] = (),
+    fixed_primitive_targets: np.ndarray | None = None,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
 ) -> LineSearchResult:
     observed = measurement_model.observed
     sqrt_weights = np.sqrt(measurement_model.weights)
@@ -3584,6 +5456,21 @@ def _line_search_update(
         )
         candidate = _displace_along_gics(coords, prims, u_matrix, scale * dq, cartesian_from_q=cartesian_from_q)
         try:
+            if fixed_primitives or linear_constraints or expression_constraints:
+                candidate = _project_fixed_primitives(
+                    candidate,
+                    fixed_primitives,
+                    fixed_primitive_targets
+                    if fixed_primitive_targets is not None
+                    else _fixed_primitive_targets(fixed_primitives, coords),
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=prims,
+                    u_matrix=u_matrix,
+                    labels=labels,
+                    expression_definitions=expression_definitions,
+                )
             q_candidate = _gic_values(prims, u_matrix, candidate)
             calc = _measurement_vector(atoms, candidate, request, q_candidate, labels, measurement_model)
         except Exception:
@@ -3627,6 +5514,12 @@ def _line_search_update_cartesian_basis(
     jac_weighted: np.ndarray,
     reduced_step: np.ndarray,
     robust_sqrt_weights: np.ndarray | None = None,
+    fixed_primitives: tuple[Primitive, ...] = (),
+    fixed_primitive_targets: np.ndarray | None = None,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
 ) -> LineSearchResult:
     observed = measurement_model.observed
     sqrt_weights = np.sqrt(measurement_model.weights)
@@ -3652,6 +5545,21 @@ def _line_search_update_cartesian_basis(
         )
         candidate = _displace_along_cartesian_basis(coords, mode_model.cartesian_from_q, scale * dq)
         try:
+            if fixed_primitives or linear_constraints or expression_constraints:
+                candidate = _project_fixed_primitives(
+                    candidate,
+                    fixed_primitives,
+                    fixed_primitive_targets
+                    if fixed_primitive_targets is not None
+                    else _fixed_primitive_targets(fixed_primitives, coords),
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=(),
+                    u_matrix=np.zeros((0, 0), dtype=float),
+                    labels=(),
+                    expression_definitions=expression_definitions,
+                )
             q_candidate = mode_model.values(candidate)
             calc = _measurement_vector(atoms, candidate, request, q_candidate, labels, measurement_model)
         except Exception:
@@ -4428,7 +6336,8 @@ def _correlation(covariance: np.ndarray) -> np.ndarray:
 def _stationary_point_type(eigenvalues: np.ndarray) -> str:
     if eigenvalues.size == 0:
         return "not_checked"
-    tol = max(1.0e-10, 1.0e-8 * float(np.max(np.abs(eigenvalues))))
+    scale = max(float(np.max(np.abs(eigenvalues))), 1.0)
+    tol = max(1.0e-10, 10.0 * eigenvalues.size * np.finfo(float).eps * scale)
     if np.all(eigenvalues > tol):
         return "minimum"
     if np.any(eigenvalues < -tol):
