@@ -41,6 +41,7 @@ def run_gicforge(
     *,
     executable: Path | None = None,
     output_names: Iterable[str] = GICFORGE_OUTPUTS,
+    symmetrize: bool = True,
 ) -> GICForgeResult:
     """Run GICForge in `workdir` and write a normalized manifest."""
     run_dir = Path(workdir)
@@ -63,9 +64,12 @@ def run_gicforge(
         raise GICForgeError(f"GICForge failed, see {logfile}") from exc
 
     _copy_legacy_report(run_dir)
-    write_gic_symmetry_files(run_dir)
+    if symmetrize:
+        write_gic_symmetry_files(run_dir)
+    else:
+        _remove_symmetry_outputs(run_dir)
     files = _collect_outputs(run_dir, output_names)
-    manifest = _write_gicforge_manifest(run_dir, exe, logfile, files)
+    manifest = _write_gicforge_manifest(run_dir, exe, logfile, files, symmetrize=symmetrize)
     return GICForgeResult(
         workdir=run_dir,
         executable=exe,
@@ -83,6 +87,13 @@ def _copy_legacy_report(run_dir: Path) -> None:
             legacy_output.read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
         )
+
+
+def _remove_symmetry_outputs(run_dir: Path) -> None:
+    for name in ("gauin.symm", "gicsym", "gic_symmetry_diagnostics.json"):
+        path = run_dir / name
+        if path.exists():
+            path.unlink()
 
 
 def _collect_outputs(run_dir: Path, output_names: Iterable[str]) -> dict[str, Path]:
@@ -103,6 +114,8 @@ def _write_gicforge_manifest(
     executable: Path,
     logfile: Path,
     files: dict[str, Path],
+    *,
+    symmetrize: bool,
 ) -> Path:
     input_checksums = {
         name: checksum
@@ -118,6 +131,7 @@ def _write_gicforge_manifest(
         "workflow": "gicforge",
         "executable": str(executable),
         "logfile": str(logfile),
+        "symmetrize": symmetrize,
         "inputs": input_checksums,
         "outputs": {name: str(path) for name, path in sorted(files.items())},
         "output_sha256": output_checksums,
@@ -128,7 +142,12 @@ def _write_gicforge_manifest(
         run_dir=run_dir,
         inputs={name: run_dir / name for name in ("provin", "xyzin") if (run_dir / name).exists()},
         outputs=files,
-        backend={"name": "gicforge", "executable": str(executable), "logfile": str(logfile)},
+        backend={
+            "name": "gicforge",
+            "executable": str(executable),
+            "logfile": str(logfile),
+            "symmetrize": symmetrize,
+        },
     ).to_dict()
     manifest.update({"legacy": legacy_manifest})
     return write_manifest(run_dir / "gicforge_manifest.json", manifest)

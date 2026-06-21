@@ -3,6 +3,19 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from merlino_fit.survibfit.primitives import Primitive
+from merlino_gf import (
+    BOHR_TO_ANGSTROM,
+    gf_from_hessian_input_and_gic_definition,
+    gf_from_gaussian_fchk_with_merlino_gics,
+    gf_from_hessian_input_with_merlino_gics,
+    pulay_scale_internal_hessian,
+    run_gic_gf_report_from_fchk,
+    run_gf_report_from_fchk,
+    solve_wilson_gf,
+)
+from merlino_gic import GICDefinition
+from merlino_vpt2_vci.gaussian_qff import hessian_input_from_gaussian_fchk
 from merlino_vpt2_vci import (
     QuarticForceField,
     AnharmonicInput,
@@ -11,20 +24,15 @@ from merlino_vpt2_vci import (
     compare_vpt2_vci,
     davidson_lowest,
     generate_vibrational_basis,
-    gf_from_gaussian_fchk_with_merlino_gics,
-    gf_from_hessian_input_with_merlino_gics,
-    hessian_input_from_gaussian_fchk,
     lower_to_symmetric,
     load_force_field,
     read_gaussian_fchk_qff,
     read_indexed_qff_text,
-    run_gf_report_from_fchk,
     run_python_vci_from_gaussian_fchk,
     run_vpt2_vci_report,
     solve_vci,
     solve_vci_from_anharmonic_input,
     solve_vpt2_from_anharmonic_input,
-    solve_wilson_gf,
     validate_force_field,
     zero_anharmonic_force_field,
 )
@@ -258,6 +266,46 @@ def test_gf_from_gaussian_cartesian_hessian_uses_merlino_nonredundant_gics():
     assert np.allclose(result.ped.values.sum(axis=0), np.full(3, 100.0))
     assert np.allclose(result.frequencies_cm, [2169.878, 4141.256, 4392.363], atol=1.0e-3)
     assert np.allclose(adapter_result.frequencies_cm, result.frequencies_cm)
+
+
+def test_frozen_gic_gf_branch_scales_internal_hessian_pulay_style(tmp_path):
+    path = __import__("pathlib").Path("gui/tests/gaussian/h2o.fchk")
+    canonical = hessian_input_from_gaussian_fchk(path)
+    definition = GICDefinition(
+        atom_symbols=("H", "O", "H"),
+        atomic_numbers=(1, 8, 1),
+        reference_coordinates_angstrom=tuple(tuple(row) for row in canonical.cartesian_coordinates_bohr * BOHR_TO_ANGSTROM),
+        primitives=(
+            Primitive("bond", (0, 1)),
+            Primitive("bond", (1, 2)),
+            Primitive("angle", (0, 1, 2)),
+        ),
+        u_matrix=np.eye(3),
+        labels=("GIC001 R(1,2)", "GIC002 R(2,3)", "GIC003 A(1,2,3)"),
+        names=("R1", "R2", "A1"),
+        irreps=("A1", "A1", "A1"),
+        point_group="C2v",
+    )
+
+    unscaled = gf_from_hessian_input_and_gic_definition(canonical, definition)
+    factors = np.array([1.0, 0.95, 0.9])
+    scaled = gf_from_hessian_input_and_gic_definition(canonical, definition, scaling_factors=factors)
+    expected = unscaled.force_constants * np.sqrt(np.outer(factors, factors))
+
+    assert unscaled.b_matrix.shape == (3, 9)
+    assert np.allclose(scaled.force_constants, expected)
+    assert np.allclose(pulay_scale_internal_hessian(unscaled.force_constants, factors), expected)
+    assert not np.allclose(scaled.frequencies_cm, unscaled.frequencies_cm)
+    assert np.allclose(scaled.ped.values.sum(axis=0), np.full(3, 100.0))
+
+    schema = definition.write(tmp_path / "gic_definition.json")
+    scale = tmp_path / "scale.txt"
+    scale.write_text("GIC003 0.90\nR2 0.95\n", encoding="utf-8")
+    report = run_gic_gf_report_from_fchk(path, schema, scale_path=scale)
+
+    assert "Frozen GIC definition" in report.text
+    assert "Pulay Hessian scaling: applied" in report.text
+    assert report.result.scaling_factors.tolist() == pytest.approx([1.0, 0.95, 0.9])
 
 
 def test_gui_service_reports_are_independent_from_qt(tmp_path):

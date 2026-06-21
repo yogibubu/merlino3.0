@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -14,7 +13,7 @@ def test_vpt2_vci_window_defaults(tmp_path, qtbot):
     window = VPT2VCIWindow(tmp_path, tmp_path)
     qtbot.addWidget(window)
 
-    assert window.windowTitle() == "Merlino GF / VPT2-VCI"
+    assert window.windowTitle() == "Merlino VPT2 / VCI"
     assert "gauin.fchk" in window.fchk_edit.text()
     assert window.max_quanta_edit.text() == "2"
     assert window.roots_edit.text() == "6"
@@ -35,30 +34,6 @@ def test_vpt2_vci_window_selects_latest_fchk(tmp_path, qtbot):
     window._select_latest_fchk(show_message=False)
 
     assert window.fchk_edit.text() == str(new_fchk)
-
-
-@pytest.mark.usefixtures("qtbot")
-def test_vpt2_vci_window_runs_gf_on_gaussian_fchk(tmp_path, qtbot):
-    fchk = Path("gui/tests/gaussian/h2o.fchk").resolve()
-    window = VPT2VCIWindow(tmp_path, tmp_path)
-    qtbot.addWidget(window)
-    window.fchk_edit.setText(str(fchk))
-
-    window.run_gf(show_message=False)
-
-    text = window.output_text.toPlainText()
-    assert "GF/PED from Merlino non-redundant GICs" in text
-    assert "2169.878" in text
-    assert "GIC001" in text
-    assert "PED (%)" in text
-    manifest = json.loads((tmp_path / "gf_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == "merlino.run.v1"
-    assert manifest["workflow"] == "gf"
-
-    csv_dir = tmp_path / "gf_csv"
-    written = window.export_csvs(csv_dir, show_message=False)
-    assert (csv_dir / "gf_frequencies.csv").exists()
-    assert "ped.csv" in written
 
 
 @pytest.mark.usefixtures("qtbot")

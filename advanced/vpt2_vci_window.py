@@ -21,14 +21,13 @@ from PySide6.QtWidgets import (
 from merlino_vpt2_vci import (
     VCIOptions,
     load_force_field,
-    run_gf_report_from_fchk,
     run_vpt2_vci_report,
     write_csv_tables,
 )
 
 
 class VPT2VCIWindow(QMainWindow):
-    """Dedicated GUI for GF/PED and anharmonic VPT2/VCI workflows."""
+    """Dedicated GUI for anharmonic VPT2/VCI in Cartesian normal modes."""
 
     def __init__(self, workdir: Path, repo_root: Path | None = None, parent=None):
         super().__init__(parent)
@@ -36,8 +35,8 @@ class VPT2VCIWindow(QMainWindow):
         self.repo_root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[1]
         self.last_report = None
 
-        self.setWindowTitle("Merlino GF / VPT2-VCI")
-        self.resize(980, 780)
+        self.setWindowTitle("Merlino VPT2 / VCI")
+        self.resize(980, 680)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -45,13 +44,13 @@ class VPT2VCIWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
 
-        header = QLabel("GF / VPT2-VCI")
+        header = QLabel("VPT2 / VCI")
         header.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(header)
 
         note = QLabel(
-            "Gaussian/FCHK is only an input adapter here. GF, PED, VPT2 and VCI "
-            "run on canonical Merlino data structures and Merlino non-redundant GICs."
+            "VPT2/VCI works on canonical Merlino QFF data in Cartesian normal "
+            "modes. GIC-based Wilson GF/PED is a separate workflow."
         )
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -60,7 +59,7 @@ class VPT2VCIWindow(QMainWindow):
         input_layout = QVBoxLayout(input_group)
 
         row_fchk = QHBoxLayout()
-        row_fchk.addWidget(QLabel("FCHK Hessian/QFF:"))
+        row_fchk.addWidget(QLabel("FCHK frequency/QFF adapter:"))
         self.fchk_edit = QLineEdit(str(self.workdir / "gauin.fchk"))
         row_fchk.addWidget(self.fchk_edit)
         browse_fchk = QPushButton("Browse")
@@ -84,19 +83,6 @@ class VPT2VCIWindow(QMainWindow):
         row_latest.addStretch()
         input_layout.addLayout(row_latest)
         layout.addWidget(input_group)
-
-        gf_group = QGroupBox("GF / PED")
-        gf_layout = QVBoxLayout(gf_group)
-        gf_note = QLabel(
-            "Reads Cartesian Hessian and geometry from FCHK, builds Merlino GICs, "
-            "then solves Wilson GF and reports PED in non-redundant GICs."
-        )
-        gf_note.setWordWrap(True)
-        gf_layout.addWidget(gf_note)
-        self.run_gf_button = QPushButton("Run GF / PED")
-        self.run_gf_button.clicked.connect(self.run_gf)
-        gf_layout.addWidget(self.run_gf_button)
-        layout.addWidget(gf_group)
 
         vci_group = QGroupBox("VPT2 / VCI")
         vci_layout = QVBoxLayout(vci_group)
@@ -151,25 +137,21 @@ class VPT2VCIWindow(QMainWindow):
         vci_layout.addLayout(row_run)
         layout.addWidget(vci_group)
 
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        self.output_text.setPlaceholderText("GF/PED and VPT2/VCI reports will appear here.")
-
         actions = QHBoxLayout()
         clear_button = QPushButton("Clear Output")
-        clear_button.clicked.connect(self.output_text.clear)
+        clear_button.clicked.connect(lambda: self.output_text_clear())
         actions.addWidget(clear_button)
         export_button = QPushButton("Export Report")
-        export_button.clicked.connect(self.export_report)
+        export_button.clicked.connect(lambda: self.export_report())
         actions.addWidget(export_button)
         export_csv_button = QPushButton("Export CSVs")
-        export_csv_button.clicked.connect(self.export_csvs)
+        export_csv_button.clicked.connect(lambda: self.export_csvs())
         actions.addWidget(export_csv_button)
         save_preset_button = QPushButton("Save Preset")
-        save_preset_button.clicked.connect(self.save_preset)
+        save_preset_button.clicked.connect(lambda: self.save_preset())
         actions.addWidget(save_preset_button)
         load_preset_button = QPushButton("Load Preset")
-        load_preset_button.clicked.connect(self.load_preset)
+        load_preset_button.clicked.connect(lambda: self.load_preset())
         actions.addWidget(load_preset_button)
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.close)
@@ -177,17 +159,13 @@ class VPT2VCIWindow(QMainWindow):
         actions.addStretch()
         layout.addLayout(actions)
 
+        self.output_text = QTextEdit()
+        self.output_text.setReadOnly(True)
+        self.output_text.setPlaceholderText("VPT2/VCI report will appear here.")
         layout.addWidget(self.output_text)
 
-    def run_gf(self, *, show_message: bool = True) -> None:
-        try:
-            fchk_path = self._required_existing_path(self.fchk_edit.text(), "FCHK")
-            report = run_gf_report_from_fchk(fchk_path)
-            self.last_report = report
-            self.output_text.setPlainText(report.text)
-            self._write_gf_manifest(fchk_path)
-        except Exception as exc:
-            self._fail("GF / PED failed", exc, show_message)
+    def output_text_clear(self) -> None:
+        self.output_text.clear()
 
     def run_vpt2_vci(self, *, show_message: bool = True) -> None:
         try:
@@ -239,12 +217,12 @@ class VPT2VCIWindow(QMainWindow):
         text = self.output_text.toPlainText()
         if not text.strip():
             if show_message:
-                QMessageBox.warning(self, "GF / VPT2-VCI", "No report to export.")
+                QMessageBox.warning(self, "VPT2 / VCI", "No report to export.")
             return None
         if path is None:
             selected, _ = QFileDialog.getSaveFileName(
                 self,
-                "Export GF / VPT2-VCI report",
+                "Export VPT2/VCI report",
                 str(self.workdir / "vpt2_vci_report.txt"),
                 "Text files (*.txt);;All files (*)",
             )
@@ -255,36 +233,23 @@ class VPT2VCIWindow(QMainWindow):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
         if show_message:
-            QMessageBox.information(self, "GF / VPT2-VCI", f"Report written: {path}")
+            QMessageBox.information(self, "VPT2 / VCI", f"Report written: {path}")
         return path
 
     def export_csvs(self, outdir: Path | None = None, *, show_message: bool = True) -> dict[str, Path]:
         if self.last_report is None:
             if show_message:
-                QMessageBox.warning(self, "GF / VPT2-VCI", "No completed GF/VPT2-VCI result to export.")
+                QMessageBox.warning(self, "VPT2 / VCI", "No completed VPT2/VCI result to export.")
             return {}
         if outdir is None:
-            selected = QFileDialog.getExistingDirectory(
-                self,
-                "Export GF / VPT2-VCI CSV tables",
-                str(self.workdir),
-            )
+            selected = QFileDialog.getExistingDirectory(self, "Export VPT2/VCI CSV tables", str(self.workdir))
             if not selected:
                 return {}
             outdir = Path(selected)
         written = write_csv_tables(self.last_report, Path(outdir))
         if show_message:
-            QMessageBox.information(self, "GF / VPT2-VCI", f"CSV tables written: {Path(outdir)}")
+            QMessageBox.information(self, "VPT2 / VCI", f"CSV tables written: {Path(outdir)}")
         return written
-
-    def _write_gf_manifest(self, fchk_path: Path) -> Path:
-        return build_run_manifest(
-            workflow="gf",
-            status="completed",
-            run_dir=self.workdir,
-            inputs={"fchk": fchk_path},
-            backend={"adapter": "gaussian-fchk", "solver": "python", "gui": "advanced.vpt2_vci_window"},
-        ).write(self.workdir / "gf_manifest.json")
 
     def _write_vpt2_vci_manifest(self, *, max_quanta: int, roots: int) -> Path:
         inputs = {}
@@ -310,7 +275,11 @@ class VPT2VCIWindow(QMainWindow):
                     self.force_threshold_edit.text(), "Force threshold cm-1", default=0.0
                 ),
             },
-            backend={"solver": "python", "gui": "advanced.vpt2_vci_window"},
+            backend={
+                "solver": "python",
+                "gui": "advanced.vpt2_vci_window",
+                "coordinate_model": "cartesian-normal-modes",
+            },
         ).write(self.workdir / "vpt2_vci_manifest.json")
 
     def save_preset(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
@@ -328,7 +297,7 @@ class VPT2VCIWindow(QMainWindow):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self._settings_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if show_message:
-            QMessageBox.information(self, "GF / VPT2-VCI", f"Preset written: {path}")
+            QMessageBox.information(self, "VPT2 / VCI", f"Preset written: {path}")
         return path
 
     def load_preset(self, path: Path | None = None, *, show_message: bool = True) -> Path | None:
@@ -348,7 +317,7 @@ class VPT2VCIWindow(QMainWindow):
             raise ValueError("Preset root must be a JSON object")
         self._apply_settings_dict(data)
         if show_message:
-            QMessageBox.information(self, "GF / VPT2-VCI", f"Preset loaded: {path}")
+            QMessageBox.information(self, "VPT2 / VCI", f"Preset loaded: {path}")
         return path
 
     def _settings_dict(self) -> dict[str, str]:
@@ -405,12 +374,6 @@ class VPT2VCIWindow(QMainWindow):
                 QMessageBox.warning(self, "FCHK", f"No FCHK files found in {self.workdir}")
             return
         self.fchk_edit.setText(str(candidates[0]))
-
-    def _required_existing_path(self, raw: str, label: str) -> Path:
-        path = Path(raw.strip()).expanduser()
-        if not path.exists():
-            raise FileNotFoundError(f"{label} not found: {path}")
-        return path
 
     def _optional_existing_path(self, raw: str) -> Path | None:
         text = raw.strip()

@@ -5,6 +5,7 @@ from .contracts import (
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     ElectronicCorrection,
+    HYDROGEN_PARAMETER_CONSTRAINT,
     IsotopologueObservation,
     ParameterClassConstraint,
     QMParameterPredicate,
@@ -28,6 +29,7 @@ from .kraitchman import (
     kraitchman_comparison,
     kraitchman_seed_geometry,
 )
+from .cartesian_coordinates import CartesianCoordinateModel, cartesian_symmetry_coordinate_model
 from .geometry_input import SemiexperimentalGeometryInput, read_gaussian_cartesian_input, read_geometry_input
 from .job_input import (
     SEMIEXP_JOB_SCHEMA,
@@ -71,10 +73,12 @@ __all__ = [
     "CorrectedRotationalConstants",
     "DEFAULT_SEMIEXP_OBSERVABLE",
     "DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS",
+    "HYDROGEN_PARAMETER_CONSTRAINT",
     "ElectronicCorrection",
     "KraitchmanComparison",
     "KraitchmanSeedResult",
     "ParameterClassConstraint",
+    "CartesianCoordinateModel",
     "SemiexperimentalFitDiagnostics",
     "SemiexperimentalFitResult",
     "SemiexperimentalGeometryInput",
@@ -95,6 +99,7 @@ __all__ = [
     "SemiexperimentalFitRequest",
     "VibrationalCorrection",
     "benchmark_csv",
+    "cartesian_symmetry_coordinate_model",
     "corrected_constants_rows",
     "fit_semiexperimental_geometry",
     "format_substitutions",

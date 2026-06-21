@@ -3,6 +3,26 @@ Overview
 
 The Merlino 3.0 GUI provides a minimal, controlled interface for preparing molecular inputs and managing updates to the central xyzin file.
 
+Merlino4 adds a workflow dashboard on top of this legacy structure. The
+dashboard is package-oriented: `merlino_gic` handles GIC definition/B matrices,
+`merlino_gf` handles harmonic GF/PED, `merlino_vpt2_vci` handles anharmonic
+VPT2/VCI, `merlino_semiexp` handles semiexperimental refinement and
+`merlino_dvr` handles DVR. GUI controls build CLI/service calls and do not
+duplicate scientific algorithms.
+
+The GIC dashboard exposes symmetry adaptation as an explicit option at
+definition time. If enabled, GIC names, irreps, point group and the
+`symmetrized` flag are stored in `gic_definition.json`; B-matrix and GF/PED
+steps receive this metadata from the schema rather than reassigning symmetry.
+
+The semiexperimental dashboard exposes the same coordinate-model choice as the
+CLI. `gic` is the default and uses GICForge-generated totally symmetric GICs.
+`cartesian_symmetry` needs no Hessian and no GIC B matrix: it removes
+translations/rotations from the Cartesian displacement space, symmetry-adapts
+it, and fits only totally symmetric Cartesian directions. The final report
+still writes primitive bond lengths, angles and dihedrals with propagated
+errors.
+
 The GUI is intentionally simple and follows a strict separation of responsibilities:
 
 Input selection and preview → InputPanel
@@ -330,31 +350,35 @@ Default DVR settings:
 - rotational constants: enabled
 - Cremer-Pople labeling: disabled unless explicitly requested
 
-## GF / VPT2-VCI Window
+## GF / PED Window
 
-The Advanced window exposes a dedicated `GF / VPT2-VCI` panel implemented in
+The Advanced window exposes a dedicated `GF / PED` panel implemented in
+`advanced/gf_window.py`.
+
+The window reads a Cartesian Hessian from the current FCHK adapter, builds
+Merlino non-redundant GICs or reuses a frozen GIC definition from
+`gic-define`, evaluates the B matrix, transforms the Cartesian Hessian to the
+GIC basis, optionally applies Pulay-style diagonal scaling with off-diagonal
+geometric means, and reports frequencies, normal modes and PED.
+
+GIC symmetrization is not done in this window. It must already be present in
+the frozen definition produced by `gic-define`.
+
+## VPT2 / VCI Window
+
+The Advanced window exposes a separate `VPT2 / VCI` panel implemented in
 `advanced/vpt2_vci_window.py`.
 
-The window has two independent actions:
+The window reads either a canonical indexed QFF text file or the current FCHK
+adapter, applies mode/cutoff/pruning settings, and reports a VPT2/VCI energy
+comparison plus dominant VCI contributions. This branch works in Cartesian
+normal modes and does not use GICs.
 
-- `Run GF / PED` reads geometry and Cartesian Hessian from a Gaussian FCHK
-  adapter, builds Merlino non-redundant GICs, solves Wilson GF and reports
-  frequencies plus PED in GIC coordinates.
-- `Run VPT2 / VCI` reads either a canonical indexed QFF text file or the
-  current FCHK adapter, applies mode/cutoff/pruning settings, and reports a
-  VPT2/VCI energy comparison plus dominant VCI contributions.
-- `Export Report` writes the current text report to disk.
-- `Export CSVs` writes structured frequency, PED and VPT2/VCI comparison
-  tables for the latest completed run.
-- `Save Preset` and `Load Preset` store/reload paths and VCI basis/pruning
-  settings as JSON.
-
-The GUI does not contain scientific algorithms. It only validates paths and
-dispatches report export/preset actions; the numerical work and report
-formatting remain in `merlino_vpt2_vci`.
-
-Each successful GF or VPT2/VCI GUI run writes a `merlino.run.v1` manifest in
-the current work directory.
+Both windows support `Export Report`, `Export CSVs`, `Save Preset` and
+`Load Preset`. The GUI does not contain scientific algorithms; it only
+validates paths and dispatches report export/preset actions. Each successful
+GF or VPT2/VCI GUI run writes a `merlino.run.v1` manifest in the current work
+directory.
 
 GUI testing policy
 

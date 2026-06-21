@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import shutil
 from pathlib import Path
 import sys
@@ -10,10 +11,22 @@ from merlino_core import build_run_manifest, ensure_workspace, load_config, writ
 from merlino_dvr import DVRRequest, build_path_analysis_args, write_dvr_manifest
 from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend, resolve_source_backend
 from merlino_gaussian import summarize_gaussian_log
-from merlino_gic import run_gicforge
+from merlino_gic import (
+    GICDefinition,
+    define_gics_from_cartesian,
+    evaluate_gic_definition,
+    run_gicforge,
+    write_gaussian_gic_input,
+)
+from merlino_gf import (
+    run_gic_gf_report_from_fchk,
+    run_gf_report_from_fchk,
+    write_csv_tables as write_gf_csv_tables,
+)
 from merlino_semiexp import (
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+    HYDROGEN_PARAMETER_CONSTRAINT,
     ParameterClassConstraint,
     QMParameterPredicate,
     SemiexperimentalFitRequest,
@@ -27,10 +40,9 @@ from merlino_vpt2_vci import (
     QuarticForceField,
     VCIOptions,
     load_force_field,
-    run_gf_report_from_fchk,
     run_vpt2_vci_report,
     solve_vci,
-    write_csv_tables,
+    write_csv_tables as write_vpt2_vci_csv_tables,
 )
 
 
@@ -52,6 +64,24 @@ def build_parser() -> argparse.ArgumentParser:
     gf.add_argument("--run-dir", type=Path)
     gf.add_argument("--csv-dir", type=Path)
 
+    gic_gf = sub.add_parser(
+        "gic-gf",
+        help="Run GF/PED from FCHK Hessian using a frozen GIC definition and optional Pulay scaling",
+    )
+    gic_gf.add_argument("--schema", type=Path, required=True, help="GIC definition JSON from gic-define")
+    gic_gf.add_argument("--fchk", type=Path, required=True, help="Gaussian FCHK adapter containing Cartesian Hessian")
+    gic_gf.add_argument("--geometry", "--xyz", dest="geometry", type=Path, help="Optional current Cartesian geometry for B")
+    gic_gf.add_argument("--scale-file", type=Path, help="Optional Pulay diagonal scaling factors")
+    gic_gf.add_argument(
+        "--scale",
+        action="append",
+        default=[],
+        help="Inline Pulay factor selector=value; selectors may be GIC001, name, one-based index, default or all",
+    )
+    gic_gf.add_argument("--out", type=Path)
+    gic_gf.add_argument("--run-dir", type=Path)
+    gic_gf.add_argument("--csv-dir", type=Path)
+
     vci = sub.add_parser("vci", help="Run VPT2/VCI from canonical QFF and optional FCHK frequencies")
     vci.add_argument("--qff", type=Path)
     vci.add_argument("--fchk", type=Path)
@@ -65,6 +95,22 @@ def build_parser() -> argparse.ArgumentParser:
     gic = sub.add_parser("gic", help="Run GICForge in a work directory")
     gic.add_argument("--workdir", type=Path, required=True)
     gic.add_argument("--executable", type=Path)
+    gic.add_argument("--no-symmetry", action="store_true", help="Skip post-GICForge symmetry adaptation")
+
+    gic_define = sub.add_parser("gic-define", help="Build a frozen GIC definition from Cartesian geometry")
+    gic_define.add_argument("--geometry", "--xyz", dest="geometry", type=Path, required=True)
+    gic_define.add_argument("--out", type=Path, required=True, help="Output GIC definition JSON")
+    gic_define.add_argument("--workdir", type=Path, help="Optional GICForge working directory")
+    gic_define.add_argument("--executable", type=Path)
+    gic_define.add_argument("--gaussian-out", type=Path, help="Optional Gaussian-readable GIC block")
+    gic_define.add_argument("--no-symmetry", action="store_true", help="Freeze raw non-redundant GICs without symmetry adaptation")
+
+    gic_bmat = sub.add_parser("gic-bmatrix", help="Evaluate B matrix from a frozen GIC definition and Cartesian geometry")
+    gic_bmat.add_argument("--schema", type=Path, required=True, help="GIC definition JSON from gic-define")
+    gic_bmat.add_argument("--geometry", "--xyz", dest="geometry", type=Path, required=True)
+    gic_bmat.add_argument("--out", type=Path, required=True, help="Output CSV B matrix")
+    gic_bmat.add_argument("--values-out", type=Path, help="Optional CSV GIC values")
+    gic_bmat.add_argument("--metadata-out", type=Path, help="Optional CSV GIC name/irrep metadata")
 
     summary = sub.add_parser("gaussian-summary", help="Summarize a Gaussian log/out file")
     summary.add_argument("log", type=Path)
@@ -102,16 +148,21 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument("--observations", type=Path, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
-    semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings to keep fixed")
+    semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings or primitive constraints to keep fixed")
+    semiexp.add_argument(
+        "--fix-hydrogens",
+        action="store_true",
+        help="Freeze deterministic local H/D/T geometry constraints, expanded by symmetry",
+    )
     semiexp.add_argument(
         "--max-iter",
         type=int,
         default=None,
         help="Maximum LM iterations; default is automatic: max(8, 2*N optimized parameters)",
     )
-    semiexp.add_argument("--step", type=float, default=1.0e-4, help="Finite step for rotational observable derivatives with respect to GICs")
+    semiexp.add_argument("--step", type=float, default=1.0e-4, help="Finite step for fallback derivatives with respect to working coordinates")
     semiexp.add_argument("--damping", type=float, default=1.0e-8, help="Initial Levenberg-Marquardt damping")
-    semiexp.add_argument("--max-step", type=float, default=0.25, help="Maximum active-GIC step norm per iteration")
+    semiexp.add_argument("--max-step", type=float, default=0.25, help="Maximum active-coordinate step norm per iteration")
     semiexp.add_argument(
         "--prune-condition",
         type=float,
@@ -123,6 +174,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("moments", "rotational_constants", "auto"),
         default=DEFAULT_SEMIEXP_OBSERVABLE,
         help="Fit target; default moments is the Merlino standard because it is more stable than reciprocal rotational constants",
+    )
+    semiexp.add_argument(
+        "--coordinate-model",
+        choices=("gic", "cartesian_symmetry"),
+        default="gic",
+        help="Working coordinates for SEfit: frozen GICs or Hessian-free symmetry Cartesians",
     )
     semiexp.add_argument(
         "--rotational-components",
@@ -167,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(report.text + "\n", encoding="utf-8")
         outputs = {"report": out}
         if args.csv_dir is not None:
-            outputs.update({f"csv_{name}": path for name, path in write_csv_tables(report, args.csv_dir).items()})
+            outputs.update({f"csv_{name}": path for name, path in write_gf_csv_tables(report, args.csv_dir).items()})
         run_dir = args.run_dir or out.parent
         build_run_manifest(
             workflow="gf",
@@ -178,6 +235,40 @@ def main(argv: list[str] | None = None) -> int:
             backend={"adapter": "gaussian-fchk", "solver": "python"},
         ).write(Path(run_dir) / "gf_manifest.json")
         print(out)
+        return 0
+
+    if args.command == "gic-gf":
+        report = run_gic_gf_report_from_fchk(
+            args.fchk,
+            args.schema,
+            geometry_path=args.geometry,
+            scale_path=args.scale_file,
+            scale_records=tuple(args.scale),
+        )
+        out = args.out or Path("gic_gf_ped_report.txt")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(report.text + "\n", encoding="utf-8")
+        outputs = {"report": out}
+        if args.csv_dir is not None:
+            outputs.update({f"csv_{name}": path for name, path in write_gf_csv_tables(report, args.csv_dir, prefix="gic_gf").items()})
+        run_dir = args.run_dir or out.parent
+        inputs = {"fchk": args.fchk, "gic_definition": args.schema}
+        if args.geometry is not None:
+            inputs["geometry"] = args.geometry
+        if args.scale_file is not None:
+            inputs["scale_file"] = args.scale_file
+        build_run_manifest(
+            workflow="gic_gf",
+            status="completed",
+            run_dir=run_dir,
+            inputs=inputs,
+            outputs=outputs,
+            parameters={"inline_scale_records": tuple(args.scale)},
+            backend={"adapter": "gaussian-fchk", "solver": "python", "coordinate_model": "frozen-gic-definition"},
+        ).write(Path(run_dir) / "gic_gf_manifest.json")
+        print(out)
+        print(f"frequency_count: {len(report.result.frequencies_cm)}")
+        print(f"gic_count: {len(report.result.gic_labels)}")
         return 0
 
     if args.command == "vci":
@@ -194,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(report.text + "\n", encoding="utf-8")
         outputs = {"report": out}
         if args.csv_dir is not None:
-            outputs.update({f"csv_{name}": path for name, path in write_csv_tables(report, args.csv_dir).items()})
+            outputs.update({f"csv_{name}": path for name, path in write_vpt2_vci_csv_tables(report, args.csv_dir).items()})
         run_dir = args.run_dir or out.parent
         inputs = {}
         if args.fchk is not None:
@@ -234,10 +325,63 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "gic":
-        result = run_gicforge(args.workdir, executable=args.executable)
+        result = run_gicforge(args.workdir, executable=args.executable, symmetrize=not args.no_symmetry)
         print(f"manifest: {result.manifest}")
+        print(f"symmetrized: {not args.no_symmetry}")
         for name, path in sorted(result.files.items()):
             print(f"{name}: {path}")
+        return 0
+
+    if args.command == "gic-define":
+        from merlino_semiexp.geometry_input import read_geometry_input
+
+        geometry = read_geometry_input(args.geometry)
+        definition = define_gics_from_cartesian(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=args.workdir,
+            executable=args.executable,
+            symmetrize=not args.no_symmetry,
+        )
+        definition.write(args.out)
+        print(f"schema: {args.out}")
+        print(f"point_group: {definition.point_group}")
+        print(f"symmetrized: {definition.symmetrized}")
+        print(f"gic_count: {definition.u_matrix.shape[1]}")
+        print(f"primitive_count: {definition.u_matrix.shape[0]}")
+        if args.gaussian_out is not None:
+            gaussian_path = write_gaussian_gic_input(definition, args.gaussian_out)
+            print(f"gaussian_input: {gaussian_path}")
+        return 0
+
+    if args.command == "gic-bmatrix":
+        import numpy as np
+        from merlino_semiexp.geometry_input import read_geometry_input
+        from topology.elements import atomic_number
+
+        definition = GICDefinition.read(args.schema)
+        geometry = read_geometry_input(args.geometry)
+        z_numbers = tuple(atomic_number(atom) for atom in geometry.atoms)
+        evaluation = evaluate_gic_definition(definition, geometry.coordinates_angstrom, atomic_numbers=z_numbers)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        np.savetxt(args.out, evaluation.b_matrix, delimiter=",", fmt="%.16e")
+        print(f"b_matrix: {args.out}")
+        print(f"shape: {evaluation.b_matrix.shape[0]}x{evaluation.b_matrix.shape[1]}")
+        print(f"point_group: {evaluation.point_group}")
+        print(f"symmetrized: {evaluation.symmetrized}")
+        if args.values_out is not None:
+            args.values_out.parent.mkdir(parents=True, exist_ok=True)
+            np.savetxt(args.values_out, evaluation.values.reshape(-1, 1), delimiter=",", fmt="%.16e")
+            print(f"values: {args.values_out}")
+        if args.metadata_out is not None:
+            args.metadata_out.parent.mkdir(parents=True, exist_ok=True)
+            rows = ["gic,name,irrep,label"]
+            for idx, label in enumerate(evaluation.labels, start=1):
+                name = evaluation.names[idx - 1] if idx <= len(evaluation.names) else f"GIC{idx:03d}"
+                irrep = evaluation.irreps[idx - 1] if idx <= len(evaluation.irreps) else "UNK"
+                rows.append(f"GIC{idx:03d},{name},{irrep},{json.dumps(label)}")
+            args.metadata_out.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            print(f"metadata: {args.metadata_out}")
         return 0
 
     if args.command == "semiexp":
@@ -249,8 +393,11 @@ def main(argv: list[str] | None = None) -> int:
         if observations_path is None:
             raise ValueError("semiexp needs --observations or a [files].observations entry in --job")
         fixed = _merge_unique(job.fixed_parameters if job else (), _parse_fixed_parameters(args.fixed))
+        if args.fix_hydrogens:
+            fixed = _merge_unique(fixed, (HYDROGEN_PARAMETER_CONSTRAINT,))
         observations = read_observations(observations_path)
         observable = _job_default(args.observable, DEFAULT_SEMIEXP_OBSERVABLE, job.observable if job else None)
+        coordinate_model = _job_default(args.coordinate_model, "gic", job.coordinate_model if job else None)
         rotational_components = _job_default(
             args.rotational_components,
             DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
@@ -272,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
             rotational_components=rotational_components,
             qm_predicates=qm_predicates,
             parameter_classes=parameter_classes,
+            coordinate_model=coordinate_model,
         )
         result = fit_semiexperimental_geometry(
             request,
@@ -293,7 +441,11 @@ def main(argv: list[str] | None = None) -> int:
         _append_manifest_output(args.outdir / "semiexp_manifest.json", "latex_tables", tables_path)
         print(f"manifest: {result.manifest}")
         print(f"report: {report_path}")
-        print(f"rms_MHz: {result.rms_MHz:.8g}")
+        rms_label = "rms_MHz" if result.diagnostics.observable == "rotational_constants" else "rms_observable"
+        print(f"{rms_label}: {result.rms_MHz:.8g}")
+        rot_diffs = [row.difference_MHz for row in result.rotational_constants]
+        rotational_rms = math.sqrt(sum(diff * diff for diff in rot_diffs) / len(rot_diffs)) if rot_diffs else 0.0
+        print(f"rotational_rms_MHz: {rotational_rms:.8g}")
         print(f"iterations: {result.iterations}")
         print(f"stationary_point: {result.stationary_point}")
         print(f"convergence: {result.diagnostics.convergence_reason}")
@@ -302,6 +454,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"observable: {result.diagnostics.observable}")
         print(f"components: {','.join(result.diagnostics.components)}")
         print(f"backend: {backend}")
+        print(f"coordinate_model: {result.diagnostics.coordinate_model}")
         return 0
 
     if args.command == "gaussian-summary":

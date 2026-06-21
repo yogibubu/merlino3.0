@@ -5,8 +5,9 @@ from pathlib import Path
 
 import numpy as np
 
+from merlino_gf import GFResult, mass_weighted_cartesian_hessian, solve_wilson_gf
+
 from .gaussian_qff import FCHKData, anharmonic_input_from_gaussian_fchk, hessian_input_from_gaussian_fchk, read_gaussian_fchk_qff, read_indexed_qff_text
-from .harmonic import GFResult, mass_weighted_cartesian_hessian, solve_wilson_gf
 from .vci import VCIResult, solve_vci, zero_anharmonic_force_field
 
 

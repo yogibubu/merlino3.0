@@ -4,7 +4,9 @@ import json
 import hashlib
 from pathlib import Path
 
-from merlino_gic import run_gicforge
+import numpy as np
+
+from merlino_gic import GICDefinition, define_gics_from_cartesian, evaluate_gic_definition, run_gicforge
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
 
 
@@ -35,6 +37,90 @@ def test_run_gicforge_collects_outputs_and_manifest(tmp_path):
     assert manifest["workflow"] == "gicforge"
     assert manifest["outputs"]["gauin"] == str(tmp_path / "gauin")
     assert "provin" in manifest["inputs"]
+    assert manifest["backend"]["symmetrize"] is True
+
+
+def test_run_gicforge_can_skip_symmetry_postcheck_and_removes_stale_outputs(tmp_path):
+    executable = tmp_path / "fake_gicforge.sh"
+    executable.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -e",
+                "printf 'legacy report\\n' > provout",
+                "printf 'raw gaussian input\\n' > gauin",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    (tmp_path / "provin").write_text("input\n", encoding="utf-8")
+    (tmp_path / "gauin.symm").write_text("stale\n", encoding="utf-8")
+    (tmp_path / "gicsym").write_text("stale\n", encoding="utf-8")
+
+    result = run_gicforge(tmp_path, executable=executable, symmetrize=False)
+    manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
+
+    assert "gauin" in result.files
+    assert "gauin.symm" not in result.files
+    assert "gicsym" not in result.files
+    assert not (tmp_path / "gauin.symm").exists()
+    assert manifest["backend"]["symmetrize"] is False
+
+
+def test_gic_definition_can_be_reused_to_build_b_matrix_on_new_geometry(tmp_path):
+    executable = tmp_path / "fake_gicforge.sh"
+    executable.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -e",
+                "printf ' Point Group from symm.f: C2v\\n' > provout",
+                "cat > gauin.symm <<'EOF'",
+                " A1Str0001=[ 0.70710678*R(  1,  2)+0.70710678*R(  1,  3)]",
+                " B2Str0001=[ 0.70710678*R(  1,  2)-0.70710678*R(  1,  3)]",
+                " A1Ang0001=[ 1.00000000*A(  2,  1,  3)]",
+                "EOF",
+                "cat > gicsym <<'EOF'",
+                "name,irrep",
+                "A1Str0001,A1",
+                "B2Str0001,B2",
+                "A1Ang0001,A1",
+                "EOF",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    atoms = ("O", "H", "H")
+    coords = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [0.7570, 0.0000, 0.5860],
+            [-0.7570, 0.0000, 0.5860],
+        ],
+        dtype=float,
+    )
+
+    definition = define_gics_from_cartesian(atoms, coords, workdir=tmp_path / "define", executable=executable)
+    schema = definition.write(tmp_path / "gic_definition.json")
+    restored = GICDefinition.read(schema)
+    moved = coords.copy()
+    moved[1, 0] += 0.01
+    evaluation = evaluate_gic_definition(restored, moved, atomic_numbers=(8, 2, 2))
+
+    assert restored.point_group == "C2v"
+    assert restored.symmetrized is True
+    assert restored.u_matrix.shape == (3, 3)
+    assert len(restored.labels) == 3
+    assert evaluation.values.shape == (3,)
+    assert evaluation.b_matrix.shape == (3, 9)
+    assert evaluation.irreps == ("A1", "B2", "A1")
+    assert evaluation.point_group == "C2v"
+    assert evaluation.symmetrized is True
+    assert np.isfinite(evaluation.b_matrix).all()
 
 
 def test_gic_symmetry_postcheck_is_byte_deterministic(tmp_path):

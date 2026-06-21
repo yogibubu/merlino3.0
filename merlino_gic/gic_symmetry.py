@@ -43,16 +43,18 @@ def write_gic_symmetry_files(workdir: Path) -> None:
     prims, u_matrix = _primitive_basis(gics)
     oriented = _oriented_coords(atoms, coords)
     op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
-    sym_gics = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented)
+    raw_class_targets = _class_counts(u_matrix, prims)
+    sym_gics, class_targets = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented)
     _write_gicsym(run_dir / "gicsym", sym_gics)
     _write_gic_symmetry_diagnostics(
         run_dir / "gic_symmetry_diagnostics.json",
         sym_gics,
         op_data,
         len(coords),
-        _class_counts(u_matrix, prims),
+        class_targets,
         prims,
         oriented,
+        raw_class_targets,
     )
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
 
@@ -162,7 +164,7 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
 def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.ndarray):
     irreps = _irrep_characters([item[0] for item in op_data])
     if not irreps:
-        return [(gic.name, "A", "input", u_matrix[:, idx]) for idx, gic in enumerate(gics)]
+        return [(gic.name, "A", "input", u_matrix[:, idx]) for idx, gic in enumerate(gics)], _class_counts(u_matrix, prims)
     targets = _vibrational_irrep_counts(op_data, irreps, len(coords))
     b_primitive = b_matrix_analytic(prims, coords)
     source_rows = u_matrix.T @ b_primitive
@@ -182,17 +184,8 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
             if score > ZERO_TOL:
                 candidates.append((score, class_order.get(kind, 9), col, irrep_order[irrep], irrep, chars, kind, projected_row_raw, projected_row))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
-    chosen = []
-    used_names: dict[str, int] = {}
-    selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
-    selected_class_rows: dict[tuple[str, str], list[np.ndarray]] = {}
-    selected_class_coeffs: dict[tuple[str, str], list[np.ndarray]] = {}
-    selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
-    selected_global: list[np.ndarray] = []
-    used_cols: set[int] = set()
-    for _score, _class_idx, col, _irrep_idx, irrep, chars, kind, projected_row_raw, projected_row in candidates:
-        if col in used_cols or len(selected_rows[irrep]) >= targets.get(irrep, 0):
-            continue
+    resolved_candidates = []
+    for score, class_idx, col, irrep_idx, irrep, chars, kind, projected_row_raw, projected_row in candidates:
         coeff = _project_column_to_irrep(u_matrix[:, col], chars, op_data)
         coeff_norm = np.linalg.norm(coeff)
         source = "primitive_projection"
@@ -209,7 +202,35 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
             coeff_norm = np.linalg.norm(coeff) if coeff is not None else 0.0
         if coeff_norm < ZERO_TOL:
             continue
+        output_row = coeff @ b_primitive @ vib_projector
+        if np.linalg.norm(output_row) < RANK_TOL:
+            continue
+        resolved_candidates.append((score, class_idx, col, irrep_idx, irrep, kind, source, coeff, output_row))
+    class_targets = _rank_limited_class_targets(class_targets, resolved_candidates, sum(targets.values()))
+    capacities: dict[tuple[str, str], int] = {}
+    for irrep, _chars in irreps:
+        for kind in class_targets:
+            rows = [entry[8] for entry in resolved_candidates if entry[4] == irrep and entry[5] == kind]
+            capacities[(irrep, kind)] = _rank_capacity(rows)
+    block_targets = _allocate_symmetry_class_counts(
+        targets,
+        class_targets,
+        capacities,
+        [irrep for irrep, _chars in irreps],
+        sorted(class_targets, key=lambda item: class_order.get(item, 9)),
+    )
+    chosen = []
+    used_names: dict[str, int] = {}
+    selected_rows: dict[str, list[np.ndarray]] = {irrep: [] for irrep, _chars in irreps}
+    selected_class_rows: dict[tuple[str, str], list[np.ndarray]] = {}
+    selected_class_coeffs: dict[tuple[str, str], list[np.ndarray]] = {}
+    selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
+    selected_global: list[np.ndarray] = []
+    selected_blocks: dict[tuple[str, str], int] = {key: 0 for key in block_targets}
+    for _score, _class_idx, col, _irrep_idx, irrep, kind, source, coeff, _output_row in resolved_candidates:
         class_key = (irrep, kind)
+        if selected_blocks.get(class_key, 0) >= block_targets.get(class_key, 0):
+            continue
         class_rows = selected_class_rows.setdefault(class_key, [])
         class_coeffs = selected_class_coeffs.setdefault(class_key, [])
         output_row = coeff @ b_primitive @ vib_projector
@@ -231,9 +252,13 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
         selected_rows[irrep].append(output_unit)
         selected_global.append(global_residual / global_norm)
         selected_classes[kind] = selected_classes.get(kind, 0) + 1
-        used_cols.add(col)
+        selected_blocks[class_key] = selected_blocks.get(class_key, 0) + 1
         chosen.append((irrep_order[irrep], col, irrep, kind, source, coeff))
-        if all(len(selected_rows[name]) == targets.get(name, 0) for name, _chars in irreps):
+        if (
+            all(len(selected_rows[name]) == targets.get(name, 0) for name, _chars in irreps)
+            and selected_classes == class_targets
+            and selected_blocks == block_targets
+        ):
             break
     counts = {irrep: len(rows) for irrep, rows in selected_rows.items()}
     if counts != targets:
@@ -243,7 +268,7 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
     adapted = []
     for _irrep_idx, _col, irrep, kind, source, coeff in sorted(chosen, key=lambda item: (item[0], item[1])):
         adapted.append((_next_name(irrep, kind, used_names), irrep, source, coeff))
-    return adapted
+    return adapted, class_targets
 
 
 def _class_counts(u_matrix: np.ndarray, prims: list[Primitive]) -> dict[str, int]:
@@ -252,6 +277,129 @@ def _class_counts(u_matrix: np.ndarray, prims: list[Primitive]) -> dict[str, int
         kind = _dominant_kind(u_matrix[:, col], prims)
         counts[kind] = counts.get(kind, 0) + 1
     return counts
+
+
+def _rank_capacity(rows: list[np.ndarray]) -> int:
+    if not rows:
+        return 0
+    return int(np.linalg.matrix_rank(np.vstack(rows), tol=RANK_TOL))
+
+
+def _rank_limited_class_targets(
+    class_targets: dict[str, int],
+    resolved_candidates: list[tuple[float, int, int, int, str, str, str, np.ndarray, np.ndarray]],
+    target_total: int,
+) -> dict[str, int]:
+    """Limit family targets to the global vibrational rank without mixing types."""
+    current_total = sum(class_targets.values())
+    if current_total == target_total:
+        return class_targets
+    if current_total < target_total:
+        raise RuntimeError(f"GIC class targets below vibrational rank: {class_targets}; target={target_total}")
+    selected_rows: list[np.ndarray] = []
+    counts = {kind: 0 for kind in class_targets}
+    for _score, _class_idx, _col, _irrep_idx, _irrep, kind, _source, _coeff, output_row in resolved_candidates:
+        if counts.get(kind, 0) >= class_targets.get(kind, 0):
+            continue
+        residual = _orthogonal_residual(output_row, selected_rows)
+        norm = float(np.linalg.norm(residual))
+        if norm < RANK_TOL:
+            continue
+        selected_rows.append(residual / norm)
+        counts[kind] = counts.get(kind, 0) + 1
+        if sum(counts.values()) == target_total:
+            return {kind: count for kind, count in counts.items() if count}
+    raise RuntimeError(f"Unable to reduce GIC class targets {class_targets} to vibrational rank {target_total}")
+
+
+def _allocate_symmetry_class_counts(
+    targets: dict[str, int],
+    class_targets: dict[str, int],
+    capacities: dict[tuple[str, str], int],
+    irrep_order: list[str],
+    kind_order: list[str],
+) -> dict[tuple[str, str], int]:
+    """Allocate final coordinates by irrep and physical coordinate family."""
+    remaining_classes = dict(class_targets)
+    assignments: dict[tuple[str, str], int] = {}
+
+    def backtrack(row_index: int) -> bool:
+        if row_index == len(irrep_order):
+            return all(value == 0 for value in remaining_classes.values())
+        irrep = irrep_order[row_index]
+        for row_assignment in _row_count_assignments(irrep, targets[irrep], remaining_classes, capacities, kind_order):
+            for kind, count in row_assignment.items():
+                remaining_classes[kind] -= count
+                assignments[(irrep, kind)] = count
+            if _remaining_capacity_sufficient(row_index + 1, irrep_order, kind_order, remaining_classes, capacities) and backtrack(row_index + 1):
+                return True
+            for kind, count in row_assignment.items():
+                remaining_classes[kind] += count
+                assignments.pop((irrep, kind), None)
+        return False
+
+    if backtrack(0):
+        return {key: value for key, value in assignments.items() if value}
+    capacity_payload = {
+        f"{irrep}:{kind}": int(capacities.get((irrep, kind), 0))
+        for irrep in irrep_order
+        for kind in kind_order
+    }
+    raise RuntimeError(
+        "GIC symmetry class allocation failed: "
+        f"targets={targets}; class_targets={class_targets}; capacities={capacity_payload}"
+    )
+
+
+def _row_count_assignments(
+    irrep: str,
+    target: int,
+    remaining_classes: dict[str, int],
+    capacities: dict[tuple[str, str], int],
+    kind_order: list[str],
+) -> list[dict[str, int]]:
+    out: list[dict[str, int]] = []
+    current: dict[str, int] = {}
+
+    def rec(kind_index: int, remaining: int) -> None:
+        if kind_index == len(kind_order):
+            if remaining == 0:
+                out.append(dict(current))
+            return
+        kind = kind_order[kind_index]
+        max_count = min(remaining, remaining_classes.get(kind, 0), capacities.get((irrep, kind), 0))
+        for count in range(max_count, -1, -1):
+            if count:
+                current[kind] = count
+            else:
+                current.pop(kind, None)
+            rest_capacity = 0
+            for next_kind in kind_order[kind_index + 1 :]:
+                rest_capacity += min(remaining_classes.get(next_kind, 0), capacities.get((irrep, next_kind), 0))
+            if remaining - count <= rest_capacity:
+                rec(kind_index + 1, remaining - count)
+        current.pop(kind, None)
+
+    rec(0, target)
+    # Prefer chemically transparent A1 coordinates and scarce non-totally
+    # symmetric families.  The sort is deterministic and only chooses among
+    # allocations already compatible with the exact row/column counts.
+    out.sort(key=lambda item: tuple(-item.get(kind, 0) for kind in kind_order))
+    return out
+
+
+def _remaining_capacity_sufficient(
+    next_row: int,
+    irrep_order: list[str],
+    kind_order: list[str],
+    remaining_classes: dict[str, int],
+    capacities: dict[tuple[str, str], int],
+) -> bool:
+    for kind in kind_order:
+        capacity = sum(capacities.get((irrep, kind), 0) for irrep in irrep_order[next_row:])
+        if remaining_classes.get(kind, 0) > capacity:
+            return False
+    return True
 
 
 def _source_column_order(
@@ -535,6 +683,7 @@ def _write_gic_symmetry_diagnostics(
     class_targets: dict[str, int],
     prims: list[Primitive] | None = None,
     coords: np.ndarray | None = None,
+    raw_class_targets: dict[str, int] | None = None,
 ) -> None:
     irreps = _irrep_characters([item[0] for item in op_data])
     targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
@@ -561,6 +710,7 @@ def _write_gic_symmetry_diagnostics(
         "b_ranks": b_ranks,
         "class_targets": class_targets,
         "class_counts": class_counts,
+        "raw_class_targets": raw_class_targets or class_targets,
         "sources": sources,
         "strict_clean": all(not source.startswith(("global_", "unresolved")) for source in sources),
         "tolerances": {

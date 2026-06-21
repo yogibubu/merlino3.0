@@ -34,6 +34,7 @@ observations = "cyclopentadiene_isotopologues.toml"
 
 [fit]
 backend = "python"
+coordinate_model = "gic"
 observable = "moments"
 rotational_components = "auto"
 max_step = 0.25
@@ -50,6 +51,7 @@ atoms = [
 ]
 
 [constraints]
+fix_hydrogen_parameters = true
 fixed_gic_patterns = [
   "bond(1,2)",
 ]
@@ -84,15 +86,23 @@ patterns = ["angle"]
 `[fit]`
 
 - `backend`: `python` or `fortran77`. The GUI asks for this choice per run.
+- `coordinate_model`: `gic` or `cartesian_symmetry`. `gic` builds
+  non-redundant symmetry-adapted GICs and uses their B matrix.
+  `cartesian_symmetry` does not use a Hessian or a B matrix: it removes
+  Cartesian translations/rotations from the parent geometry, projects the
+  remaining displacement space by the detected point-group irreps and optimizes
+  only the totally symmetric Cartesian directions.
 - `observable`: `moments`, `rotational_constants` or `auto`. The Merlino
   standard is `moments`.
 - `rotational_components`: `auto`, `ABC`, `AB`, `AC` or `BC`. This only matters
   for direct rotational-constant fits.
 - `max_iter`: optional explicit iteration cap. If omitted, Merlino uses an
   automatic cap proportional to the number of effective fitted parameters.
-- `step`: finite GIC step used for observable derivatives.
-- `damping`: initial Levenberg-Marquardt damping.
-- `max_step`: maximum active-GIC step norm.
+- `step`: finite working-coordinate step used only by fallback numerical
+  derivatives. Current GIC and symmetry-Cartesian SEfit paths use
+  analytic Cartesian derivatives for rotational observables.
+- `damping`: initial Levenberg-Marquardt damping for the trust-region solver.
+- `max_step`: maximum active-coordinate trust-region step norm.
 - `prune_condition`: deterministic weak-parameter pruning target. `0.0`
   disables pruning.
 
@@ -106,17 +116,31 @@ patterns = ["angle"]
 
 `[constraints]`
 
-- `fixed_gic_patterns`: substrings matched against final GIC labels. Matching
-  parameters are reported but excluded from the fit.
+- `fixed_gic_patterns`: substrings matched against final working-coordinate
+  labels. For `coordinate_model = "gic"` these are final GIC labels; for
+  `cartesian_symmetry` they are labels such as `SC001`, `A1Cart0001` or
+  `irrep=A1`. Matching parameters are reported but excluded from the fit.
+- `fix_hydrogen_parameters`: optional boolean. When true, Merlino fixes a
+  deterministic local coordinate frame for every H, D or T atom. The generated
+  constraints use the corresponding X-H stretch, one local valence or
+  linear-bend definition, and one torsional or out-of-plane orientation
+  coordinate when available. This freezes hydrogen positions at the reference
+  QM geometry without over-constraining heavy-atom skeletal coordinates. The
+  primitive constraints are expanded over symmetry before the active GIC space
+  is projected.
 - `modredundant`: optional Gaussian ModRedundant freeze records. Only `F`
   records are interpreted. Supported coordinate tags are `B`, `A`, `D`, `O`
   and `L`.
 - ModRedundant indexes are one-based and refer to the `[geometry].atoms` order.
+  Freeze records are converted to primitive-coordinate constraints and expanded
+  automatically to all symmetry-equivalent primitive coordinates before the
+  active totally symmetric GIC space is projected.
 
 `[[qm_predicates]]`
 
-- `pattern`: substring matched against GIC labels.
-- `value`: target GIC value in native Merlino units.
+- `pattern`: substring matched against working-coordinate labels.
+- `value`: target working-coordinate value in native Merlino units for GICs, or
+  Angstrom Cartesian-basis amplitudes for `cartesian_symmetry`.
 - `sigma`: one-sigma uncertainty in the same unit.
 - `source`: free text.
 
@@ -124,8 +148,10 @@ patterns = ["angle"]
 
 - `name`: class name reported in output tables.
 - `mode`: `shared` or `fixed`.
-- `patterns`: list of label substrings. Use explicit coordinate-type words
-  such as `bond`, `angle`, `dihedral` when possible.
+- `patterns`: list of label substrings. With the GIC model, use explicit
+  coordinate-type words such as `bond`, `angle`, `dihedral` when possible.
+  With the symmetry-Cartesian model, use labels such as `SC001`, `A1Cart0001`
+  or `irrep=A1`.
 
 ## 2. Gaussian Cartesian Geometry Input
 
@@ -145,8 +171,9 @@ B 1 2 F
 ```
 
 Everything after the blank line following the Cartesian block is treated as
-ModRedundant data. Freeze records are converted to fixed GIC label patterns.
-Gaussian route sections containing `zmat` are rejected.
+ModRedundant data. Freeze records are converted to primitive-coordinate
+constraints, expanded over the detected symmetry orbit and projected onto the
+active GIC space. Gaussian route sections containing `zmat` are rejected.
 
 ## 3. Isotopologue Observations
 
@@ -220,12 +247,17 @@ correction_convention,delta_elec_A_MHz,delta_elec_B_MHz,delta_elec_C_MHz,electro
 
 Every semiexperimental run writes:
 
-- `semiexp_report.txt`: human-readable report with diagnostics, rotational
-  constants, final topological bond lengths/angles/dihedrals and fit residuals.
+- `semiexp_report.txt`: canonical text report in `SEFIT TEXT OUTPUT v1`
+  format. Required sections are `[method]`, `[constraints]`,
+  `[fit_statistics]`, `[working_coordinates]`,
+  `[primitive_internal_coordinates]`, `[rotational_constants]` and
+  `[fit_residuals]`.
 - `semiexp_report.html`: graphical self-contained report for GUI inspection.
 - `semiexp_geometry.xyz`: final Cartesian equilibrium geometry.
-- `semiexp_parameters.csv`: final non-redundant GIC parameters and propagated
-  errors in native GIC units.
+- `semiexp_parameters.csv`: final working-coordinate parameters and propagated
+  errors. These are non-redundant GICs in native GIC units for the default
+  model, or Cartesian-basis amplitudes in Angstrom for the symmetry-Cartesian
+  model.
 - `semiexp_geometry_parameters.csv`: final bond lengths in Angstrom and angles
   or dihedrals in degrees, with propagated one-sigma errors.
 - `semiexp_rotational_constants.csv`: corrected experimental constants,
@@ -235,6 +267,9 @@ Every semiexperimental run writes:
 - `semiexp_covariance.csv`, `semiexp_correlation.csv`,
   `semiexp_hessian.csv`, `semiexp_hessian_eigenvalues.csv`.
 - `semiexp_diagnostics.csv`: convergence and conditioning diagnostics.
+- `semiexp_influence.csv`: residual, weighted residual, chi-square contribution
+  and leverage by observable.
+- `semiexp_high_correlations.csv`: strongly correlated fitted-parameter pairs.
 - `semiexp_manifest.json`: reproducibility manifest with input/output checksums
   and run parameters.
 
@@ -258,3 +293,11 @@ python -m merlino semiexp \
   --outdir semiexp_run
 ```
 
+Symmetry-Cartesian working-coordinate run:
+
+```bash
+python -m merlino semiexp \
+  --job cyclopentadiene.mse.toml \
+  --coordinate-model cartesian_symmetry \
+  --outdir semiexp_cartesian_symmetry
+```

@@ -19,7 +19,8 @@ DVR parsing/writing should have one source of truth.
 
 The planned new scientific capabilities are limited and explicit:
 
-- Harmonic GF analysis from independent Python code and `fortran/vpt2_vci/gf_core.f`.
+- Harmonic GF analysis from the independent `merlino_gf` Python package and
+  `fortran/vpt2_vci/gf_core.f`.
 - VPT2/VCI from Gaussian quartic force fields, with a Davidson diagonalizer for
   large VCI spaces.
 - Semiexperimental equilibrium-geometry determination from least-squares fits of
@@ -33,7 +34,11 @@ The planned new scientific capabilities are limited and explicit:
 - `merlino_geometry`: atoms, XYZ, masses, isotopes, topology, rings and symmetry
   data structures.
 - `merlino_gic`: ring numbering, GIC construction, Gaussian GIC coordinate
-  definitions and Python/Fortran comparison helpers.
+  definitions, optional symmetry adaptation, frozen GIC schemas and reusable
+  B-matrix evaluation.
+- `merlino_gf`: Cartesian-Hessian to GIC-B/GF/PED transformations, Pulay
+  scaling and harmonic report/CSV services. This package is physically
+  separated from VPT2/VCI.
 - `merlino_gaussian`: Gaussian input writing, log parsing, scan extraction,
   GIC-value extraction and job metadata.
 - `merlino_fortran`: executable/source discovery, build checks, subprocess
@@ -41,9 +46,9 @@ The planned new scientific capabilities are limited and explicit:
   Fortran kernels.
 - `merlino_dvr`: Gaussian-log/grid to DVR workflows, Cremer-Pople mapping,
   Fortran bridge integration and output readers.
-- `merlino_vpt2_vci`: harmonic internal-coordinate GF integration, Gaussian
-  quartic force-field extraction, VPT2/VCI input preparation, VCI basis control,
-  Fortran backend orchestration and Davidson diagonalization outputs.
+- `merlino_vpt2_vci`: Gaussian quartic force-field extraction, VPT2/VCI input
+  preparation, VCI basis control, Fortran backend orchestration and Davidson
+  diagonalization outputs.
 - `merlino_semiexp`: semiexperimental equilibrium-geometry fits from
   isotopologue rotational constants, QM vibrational corrections and
   least-squares diagnostics.

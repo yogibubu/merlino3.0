@@ -1,0 +1,427 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import re
+import tempfile
+from typing import Callable
+
+import numpy as np
+
+from merlino_fit.survibfit.pipeline import b_matrix_analytic
+from merlino_fit.survibfit.primitives import Primitive, eval_primitives
+from topology.elements import atomic_number, atomic_symbol
+
+from .gicforge_service import GICForgeResult, run_gicforge
+
+
+GIC_DEFINITION_SCHEMA = "merlino.gic.definition.v1"
+
+
+class GICDefinitionError(RuntimeError):
+    """Raised when a frozen GIC definition cannot be created or evaluated."""
+
+
+@dataclass(frozen=True)
+class GICDefinition:
+    """Frozen generalized-internal-coordinate definition.
+
+    The definition is the output of the expensive GIC construction stage.  It is
+    independent of the geometry used later to evaluate values or Wilson B rows,
+    provided the atom ordering and atom count remain compatible.
+    """
+
+    atom_symbols: tuple[str, ...]
+    atomic_numbers: tuple[int, ...]
+    reference_coordinates_angstrom: tuple[tuple[float, float, float], ...]
+    primitives: tuple[Primitive, ...]
+    u_matrix: np.ndarray
+    labels: tuple[str, ...]
+    names: tuple[str, ...]
+    irreps: tuple[str, ...]
+    point_group: str = "UNKNOWN"
+    symmetrized: bool = True
+    symmetry_source: str = "gicforge-postcheck"
+    gaussian_input: str = ""
+    source: str = "gicforge"
+    generation_workdir: str = ""
+
+    def model(self) -> tuple[list[Primitive], np.ndarray, tuple[str, ...]]:
+        """Return the legacy `(primitives, U, labels)` representation."""
+        return list(self.primitives), np.array(self.u_matrix, dtype=float, copy=True), tuple(self.labels)
+
+    def to_dict(self) -> dict:
+        return {
+            "schema": GIC_DEFINITION_SCHEMA,
+            "source": self.source,
+            "point_group": self.point_group,
+            "symmetrized": self.symmetrized,
+            "symmetry_source": self.symmetry_source,
+            "generation_workdir": self.generation_workdir,
+            "atom_symbols": list(self.atom_symbols),
+            "atomic_numbers": list(self.atomic_numbers),
+            "reference_coordinates_angstrom": [list(row) for row in self.reference_coordinates_angstrom],
+            "primitives": [_primitive_to_dict(primitive) for primitive in self.primitives],
+            "u_matrix": np.asarray(self.u_matrix, dtype=float).tolist(),
+            "labels": list(self.labels),
+            "names": list(self.names),
+            "irreps": list(self.irreps),
+            "gaussian_input": self.gaussian_input,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GICDefinition":
+        schema = data.get("schema")
+        if schema != GIC_DEFINITION_SCHEMA:
+            raise GICDefinitionError(f"GIC definition schema must be {GIC_DEFINITION_SCHEMA!r}, got {schema!r}")
+        primitives = tuple(_primitive_from_dict(item) for item in data.get("primitives", ()))
+        u_matrix = np.asarray(data.get("u_matrix", ()), dtype=float)
+        if u_matrix.ndim != 2:
+            raise GICDefinitionError("GIC definition u_matrix must be two-dimensional")
+        if u_matrix.shape[0] != len(primitives):
+            raise GICDefinitionError("GIC definition primitive count does not match u_matrix rows")
+        labels = tuple(str(item) for item in data.get("labels", ()))
+        if u_matrix.shape[1] != len(labels):
+            raise GICDefinitionError("GIC definition label count does not match u_matrix columns")
+        atom_symbols = tuple(str(item) for item in data.get("atom_symbols", ()))
+        atomic_numbers = tuple(int(item) for item in data.get("atomic_numbers", ()))
+        if not atomic_numbers and atom_symbols:
+            atomic_numbers = tuple(atomic_number(symbol) for symbol in atom_symbols)
+        if not atom_symbols and atomic_numbers:
+            atom_symbols = tuple(atomic_symbol(number) for number in atomic_numbers)
+        irreps = tuple(str(item) for item in data.get("irreps", ()))
+        symmetrized = data.get("symmetrized")
+        if symmetrized is None:
+            symmetrized = any(irrep != "UNK" for irrep in irreps)
+        return cls(
+            atom_symbols=atom_symbols,
+            atomic_numbers=atomic_numbers,
+            reference_coordinates_angstrom=tuple(
+                tuple(float(value) for value in row) for row in data.get("reference_coordinates_angstrom", ())
+            ),
+            primitives=primitives,
+            u_matrix=u_matrix,
+            labels=labels,
+            names=tuple(str(item) for item in data.get("names", ())),
+            irreps=irreps,
+            point_group=str(data.get("point_group", "UNKNOWN")),
+            symmetrized=bool(symmetrized),
+            symmetry_source=str(data.get("symmetry_source", "legacy" if symmetrized else "none")),
+            gaussian_input=str(data.get("gaussian_input", "")),
+            source=str(data.get("source", "gicforge")),
+            generation_workdir=str(data.get("generation_workdir", "")),
+        )
+
+    def write(self, path: Path) -> Path:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return target
+
+    @classmethod
+    def read(cls, path: Path) -> "GICDefinition":
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+@dataclass(frozen=True)
+class GICEvaluation:
+    values: np.ndarray
+    primitive_b_matrix: np.ndarray
+    b_matrix: np.ndarray
+    labels: tuple[str, ...]
+    names: tuple[str, ...]
+    irreps: tuple[str, ...]
+    point_group: str
+    symmetrized: bool
+
+
+RunGICForge = Callable[[Path], GICForgeResult]
+
+
+def define_gics_from_cartesian(
+    atom_symbols: tuple[str, ...] | list[str],
+    coordinates_angstrom: np.ndarray,
+    *,
+    workdir: Path | None = None,
+    executable: Path | None = None,
+    runner: RunGICForge | None = None,
+    symmetrize: bool = True,
+) -> GICDefinition:
+    """Construct and freeze a GIC definition from Cartesian geometry.
+
+    This is the first GIC utility: it runs the expensive topology/GIC/symmetry
+    construction exactly once and serializes the resulting coordinate model.
+    """
+    atoms = tuple(str(atom).strip() for atom in atom_symbols)
+    coords = _validated_coordinates(coordinates_angstrom, len(atoms))
+    if not atoms:
+        raise GICDefinitionError("GIC definition needs at least one atom")
+    run_dir = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="merlino_gic_define_"))
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _write_gicforge_inputs(run_dir, atoms, coords, symmetrize=symmetrize)
+    run = runner or run_gicforge
+    if executable is not None and runner is None:
+        result = run_gicforge(run_dir, executable=executable, symmetrize=symmetrize)
+    elif runner is None:
+        result = run_gicforge(run_dir, symmetrize=symmetrize)
+    else:
+        result = run(run_dir)
+    gauin = (result.files.get("gauin.symm") if symmetrize else None) or result.files.get("gauin")
+    if gauin is None:
+        raise GICDefinitionError(f"GICForge did not produce gauin/gauin.symm in {run_dir}")
+    was_symmetrized = bool(symmetrize and gauin.name == "gauin.symm")
+    definition = read_gic_definition_from_gauin(
+        gauin,
+        atoms,
+        coords,
+        point_group=_gicforge_point_group(run_dir / "provout"),
+        symmetrized=was_symmetrized,
+        symmetry_source="gicforge-postcheck" if was_symmetrized else "none",
+        generation_workdir=run_dir,
+    )
+    definition.write(run_dir / "gic_definition.json")
+    return definition
+
+
+def read_gic_definition_from_gauin(
+    gauin: Path,
+    atom_symbols: tuple[str, ...] | list[str],
+    coordinates_angstrom: np.ndarray,
+    *,
+    point_group: str = "UNKNOWN",
+    symmetrized: bool = True,
+    symmetry_source: str = "gicforge-postcheck",
+    generation_workdir: Path | str = "",
+) -> GICDefinition:
+    """Read a frozen GIC definition from a Gaussian-style GIC block."""
+    atoms = tuple(str(atom).strip() for atom in atom_symbols)
+    coords = _validated_coordinates(coordinates_angstrom, len(atoms))
+    irreps_by_name = _read_gicforge_irreps(Path(gauin).with_name("gicsym"))
+    prims: list[Primitive] = []
+    prim_index: dict[Primitive, int] = {}
+    columns: list[np.ndarray] = []
+    labels: list[str] = []
+    names: list[str] = []
+    irreps: list[str] = []
+    text = Path(gauin).read_text(encoding="utf-8", errors="replace")
+    for raw in text.splitlines():
+        parsed = parse_gicforge_line(raw)
+        if parsed is None:
+            continue
+        name, terms, expression = parsed
+        column = np.zeros(len(prims), dtype=float)
+        for coeff, primitive in terms:
+            if primitive not in prim_index:
+                prim_index[primitive] = len(prims)
+                prims.append(primitive)
+                column = np.pad(column, (0, 1))
+                for idx, existing in enumerate(columns):
+                    columns[idx] = np.pad(existing, (0, 1))
+            column[prim_index[primitive]] += coeff
+        irrep = irreps_by_name.get(name, "UNK")
+        label_index = len(labels) + 1
+        labels.append(f"GIC{label_index:03d} GICForge {name} irrep={irrep} {expression} {_gic_aliases(terms)}")
+        names.append(name)
+        irreps.append(irrep)
+        columns.append(column)
+    if not columns:
+        raise GICDefinitionError(f"No linear GICForge coordinates found in {gauin}")
+    return GICDefinition(
+        atom_symbols=atoms,
+        atomic_numbers=tuple(atomic_number(atom) for atom in atoms),
+        reference_coordinates_angstrom=tuple(tuple(float(value) for value in row) for row in coords),
+        primitives=tuple(prims),
+        u_matrix=np.column_stack(columns),
+        labels=tuple(labels),
+        names=tuple(names),
+        irreps=tuple(irreps),
+        point_group=point_group,
+        symmetrized=bool(symmetrized),
+        symmetry_source=symmetry_source,
+        gaussian_input=text,
+        generation_workdir=str(generation_workdir),
+    )
+
+
+def evaluate_gic_definition(
+    definition: GICDefinition,
+    coordinates_angstrom: np.ndarray,
+    *,
+    atomic_numbers: tuple[int, ...] | list[int] | np.ndarray | None = None,
+) -> GICEvaluation:
+    """Evaluate frozen GIC values and the corresponding Wilson B matrix.
+
+    This is the second GIC utility.  It never performs topology perception,
+    redundancy removal, or symmetry assignment; it only evaluates the frozen
+    primitive combinations on the supplied Cartesian geometry.
+    """
+    coords = _validated_coordinates(coordinates_angstrom, len(definition.atom_symbols))
+    if atomic_numbers is not None and len(tuple(atomic_numbers)) != len(definition.atom_symbols):
+        raise GICDefinitionError("B-matrix evaluation atomic-number count differs from GIC definition atom count")
+    prims = list(definition.primitives)
+    u_matrix = np.asarray(definition.u_matrix, dtype=float)
+    primitive_values = eval_primitives(prims, coords)
+    primitive_b = b_matrix_analytic(prims, coords)
+    return GICEvaluation(
+        values=u_matrix.T @ primitive_values,
+        primitive_b_matrix=primitive_b,
+        b_matrix=u_matrix.T @ primitive_b,
+        labels=definition.labels,
+        names=definition.names,
+        irreps=definition.irreps,
+        point_group=definition.point_group,
+        symmetrized=definition.symmetrized,
+    )
+
+
+def write_gaussian_gic_input(definition: GICDefinition, path: Path) -> Path:
+    """Write the Gaussian-readable GIC block stored in a definition."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = definition.gaussian_input or _gaussian_input_from_definition(definition)
+    target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    return target
+
+
+def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], str] | None:
+    stripped = line.strip()
+    if not stripped or "=" not in stripped:
+        return None
+    name = stripped.split("=", 1)[0].replace("(Inactive)", "").strip()
+    rhs = stripped.split("=", 1)[1].strip()
+    terms: list[tuple[float, Primitive]] = []
+    number = r"[+-]?\s*(?:\d+(?:\.\d*)?|\.\d+)(?:[EDed][+-]?\d+)?"
+    for match in re.finditer(rf"({number})\s*\*\s*([RADLU])\(([^)]*)\)", rhs):
+        coeff = float(match.group(1).replace(" ", "").replace("D", "E").replace("d", "e"))
+        terms.append((coeff, _gicforge_primitive(match.group(2), match.group(3))))
+    if not terms:
+        simple = re.search(r"\b([RADLU])\(([^)]*)\)", rhs)
+        if simple:
+            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2))))
+    if not terms:
+        return None
+    return name, terms, rhs
+
+
+def _write_gicforge_inputs(workdir: Path, atoms: tuple[str, ...], coords: np.ndarray, *, symmetrize: bool) -> None:
+    keywords = "# GNIC SYMMALL BMAT ECKART G16 CLEAN" if symmetrize else "# GNIC BMAT ECKART G16 CLEAN"
+    (workdir / "provin").write_text(
+        f"{keywords}\n\n"
+        "Merlino GIC definition utility\n\n"
+        "0 1\n",
+        encoding="utf-8",
+    )
+    lines = [str(len(atoms)), ""]
+    for atom, (x, y, z) in zip(atoms, coords):
+        lines.append(f"{atom:>4s} {x: 16.8E} {y: 16.8E} {z: 16.8E}")
+    (workdir / "xyzin").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _validated_coordinates(coordinates: np.ndarray, natoms: int) -> np.ndarray:
+    coords = np.asarray(coordinates, dtype=float)
+    if coords.shape != (natoms, 3):
+        raise GICDefinitionError(f"Expected coordinates with shape ({natoms}, 3), got {coords.shape}")
+    return coords
+
+
+def _read_gicforge_irreps(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    irreps: dict[str, str] = {}
+    for idx, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        if idx == 0 and raw.lower().startswith("name,"):
+            continue
+        parts = [part.strip() for part in raw.split(",")]
+        if len(parts) >= 2 and parts[0]:
+            irreps[parts[0]] = parts[1]
+    return irreps
+
+
+def _gicforge_point_group(provout: Path) -> str:
+    text = provout.read_text(encoding="utf-8", errors="replace") if provout.exists() else ""
+    match = re.search(r"Point Group from symm\.f:\s*([A-Za-z0-9]+)", text)
+    return match.group(1) if match else "UNKNOWN"
+
+
+def _gicforge_primitive(kind: str, atoms_text: str) -> Primitive:
+    values = tuple(int(item.strip()) for item in atoms_text.split(",") if item.strip())
+    atoms = tuple(value - 1 for value in values)
+    if kind == "R" and len(atoms) == 2:
+        return Primitive("bond", atoms)
+    if kind == "A" and len(atoms) == 3:
+        return Primitive("angle", atoms)
+    if kind == "D" and len(atoms) == 4:
+        return Primitive("dihedral", atoms)
+    if kind == "U" and len(atoms) == 4:
+        return Primitive("out_of_plane", atoms)
+    if kind == "L" and len(values) == 5:
+        mode_token = values[4]
+        mode = mode_token if mode_token in {-1, -2} else -1
+        return Primitive("linear_bend", atoms[:3], mode=mode)
+    raise GICDefinitionError(f"Unsupported GICForge primitive {kind}({atoms_text})")
+
+
+def _gic_aliases(terms: list[tuple[float, Primitive]]) -> str:
+    return " ".join(sorted({_primitive_alias(primitive) for _coeff, primitive in terms}))
+
+
+def _primitive_alias(primitive: Primitive) -> str:
+    atoms = ",".join(str(atom + 1) for atom in primitive.atoms)
+    if primitive.kind == "bond":
+        return f"bond({atoms})"
+    if primitive.kind == "angle":
+        return f"angle({atoms})"
+    if primitive.kind == "dihedral":
+        return f"dihedral({atoms})"
+    if primitive.kind == "out_of_plane":
+        return f"out_of_plane({atoms})"
+    if primitive.kind == "linear_bend":
+        return f"linear_bend({atoms};mode={primitive.mode})"
+    return f"{primitive.kind}({atoms})"
+
+
+def _primitive_to_dict(primitive: Primitive) -> dict:
+    return {
+        "kind": primitive.kind,
+        "atoms": [int(atom) for atom in primitive.atoms],
+        "mode": int(primitive.mode),
+        "ref": [int(atom) for atom in primitive.ref],
+    }
+
+
+def _primitive_from_dict(data: dict) -> Primitive:
+    return Primitive(
+        str(data["kind"]),
+        tuple(int(atom) for atom in data.get("atoms", ())),
+        mode=int(data.get("mode", 0)),
+        ref=tuple(int(atom) for atom in data.get("ref", ())),
+    )
+
+
+def _gaussian_input_from_definition(definition: GICDefinition) -> str:
+    lines = []
+    for name, column in zip(definition.names, np.asarray(definition.u_matrix, dtype=float).T):
+        terms = []
+        for coeff, primitive in zip(column, definition.primitives):
+            if abs(float(coeff)) <= 1.0e-12:
+                continue
+            terms.append(f"{float(coeff): .8f}*{_primitive_expression(primitive)}")
+        if terms:
+            lines.append(f"{name}=[{'+'.join(terms)}]")
+    return "\n".join(lines) + "\n"
+
+
+def _primitive_expression(primitive: Primitive) -> str:
+    atoms = tuple(atom + 1 for atom in primitive.atoms)
+    if primitive.kind == "bond":
+        return f"R({atoms[0]:3d},{atoms[1]:3d})"
+    if primitive.kind == "angle":
+        return f"A({atoms[0]:3d},{atoms[1]:3d},{atoms[2]:3d})"
+    if primitive.kind == "dihedral":
+        return f"D({atoms[0]:3d},{atoms[1]:3d},{atoms[2]:3d},{atoms[3]:3d})"
+    if primitive.kind == "out_of_plane":
+        return f"U({atoms[0]:3d},{atoms[1]:3d},{atoms[2]:3d},{atoms[3]:3d})"
+    if primitive.kind == "linear_bend":
+        return f"L({atoms[0]:3d},{atoms[1]:3d},{atoms[2]:3d},  0,{primitive.mode:3d})"
+    raise GICDefinitionError(f"Unsupported primitive kind for Gaussian GIC output: {primitive.kind}")

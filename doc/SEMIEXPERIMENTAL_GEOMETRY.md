@@ -3,9 +3,12 @@
 This is the Merlino4 standard solver for semiexperimental equilibrium
 geometries. It deliberately avoids hand-built structural parameterizations:
 the input geometry is Cartesian, the optimized
-parameters are non-redundant Merlino GICs, and the final result is a Cartesian
-equilibrium structure with propagated errors for the fitted internal
-parameters.
+parameters are non-redundant Merlino GICs by default, and the final result is
+a Cartesian equilibrium structure with propagated errors for the fitted
+internal parameters. The alternative working-coordinate model uses
+Hessian-free symmetry-adapted Cartesian displacements; the final structural
+report is still given as primitive bond lengths, angles and dihedrals with
+propagated errors.
 
 ## Why This Is The Standard Solver
 
@@ -19,9 +22,13 @@ molecule-specific parameter choices. The Merlino solver instead uses:
 - Reduction of the generated GICs to a non-redundant active set.
 - Automatic point-group identification and symmetry adaptation of the
   non-redundant GICs within homogeneous coordinate families.
-- Analytic Wilson B matrix for standard internal primitives.
-- Weighted Levenberg-Marquardt least squares with adaptive damping.
+- Analytic Wilson B matrix for standard internal primitives and analytic
+  Cartesian derivatives of principal moments/rotational constants.
+- Weighted trust-region Levenberg-Marquardt least squares with coordinate-block
+  scaling and predicted/actual reduction control.
 - Direct propagation of experimental uncertainties to GIC parameters.
+- Optional totally symmetric symmetry-Cartesian working coordinates requiring
+  neither a Hessian nor a Wilson B-matrix inversion.
 - Optional QM predicates as weighted priors, not hard constraints.
 - Manifested outputs and diagnostics suitable for regression checks.
 
@@ -38,6 +45,19 @@ python -m merlino semiexp \
   --job cyclopentadiene.mse.toml \
   --outdir semiexp_run
 ```
+
+For reduced-dimensionality fits without deuterium substitutions, the local
+geometry of every H, D or T atom can be fixed in one operation:
+
+```bash
+python -m merlino semiexp \
+  --job norcamphor.mse.toml \
+  --fix-hydrogens \
+  --outdir semiexp_norcamphor
+```
+
+The equivalent job-file setting is `fix_hydrogen_parameters = true` under
+`[constraints]`.
 
 The equivalent interoperability mode, useful when the parent geometry is
 already available as a Gaussian Cartesian input, is:
@@ -61,21 +81,53 @@ These defaults are intentional:
   rotational_constants` is selected. For planar molecules it selects the
   best-conditioned pair among `AB`, `AC` and `BC`; non-planar molecules use
   `ABC`.
-- `--max-step 0.25` limits the norm of active-GIC steps and prevents aggressive
-  updates from leaving the chemically valid topology basin.
+- `--max-step 0.25` limits the norm of active-coordinate steps and prevents
+  aggressive updates from leaving the chemically valid topology basin.
 - `--prune-condition 0` leaves the full totally symmetric GIC subspace active.
   Passing a positive value enables deterministic removal of weak A1 parameters
   until the initial weighted Jacobian condition is below the requested target.
   Removed coordinates are reported as `auto_pruned_weak`; this is a diagnostic
   fallback, not the recommended default for MSR-grade refinements.
 - `--damping 1e-8` is only the initial Levenberg-Marquardt damping. It is
-  decreased after accepted steps and increased after rejected steps.
+  updated from the ratio between predicted and actual objective reduction, not
+  from a blind accept/reject multiplier.
 - `--max-iter` defaults to an automatic cap proportional to the number of
   effective optimized parameters: `max(8, 2*N)`. Passing a positive value keeps
   an explicit user cap.
 
 Use `--observable rotational_constants` only when the scientific comparison
 must be made directly in MHz.
+
+The default coordinate model is:
+
+```bash
+python -m merlino semiexp --job parent.mse.toml --coordinate-model gic
+```
+
+The coordinate model is a scientific choice, not only an implementation detail.
+For experimental structure refinement the ideal working coordinates are
+non-redundant, symmetry-adapted, compatible with constraints and parameter
+classes, and suitable for rigorous covariance propagation to ordinary
+structural parameters. Rotational spectroscopy is the current Merlino working
+example, but the same requirements apply to least-squares refinement against
+any experimental structural observable.
+
+The symmetry-Cartesian model is the B-free alternative:
+
+```bash
+python -m merlino semiexp \
+  --job parent.mse.toml \
+  --coordinate-model cartesian_symmetry \
+  --outdir semiexp_cartesian_symmetry
+```
+
+This model uses only the parent Cartesian geometry. Merlino projects out
+translations and rotations, applies point-group symmetry projectors to the
+remaining Cartesian displacement space, and optimizes only the totally
+symmetric directions. It does not require a Hessian, a force-field calculation
+or a Wilson B-matrix pseudoinverse. Primitive constraints are still enforced
+through analytic primitive derivatives, and the final errors are propagated to
+ordinary internal coordinates from the fitted Cartesian covariance.
 
 ## Input
 
@@ -94,7 +146,14 @@ For interoperability, the parent geometry can still be provided as standard XYZ
 or as a Gaussian `.com` / `.gjf` input with Cartesian coordinates. Gaussian
 Z-matrices are intentionally not accepted in this workflow. If the Gaussian
 input contains a ModRedundant section, freeze constraints written as
-`B/A/D/O/L ... F` are converted into fixed GIC patterns before the fit.
+`B/A/D/O/L ... F` are converted into primitive-coordinate constraints. Each
+fixed primitive is expanded automatically to all symmetry-equivalent primitives
+before the constraint projector is built in the active GIC space.
+For limited-isotopologue data sets, `[constraints] fix_hydrogen_parameters =
+true` builds a deterministic local coordinate frame for every H, D or T atom
+and fixes those primitive constraints in the same projected-constraint
+machinery. This keeps hydrogen positions at their QM reference values without
+using the full over-complete set of hydrogen-containing primitives.
 
 Minimal accepted Gaussian-style geometry input:
 
@@ -233,9 +292,11 @@ The Merlino4 dashboard exposes the semiexperimental solver from the
 - or a complete Merlino job file (`.mse.toml`);
 - output directory;
 - Python or Fortran77 backend request;
+- GIC or symmetry-Cartesian coordinate model;
 - moment or rotational-constant target;
 - rotational-constant component policy;
 - fixed GIC patterns;
+- automatic fixing of local hydrogen/deuterium/tritium geometry constraints;
 - QM predicate observations;
 - shared or fixed parameter classes.
 
@@ -258,6 +319,8 @@ The same panel also provides operational helpers:
 
 ## Fit Model
 
+The default GIC fit model is:
+
 1. Read the parent Cartesian geometry (`.xyz`, `.com` or `.gjf`).
 2. Build topology and primitive internal coordinates.
 3. Build the primitive GIC set automatically, as in other black-box internal
@@ -273,12 +336,52 @@ The same panel also provides operational helpers:
 7. Convert the selected observations to the fit target:
    moments of inertia by default, rotational constants on request.
 8. Add optional QM predicates as weighted pseudo-observations.
-9. Compute the Jacobian of observables with respect to active GICs.
-10. Solve weighted LM normal equations with adaptive damping and step limiting.
-11. Back-transform GIC steps to Cartesian displacements using the analytic B
-   matrix and reject steps that do not improve the weighted objective.
+9. Compute the Jacobian of observables with respect to active working
+   coordinates from analytic Cartesian derivatives of principal moments or
+   rotational constants. The finite-difference path is retained only as a
+   parallel fallback for future non-analytic observables.
+10. Solve weighted trust-region LM equations with Cauchy fallback, predicted
+    objective reduction, homogeneous coordinate-block scaling and adaptive
+    trust-radius/damping control.
+11. For the GIC model, back-transform GIC steps to Cartesian displacements
+    using the analytic B matrix. Line-search trials reuse the current GICForge
+    coordinate model. Every accepted GIC step is validated by rerunning
+    GICForge and comparing the point-group, irrep and coordinate-family
+    signature with the reference model; topology-changing steps are rejected
+    and the trust radius is reduced. The Cartesian-GIC projector is refreshed
+    analytically only when needed and
+    otherwise updated by a secant correction.
 12. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
-   the final geometry.
+    the final geometry.
+
+The symmetry-Cartesian fit model shares the same observation model,
+trust-region least-squares solver, parameter classes, primitive constraints,
+covariance analysis and final reporting. Its coordinate stage is:
+
+1. Orient the parent Cartesian geometry and detect the point group.
+2. Build the Cartesian vibrational projector by removing translations and
+   rotations.
+3. Project the remaining displacement space by point-group irreps.
+4. Keep only totally symmetric Cartesian displacements as active fit
+   coordinates.
+5. Update Cartesian geometry directly as linear combinations of the selected
+   symmetry-Cartesian vectors; no GIC B projector is required.
+6. Evaluate final topological bond lengths, angles and dihedrals from the
+   optimized Cartesian structure and propagate their errors through the
+   Cartesian-basis differential.
+
+The run directory includes `semiexp_influence.csv` for residual, weighted
+residual, chi-square contribution and leverage of every observable, and
+`semiexp_high_correlations.csv` for strongly correlated fitted parameters. The
+GUI prints these paths and the solver counters in its expert diagnostics block
+after a run.
+
+`scripts/run_semiexp_benchmarks.py` runs the standard regression benchmark set:
+water, cyclopentadiene, azulene, uracil, pyridine and guanine for GIC/symmetry
+checks, plus the semiexperimental fit cases that have observations in the repo.
+The azulene fit benchmark reads the MSR-like `.mse.toml` job so that the same
+primitive ModRedundant constraints and numerical settings used in production are
+exercised.
 
 The Wilson B matrix is analytic for Merlino's standard primitives: bonds,
 angles, linear bends, dihedrals and out-of-plane terms. Fragment coordinates
@@ -413,8 +516,8 @@ The final human-readable structural table is not a second fit. Merlino evaluates
 ordinary topological coordinates on the optimized Cartesian geometry: bonded
 distances, valence angles and proper dihedrals from the final connectivity.
 Their one-sigma errors are propagated from the covariance matrix of the active
-least-squares parameters through the same GIC-to-Cartesian differential used by
-the optimizer:
+least-squares parameters through the same working-coordinate-to-Cartesian
+differential used by the optimizer. For the GIC model this is:
 
 ```text
 J_top = B_top pinv(B_GIC) T_active
@@ -426,22 +529,32 @@ coordinates, `B_GIC` is the B matrix of the final non-redundant GIC set and
 `T_active` is the active parameter/class transform. Bond sigmas are reported in
 Angstrom; angle and dihedral sigmas are reported in degrees.
 
+For the symmetry-Cartesian model, `pinv(B_GIC) T_active` is replaced by the
+symmetry-Cartesian basis times the active parameter/class transform. The
+reported primitive internal coordinates and their errors therefore have the
+same interpretation in both coordinate models.
+
 ## Output
 
 The output directory contains:
 
 - `semiexp_geometry.xyz`: fitted equilibrium Cartesian geometry.
-- `semiexp_report.txt`: plain-text human-readable report with diagnostics,
-  corrected/calculated rotational constants, final bond lengths/angles/dihedrals
-  with propagated errors, GIC parameters and residuals.
+- `semiexp_report.txt`: canonical plain-text `SEFIT TEXT OUTPUT v1` report. It
+  records method, solver, coordinate model and coordinate basis used in the fit,
+  input constraints, QM predicates and parameter classes, fit statistics,
+  working-coordinate values/errors, primitive internal bond lengths, angles and
+  dihedrals with propagated errors, rotational-constant comparison and fit
+  residuals.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
   classes, fitted GICs, final Cartesian bond lengths/angles/dihedrals with
   propagated errors, rotational-constant comparison, residuals and Kraitchman
   comparison.
 - `semiexp_tables.tex`: paper-ready LaTeX tabular fragments for parameters,
   rotational constants, residuals and Kraitchman comparison.
-- `semiexp_parameters.csv`: final non-redundant GIC values, one-sigma errors and
-  active/fixed flags.
+- `semiexp_parameters.csv`: final working-coordinate values, one-sigma errors
+  and active/fixed flags. These are non-redundant GIC values for
+  `coordinate_model = "gic"` and Cartesian-basis amplitudes for
+  `coordinate_model = "cartesian_symmetry"`.
 - `semiexp_geometry_parameters.csv`: final Cartesian geometry interpreted as
   ordinary structural parameters. Bond lengths are reported in Angstrom;
   valence angles and proper dihedrals are reported in degrees. The table also
@@ -473,8 +586,9 @@ The output directory contains:
   fit.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
-The parameter values use native Merlino GIC units: stretches in Angstrom and
-angular coordinates in radians.
+The GIC parameter values use native Merlino units: stretches in Angstrom and
+angular coordinates in radians. Normal-mode working parameters are Cartesian
+displacement amplitudes in Angstrom along normalized mode vectors.
 
 The manifest records more than file paths: backend role, Fortran77 kernel
 source, GIC generation policy, isotopologue count, predicate count, active and

@@ -88,6 +88,19 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
     assert job_args.xyz is None
     assert job_args.observations is None
 
+    gic_gf_args = merlino_parser().parse_args([
+        "gic-gf",
+        "--schema",
+        "gic_definition.json",
+        "--fchk",
+        "gauin.fchk",
+        "--scale",
+        "default=0.98",
+    ])
+    assert gic_gf_args.command == "gic-gf"
+    assert str(gic_gf_args.schema) == "gic_definition.json"
+    assert gic_gf_args.scale == ["default=0.98"]
+
 
 def test_gaussian_log_summary_parser(tmp_path):
     log = tmp_path / "test.log"
@@ -239,6 +252,8 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_covariance.csv").exists()
     assert (outdir / "semiexp_hessian.csv").exists()
     assert (outdir / "semiexp_diagnostics.csv").exists()
+    assert (outdir / "semiexp_influence.csv").exists()
+    assert (outdir / "semiexp_high_correlations.csv").exists()
     assert (outdir / "semiexp_manifest.json").exists()
     assert (outdir / "semiexp_report.html").exists()
     assert (outdir / "semiexp_tables.tex").exists()
@@ -249,6 +264,8 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["outputs"]["geometry_parameters"] == str(outdir / "semiexp_geometry_parameters.csv")
     assert manifest["outputs"]["rotational_constants"] == str(outdir / "semiexp_rotational_constants.csv")
     assert manifest["outputs"]["text_report"] == str(outdir / "semiexp_report.txt")
+    assert manifest["outputs"]["influence"] == str(outdir / "semiexp_influence.csv")
+    assert manifest["outputs"]["high_correlations"] == str(outdir / "semiexp_high_correlations.csv")
     assert manifest["parameters"]["coordinate_generation"]["reduction"].startswith("primitive stretches")
     assert manifest["parameters"]["n_gic_parameters"] >= 1
     geometry_text = (outdir / "semiexp_geometry_parameters.csv").read_text(encoding="utf-8")
@@ -262,6 +279,12 @@ def test_merlino_cli_semiexp(tmp_path):
     assert "calculated_MHz" in rotconst_text
     assert "\nangle," in geometry_text
     report_text = (outdir / "semiexp_report.txt").read_text(encoding="utf-8")
+    assert "SEFIT TEXT OUTPUT v1" in report_text
+    assert "[method]" in report_text
+    assert "[constraints]" in report_text
+    assert "[fit_statistics]" in report_text
+    assert "[working_coordinates]" in report_text
+    assert "[primitive_internal_coordinates]" in report_text
     assert "Rotational constants (MHz)" in report_text
     assert "Final topological geometry" in report_text
 

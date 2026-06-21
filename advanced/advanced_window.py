@@ -22,6 +22,7 @@ from advanced.launchers.msr_launcher import MSRLauncher
 from advanced.launchers.gaussian_launcher import GaussianLauncher
 from advanced.launchers.survibfit_launcher import SurvibfitLauncher
 from advanced.dvr_window import DVRWindow
+from advanced.gf_window import GFWindow
 from advanced.vpt2_vci_window import VPT2VCIWindow
 
 from advanced.kwd_spec import KWD_SPEC
@@ -168,6 +169,7 @@ class AdvancedWindow(QMainWindow):
         layout.addLayout(methods_layout)
 
         self._build_survibfit_panel(layout)
+        self._build_gf_shortcut_panel(layout)
         self._build_vpt2_vci_shortcut_panel(layout)
         self._build_dvr_shortcut_panel(layout)
 
@@ -380,20 +382,45 @@ class AdvancedWindow(QMainWindow):
         layout.addWidget(group)
 
     # ==================================================================
-    # Path DVR panel
+    # GF / PED and VPT2 / VCI panels
     # ==================================================================
-    def _build_vpt2_vci_shortcut_panel(self, layout: QVBoxLayout):
-        group = QGroupBox("GF / VPT2-VCI")
+    def _build_gf_shortcut_panel(self, layout: QVBoxLayout):
+        group = QGroupBox("GF / PED")
         vbox = QVBoxLayout(group)
 
         info = QLabel(
-            "Dedicated window for Wilson GF/PED in Merlino non-redundant GICs "
-            "and anharmonic VPT2/VCI comparisons from canonical Merlino QFF inputs."
+            "Dedicated window for Wilson GF/PED from Cartesian Hessians, "
+            "Merlino GIC definitions, B matrices, optional Pulay scaling, "
+            "frequencies, normal modes and PED."
         )
         info.setWordWrap(True)
         vbox.addWidget(info)
 
-        self.open_vpt2_vci_btn = QPushButton("Open GF / VPT2-VCI window")
+        self.open_gf_btn = QPushButton("Open GF / PED window")
+        self.open_gf_btn.clicked.connect(self.open_gf_window)
+        vbox.addWidget(self.open_gf_btn)
+
+        layout.addWidget(group)
+
+    def open_gf_window(self):
+        if not hasattr(self, "gf_window") or self.gf_window is None:
+            self.gf_window = GFWindow(self.workdir, self.project_root, parent=self)
+        self.gf_window.show()
+        self.gf_window.raise_()
+        self.gf_window.activateWindow()
+
+    def _build_vpt2_vci_shortcut_panel(self, layout: QVBoxLayout):
+        group = QGroupBox("VPT2 / VCI")
+        vbox = QVBoxLayout(group)
+
+        info = QLabel(
+            "Dedicated window for anharmonic VPT2/VCI comparisons from "
+            "canonical Merlino QFF inputs in Cartesian normal modes."
+        )
+        info.setWordWrap(True)
+        vbox.addWidget(info)
+
+        self.open_vpt2_vci_btn = QPushButton("Open VPT2 / VCI window")
         self.open_vpt2_vci_btn.clicked.connect(self.open_vpt2_vci_window)
         vbox.addWidget(self.open_vpt2_vci_btn)
 

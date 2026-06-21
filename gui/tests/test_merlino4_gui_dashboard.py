@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 
 from merlino_gui import DashboardWindow, default_workflows
 from merlino_gui.app import build_parser
-from merlino_gui.dashboard import workflow_detail_text, workflow_state_lines
+from merlino_gui.dashboard import _semiexp_expert_diagnostics, workflow_detail_text, workflow_state_lines
 
 
 def test_default_workflows_include_new_scientific_areas():
@@ -13,10 +13,13 @@ def test_default_workflows_include_new_scientific_areas():
     assert "vpt2_vci" in workflows
     assert "semiexp_geometry" in workflows
     assert workflows["vpt2_vci"].service == "merlino_vpt2_vci"
+    assert workflows["gic_gf"].service == "merlino_gic + merlino_gf"
     assert workflows["semiexp_geometry"].service == "merlino_semiexp"
     assert "fortran77" in workflows["semiexp_geometry"].backends
     assert workflows["semiexp_geometry"].status == "standard solver"
     assert workflows["gic"].default_backend == "fortran77"
+    assert workflows["gic"].status == "two-utility service available"
+    assert workflows["gic_gf"].status == "frozen-GIC GF service available"
 
 
 def test_workflow_detail_text_lists_contract_fields():
@@ -56,6 +59,35 @@ def test_workflow_state_reports_manifest_outputs(tmp_path):
     assert any("outputs present: html_report" in line for line in lines)
 
 
+def test_semiexp_expert_diagnostics_reads_manifest(tmp_path):
+    manifest = tmp_path / "semiexp_manifest.json"
+    manifest.write_text(
+        """
+{
+  "parameters": {
+    "convergence_reason": "objective_tolerance",
+    "rank": 10,
+    "incremental_rank": 10,
+    "gicforge_calls": 3,
+    "b_projector_secant_updates": 2
+  },
+  "outputs": {
+    "influence": "/tmp/semiexp_influence.csv",
+    "high_correlations": "/tmp/semiexp_high_correlations.csv"
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    text = _semiexp_expert_diagnostics(manifest)
+
+    assert "Expert diagnostics" in text
+    assert "incremental_rank: 10" in text
+    assert "b_projector_secant_updates: 2" in text
+    assert "semiexp_high_correlations.csv" in text
+
+
 @pytest.mark.usefixtures("qtbot")
 def test_dashboard_lists_workflows(tmp_path, qtbot):
     window = DashboardWindow(tmp_path)
@@ -75,9 +107,71 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
         "Vibrations",
         "Dynamics",
     }
+    window.select_workflow("gic")
+    assert not window.gic_panel.isHidden()
+    assert window.semiexp_panel.isHidden()
+    assert "gic-define" in window.gic_command.toPlainText()
+    assert "gic-bmatrix" in window.gic_command.toPlainText()
+    assert "gic-gf" in window.gic_command.toPlainText()
+    assert window.gic_define_symmetry.isChecked()
+    assert not window.gic_define_button.isEnabled()
+    assert not window.gic_bmatrix_button.isEnabled()
+    gic_xyz = tmp_path / "gic.xyz"
+    gic_xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    window.gic_define_geometry.setText(str(gic_xyz))
+    window.gic_define_schema.setText(str(tmp_path / "gic_definition.json"))
+    window.gic_bmatrix_schema.setText(str(tmp_path / "gic_definition.json"))
+    window.gic_bmatrix_geometry.setText(str(gic_xyz))
+    window.gic_bmatrix_out.setText(str(tmp_path / "bmat.csv"))
+    window.gic_gf_schema.setText(str(tmp_path / "gic_definition.json"))
+    window.gic_gf_fchk.setText(str(tmp_path / "gauin.fchk"))
+    window.gic_gf_report.setText(str(tmp_path / "gic_gf.txt"))
+    window.gic_gf_csv_dir.setText(str(tmp_path / "gic_gf_csv"))
+    assert window.gic_define_button.isEnabled()
+    assert window.gic_bmatrix_button.isEnabled()
+    assert window.gic_gf_button.isEnabled()
+    assert window.gic_define_args()[:5] == [
+        "gic-define",
+        "--geometry",
+        str(gic_xyz),
+        "--out",
+        str(tmp_path / "gic_definition.json"),
+    ]
+    assert window.gic_bmatrix_args()[:7] == [
+        "gic-bmatrix",
+        "--schema",
+        str(tmp_path / "gic_definition.json"),
+        "--geometry",
+        str(gic_xyz),
+        "--out",
+        str(tmp_path / "bmat.csv"),
+    ]
+    assert window.gic_gf_args()[:5] == [
+        "gic-gf",
+        "--schema",
+        str(tmp_path / "gic_definition.json"),
+        "--fchk",
+        str(tmp_path / "gauin.fchk"),
+    ]
+    window.select_workflow("gic_gf")
+    assert not window.gic_panel.isHidden()
+    assert window.semiexp_panel.isHidden()
     window.select_workflow("semiexp_geometry")
     assert window.backend_selector.isEnabled()
     assert not window.semiexp_panel.isHidden()
+    assert window.gic_panel.isHidden()
     assert window.backend_selector.findText("python") >= 0
     assert window.backend_selector.findText("fortran77") >= 0
     assert window.semiexp_preview_table.columnCount() == 5
@@ -102,11 +196,13 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     window.semiexp_observations.setText(str(tmp_path / "isotopologues.toml"))
     window.semiexp_outdir.setText(str(tmp_path / "semiexp"))
     window.semiexp_fixed.setText("GIC001")
+    window.semiexp_fix_hydrogens.setChecked(True)
     window.semiexp_qm.setText("GIC002:1.0:0.1:qm")
     window.semiexp_classes.setText("CH:shared:bond(1,2)|bond(1,3);XYH:fixed:angle")
     args = window.semiexp_command_args()
     assert "--backend" in args
     assert "fortran77" in args
+    assert "--fix-hydrogens" in args
     assert args[args.index("--prune-condition") + 1] == "0"
     assert args.count("--parameter-class") == 2
     assert window.semiexp_run_button.isEnabled()
@@ -121,11 +217,14 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     job_text = job.read_text(encoding="utf-8")
     assert 'schema = "merlino.semiexp.job.v1"' in job_text
     assert '["O", 0, 0, 0]' in job_text
+    assert "fix_hydrogen_parameters = true" in job_text
     preset = window.save_semiexp_preset()
     assert preset.exists()
     window.semiexp_fixed.clear()
+    window.semiexp_fix_hydrogens.setChecked(False)
     window.load_semiexp_preset(preset)
     assert window.semiexp_fixed.text() == "GIC001"
+    assert window.semiexp_fix_hydrogens.isChecked()
 
 
 @pytest.mark.usefixtures("qtbot")

@@ -26,9 +26,17 @@ to `fortran/gicforge/build/gicforge_build.log`. The whole `build/` directory is
 ignored by git.
 
 GICForge receives only Cartesian XYZ input from Merlino, builds redundant and
-non-redundant GICs, optionally writes the B matrix, emits a readable report, and
-creates Gaussian input. GUI orchestration, RDKit/SMILES, any conversion to
-Cartesian coordinates, DVR and post-processing remain Python responsibilities.
+non-redundant GICs, emits a readable report, and creates Gaussian-readable GIC
+input. Merlino wraps this as the `gic-define` utility, which writes a frozen
+`merlino.gic.definition.v1` schema containing primitives, GIC coefficients,
+labels, irreducible representations and the Gaussian block.
+
+B-matrix construction is a separate library contract. The `gic-bmatrix` utility
+and `merlino_gic.evaluate_gic_definition` read the frozen schema and evaluate
+GIC values and analytic Wilson B rows on the current Cartesian geometry without
+rerunning topology perception, redundancy removal or symmetry assignment. GUI
+orchestration, RDKit/SMILES, any conversion to Cartesian coordinates, DVR and
+post-processing remain Python responsibilities.
 
 The active build intentionally does not compile old Z-matrix, FITPOT/VCI/DVR,
 MSR/isotope or rate utilities. Those historical programs are not duplicated in

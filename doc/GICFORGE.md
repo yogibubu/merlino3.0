@@ -27,6 +27,77 @@ Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
 checks and user-facing workflow logic.
 
+## Utility Architecture
+
+The Merlino4 GIC layer is split into reusable utilities.
+
+1. `gic-define` receives Cartesian coordinates and atomic symbols/numbers,
+   runs GICForge once, optionally performs the deterministic symmetry post-check, and
+   writes a frozen `merlino.gic.definition.v1` JSON schema.  The schema stores
+   the primitive coordinates, the GIC coefficient matrix, labels, irreducible
+   representations, point group, a `symmetrized` flag and the
+   Gaussian-readable GIC block. Use `--no-symmetry` when raw non-redundant GICs
+   must be frozen without symmetry adaptation.
+2. `gic-bmatrix` receives a frozen GIC schema plus a current Cartesian
+   geometry and atomic symbols/numbers, and evaluates GIC values and the Wilson
+   B matrix.  It also propagates the frozen GIC names, irreps, point group and
+   `symmetrized` flag to downstream programs or to an optional metadata CSV.
+   It does not perform topology perception, redundancy removal or symmetry
+   assignment.
+3. `gic-gf` receives a frozen GIC schema plus a Cartesian Hessian adapter
+   currently implemented for Gaussian FCHK. It evaluates the same frozen GICs
+   on the Hessian geometry, transforms the Cartesian Hessian to the GIC basis,
+   optionally applies Pulay-style internal-Hessian scaling, solves Wilson GF,
+   and writes frequencies, normal modes, G matrix, internal force constants and
+   PED tables.
+
+The second utility is also exposed as a Python library function,
+`merlino_gic.evaluate_gic_definition`, so other programs can build B matrices
+without launching GICForge.  The supplied atomic numbers only need to be
+compatible in atom count with the frozen schema; the B matrix itself is defined
+by the primitive coordinate expressions and the current Cartesian coordinates.
+The returned evaluation object includes `labels`, `names`, `irreps`,
+`point_group` and `symmetrized` metadata in addition to values and B matrices.
+For fit/diagnostic use, `gic-bmatrix` reports derivatives in the units of the
+supplied geometry file. For Hessian transformation, `gic-gf` evaluates B with
+Cartesian coordinates in bohr, matching the canonical Hessian units
+Eh/bohr^2.
+
+In semiexperimental refinements, `SEfit` calls the definition utility only at
+the beginning of a fresh fit.  All ordinary iterations reuse the same frozen
+GIC schema and rebuild only the B projector when necessary.  A restart is the
+explicit boundary at which the GIC schema may be regenerated.
+
+## Symmetrization Ownership
+
+GIC symmetrization belongs exclusively to `gic-define`. The sequence is:
+
+1. GICForge constructs primitive and non-redundant coordinates.
+2. GICForge and the deterministic Python post-check assign the point group,
+   irreducible representations and symmetry-adapted final GIC labels.
+3. The resulting `merlino.gic.definition.v1` schema is frozen.
+
+Downstream programs must not re-symmetrize. `gic-bmatrix`, `gic-gf`,
+semiexperimental refinement and Gaussian input writers only evaluate, filter
+or order the frozen coordinates. If a different symmetry tolerance, geometry
+or coordinate policy is required, the correct operation is a new `gic-define`
+run or an explicit restart that creates a new schema.
+
+Pulay scaling files accepted by `gic-gf` are line-oriented text or CSV files:
+
+```text
+# selector factor
+default 1.000
+GIC003 0.980
+A1Str0001,0.995
+5=1.020
+```
+
+Selectors may be `default`/`all`, one-based indices, `GICnnn` labels, exact
+GICForge names, exact labels, or unambiguous substrings. If `s_i` and `s_j`
+are the diagonal factors, the internal Hessian element is scaled as
+`F_ij <- F_ij sqrt(s_i s_j)`.
+
 The Fortran GICForge build no longer contains a SMILES reader and no longer
 accepts legacy FITPOT/VCI/DVR, MSR/isotope or rate keywords. Those workflows
 must be driven from Python or from explicitly archived legacy code.

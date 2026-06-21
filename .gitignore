@@ -33,6 +33,7 @@ fortran/symmetry/symm
 archives/freezes/
 
 # Local runtime outputs
+tmp/
 work/
 working/
 *.egg-info/

@@ -15,9 +15,16 @@ from .fit import (
     _atomic_number,
     _build_measurement_model,
     _gic_model,
+    _gic_fixed_patterns,
+    _gicforge_a1_mask,
     _jacobian_constants_wrt_gics,
     _combined_fixed_parameters,
+    _fixed_primitives_from_patterns,
+    _hydrogen_fixed_primitives,
+    _merge_primitives,
     _parameter_class_transform,
+    _primitive_constrained_transform,
+    _symmetry_expanded_fixed_primitives,
     fit_semiexperimental_geometry,
 )
 from .geometry_input import read_geometry_input
@@ -95,18 +102,28 @@ class SemiexperimentalConditioningPreview:
 class SemiexperimentalBenchmarkCase:
     label: str
     request: SemiexperimentalFitRequest
+    max_iter: int | None = None
+    step: float = 1.0e-4
+    damping: float = 1.0e-8
+    max_step: float = 0.25
+    prune_condition: float = 0.0
 
 
 @dataclass(frozen=True)
 class SemiexperimentalBenchmarkRow:
     label: str
     rms_MHz: float
+    rotational_rms_MHz: float
     iterations: int
     rank: int
+    incremental_rank: int
     condition_number: float
     stationary_point: str
     n_parameters: int
     n_kraitchman: int
+    gicforge_calls: int
+    coordinate_model_reuse_steps: int
+    b_projector_secant_updates: int
 
 
 def preview_semiexperimental_gics(
@@ -177,9 +194,24 @@ def preview_semiexperimental_conditioning(
     prims, u_matrix, labels = _gic_model(coords_arr, z_numbers)
     measurement = _build_measurement_model(request, atoms, coords_arr, prims, u_matrix, labels)
     fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
-    active = _active_mask(labels, fixed_parameters, request.parameter_classes)
+    fixed_gic_patterns = _gic_fixed_patterns(fixed_parameters)
+    fixed_primitives = _merge_primitives(
+        _fixed_primitives_from_patterns(fixed_parameters),
+        _hydrogen_fixed_primitives(atoms, prims, fixed_parameters, coords=coords_arr),
+    )
+    fixed_primitives = _symmetry_expanded_fixed_primitives(atoms, coords_arr, prims, fixed_primitives)
+    active = _active_mask(labels, fixed_gic_patterns, request.parameter_classes) & _gicforge_a1_mask(labels)
     jac_gic = _jacobian_constants_wrt_gics(atoms, coords_arr, request, prims, u_matrix, active, labels, measurement, step=step)
     transform, _names, _class_by_gic = _parameter_class_transform(labels, active, request.parameter_classes)
+    transform, _names = _primitive_constrained_transform(
+        coords_arr,
+        prims,
+        u_matrix,
+        active,
+        transform,
+        _names,
+        fixed_primitives,
+    )
     jac = jac_gic @ transform
     weighted = jac * np.sqrt(measurement.weights)[:, None]
     conditioning = rank_condition(weighted)
@@ -272,28 +304,49 @@ def run_semiexperimental_benchmark(
     rows = []
     for case in cases:
         case_out = Path(outdir) / case.label if outdir is not None else None
-        result = fit_semiexperimental_geometry(case.request, max_iter=max_iter, outdir=case_out)
+        result = fit_semiexperimental_geometry(
+            case.request,
+            max_iter=max_iter if max_iter is not None else case.max_iter,
+            step=case.step,
+            damping=case.damping,
+            max_step=case.max_step,
+            prune_condition=case.prune_condition,
+            outdir=case_out,
+        )
+        rot_diffs = [item.difference_MHz for item in result.rotational_constants]
+        rotational_rms = float(np.sqrt(np.mean(np.asarray(rot_diffs, dtype=float) ** 2))) if rot_diffs else 0.0
         rows.append(
             SemiexperimentalBenchmarkRow(
                 case.label,
                 result.rms_MHz,
+                rotational_rms,
                 result.iterations,
                 result.diagnostics.rank,
+                result.diagnostics.incremental_rank,
                 result.diagnostics.condition_number,
                 result.stationary_point,
                 len(result.parameters),
                 len(result.kraitchman),
+                result.diagnostics.gicforge_calls,
+                result.diagnostics.coordinate_model_reuse_steps,
+                result.diagnostics.b_projector_secant_updates,
             )
         )
     return tuple(rows)
 
 
 def benchmark_csv(rows: tuple[SemiexperimentalBenchmarkRow, ...]) -> str:
-    lines = ["label,rms,iterations,rank,condition_number,stationary_point,n_parameters,n_kraitchman"]
+    lines = [
+        "label,rms,rotational_rms_MHz,iterations,rank,incremental_rank,condition_number,"
+        "stationary_point,n_parameters,n_kraitchman,gicforge_calls,coordinate_model_reuse_steps,"
+        "b_projector_secant_updates"
+    ]
     for row in rows:
         lines.append(
-            f"{row.label},{row.rms_MHz:.12g},{row.iterations},{row.rank},"
-            f"{row.condition_number:.12g},{row.stationary_point},{row.n_parameters},{row.n_kraitchman}"
+            f"{row.label},{row.rms_MHz:.12g},{row.rotational_rms_MHz:.12g},{row.iterations},{row.rank},"
+            f"{row.incremental_rank},{row.condition_number:.12g},{row.stationary_point},"
+            f"{row.n_parameters},{row.n_kraitchman},{row.gicforge_calls},{row.coordinate_model_reuse_steps},"
+            f"{row.b_projector_secant_updates}"
         )
     return "\n".join(lines) + "\n"
 

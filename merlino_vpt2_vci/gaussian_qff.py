@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .models import AnharmonicInput, HessianInput
+from merlino_gf.models import HessianInput
+
+from .models import AnharmonicInput
 from .vci import QuarticForceField
 
 

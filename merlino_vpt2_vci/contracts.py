@@ -69,8 +69,8 @@ def inventory_vpt2_vci_backends(repo_root: Path) -> VPT2VCIInventory:
     sources = tuple(sorted(source_dir.glob("*.f"))) if source_dir.exists() else ()
     davidson = source_dir / "davidson_core.f"
     notes = [
-        "Harmonic GF analysis is available through independent gf_core.f and Python harmonic.py.",
-        "Merlino4 has independent Python and Fortran77 GF/VCI/Davidson cores; Gaussian QFF tensor promotion is still being expanded.",
+        "Harmonic GF/PED is a separate merlino_gf workflow through independent gf_core.f and merlino_gf.harmonic.",
+        "VPT2/VCI works on Cartesian normal-mode QFF inputs with independent Davidson support; Gaussian QFF tensor promotion is still being expanded.",
     ]
     return VPT2VCIInventory(
         harmonic_source=harmonic_source if harmonic_source.exists() else None,

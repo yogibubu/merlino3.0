@@ -6,6 +6,7 @@ from pathlib import Path
 
 DEFAULT_SEMIEXP_OBSERVABLE = "moments"
 DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS = "auto"
+HYDROGEN_PARAMETER_CONSTRAINT = "@hydrogen_parameters"
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,7 @@ class SemiexperimentalFitRequest:
     rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
     qm_predicates: tuple[QMParameterPredicate, ...] = ()
     parameter_classes: tuple[ParameterClassConstraint, ...] = ()
+    coordinate_model: str = "gic"
 
     def validate(self) -> None:
         if not self.observations:
@@ -149,6 +151,8 @@ class SemiexperimentalFitRequest:
             raise ValueError("observable must be moments, rotational_constants or auto")
         if self.rotational_components not in {"auto", "ABC", "AB", "AC", "BC"}:
             raise ValueError("rotational_components must be auto, ABC, AB, AC or BC")
+        if self.coordinate_model not in {"gic", "cartesian_symmetry"}:
+            raise ValueError("coordinate_model must be gic or cartesian_symmetry")
         for predicate in self.qm_predicates:
             if not predicate.label_pattern.strip():
                 raise ValueError("QM predicate label pattern cannot be empty")

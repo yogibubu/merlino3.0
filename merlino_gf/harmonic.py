@@ -19,11 +19,7 @@ class GFResult:
 
 
 def solve_wilson_gf(force_constants: np.ndarray, g_matrix: np.ndarray, *, scale_to_cm: bool = False) -> GFResult:
-    """Solve the symmetric Wilson GF eigenproblem from independent matrices.
-
-    The caller owns all coordinate construction. This routine only receives the
-    non-redundant internal-coordinate Hessian F and kinetic G matrix.
-    """
+    """Solve the symmetric Wilson GF eigenproblem from independent matrices."""
     f_mat = np.asarray(force_constants, dtype=float)
     g_mat = np.asarray(g_matrix, dtype=float)
     if f_mat.shape != g_mat.shape or f_mat.ndim != 2 or f_mat.shape[0] != f_mat.shape[1]:

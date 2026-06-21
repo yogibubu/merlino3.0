@@ -7,6 +7,7 @@ import shlex
 from PySide6.QtCore import QProcess, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from merlino_semiexp import (
+    HYDROGEN_PARAMETER_CONSTRAINT,
     ParameterClassConstraint,
     QMParameterPredicate,
     SEMIEXP_JOB_SCHEMA,
@@ -61,6 +63,7 @@ class DashboardWindow(QMainWindow):
             workflow.workflow_id: workflow.default_backend for workflow in self.workflows
         }
         self._semiexp_process: QProcess | None = None
+        self._gic_process: QProcess | None = None
 
         self.setWindowTitle("Merlino 4.0")
         self.resize(1080, 720)
@@ -125,6 +128,10 @@ class DashboardWindow(QMainWindow):
         layout.addWidget(self.semiexp_panel)
         self.semiexp_panel.hide()
 
+        self.gic_panel = self._build_gic_panel()
+        layout.addWidget(self.gic_panel)
+        self.gic_panel.hide()
+
         for category, workflows in _group_workflows(self.workflows).items():
             parent = QTreeWidgetItem([category, ""])
             parent.setFlags(parent.flags() & ~Qt.ItemIsSelectable)
@@ -167,8 +174,11 @@ class DashboardWindow(QMainWindow):
         backend = self.selected_backends.get(workflow.workflow_id, workflow.default_backend)
         self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend, workdir=self.workdir))
         self.semiexp_panel.setVisible(workflow.workflow_id == "semiexp_geometry")
+        self.gic_panel.setVisible(workflow.workflow_id in {"gic", "gic_gf"})
         if workflow.workflow_id == "semiexp_geometry":
             self._update_semiexp_preview()
+        if workflow.workflow_id in {"gic", "gic_gf"}:
+            self._update_gic_preview()
 
     def _sync_backend_selector(self, workflow: WorkflowSpec) -> None:
         self.backend_selector.blockSignals(True)
@@ -192,6 +202,310 @@ class DashboardWindow(QMainWindow):
         self.detail_view.setPlainText(workflow_detail_text(workflow, selected_backend=backend, workdir=self.workdir))
         if workflow.workflow_id == "semiexp_geometry":
             self._update_semiexp_preview()
+        if workflow.workflow_id in {"gic", "gic_gf"}:
+            self._update_gic_preview()
+
+    def _build_gic_panel(self) -> QGroupBox:
+        panel = QGroupBox("GIC Definition / B Matrix / GF-PED")
+        layout = QVBoxLayout(panel)
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+
+        define_tab = QWidget()
+        define_form = QFormLayout(define_tab)
+        self.gic_define_geometry = _path_row(
+            self,
+            define_form,
+            "Cartesian geometry:",
+            "Select Cartesian geometry",
+            "*.xyz *.com *.gjf",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_define_schema = _save_path_row(
+            self,
+            define_form,
+            "Definition JSON:",
+            "Save GIC definition",
+            "*.json",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_define_workdir = _directory_row(
+            self,
+            define_form,
+            "GICForge workdir:",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_define_gaussian = _save_path_row(
+            self,
+            define_form,
+            "Gaussian GIC block:",
+            "Save Gaussian GIC block",
+            "*.gjf *.com *",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_define_symmetry = QCheckBox("Symmetrize GICs and assign irreps")
+        self.gic_define_symmetry.setChecked(True)
+        self.gic_define_symmetry.toggled.connect(lambda _checked: self._update_gic_preview())
+        define_form.addRow("Symmetry:", self.gic_define_symmetry)
+
+        bmat_tab = QWidget()
+        bmat_form = QFormLayout(bmat_tab)
+        self.gic_bmatrix_schema = _path_row(
+            self,
+            bmat_form,
+            "Definition JSON:",
+            "Select GIC definition",
+            "*.json",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_bmatrix_geometry = _path_row(
+            self,
+            bmat_form,
+            "Current geometry:",
+            "Select current Cartesian geometry",
+            "*.xyz *.com *.gjf",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_bmatrix_out = _save_path_row(
+            self,
+            bmat_form,
+            "B matrix CSV:",
+            "Save B matrix CSV",
+            "*.csv",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_bmatrix_values = _save_path_row(
+            self,
+            bmat_form,
+            "GIC values CSV:",
+            "Save GIC values CSV",
+            "*.csv",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_bmatrix_metadata = _save_path_row(
+            self,
+            bmat_form,
+            "GIC metadata CSV:",
+            "Save GIC metadata CSV",
+            "*.csv",
+            update_callback="_update_gic_preview",
+        )
+
+        gf_tab = QWidget()
+        gf_form = QFormLayout(gf_tab)
+        self.gic_gf_schema = _path_row(
+            self,
+            gf_form,
+            "Definition JSON:",
+            "Select GIC definition",
+            "*.json",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_gf_fchk = _path_row(
+            self,
+            gf_form,
+            "Cartesian Hessian FCHK:",
+            "Select FCHK Hessian",
+            "*.fchk *.fch",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_gf_geometry = _path_row(
+            self,
+            gf_form,
+            "B geometry (optional):",
+            "Select current Cartesian geometry",
+            "*.xyz *.com *.gjf",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_gf_scale = _path_row(
+            self,
+            gf_form,
+            "Pulay scale file:",
+            "Select Pulay scaling file",
+            "*.csv *.txt *.scale *",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_gf_report = _save_path_row(
+            self,
+            gf_form,
+            "GF/PED report:",
+            "Save GF/PED report",
+            "*.txt *",
+            update_callback="_update_gic_preview",
+        )
+        self.gic_gf_csv_dir = _directory_row(
+            self,
+            gf_form,
+            "CSV directory:",
+            update_callback="_update_gic_preview",
+        )
+
+        run_tab = QWidget()
+        run_layout = QVBoxLayout(run_tab)
+        self.gic_command = QTextEdit()
+        self.gic_command.setReadOnly(True)
+        self.gic_command.setMaximumHeight(130)
+        run_layout.addWidget(QLabel("Command preview and output:"))
+        run_layout.addWidget(self.gic_command)
+
+        buttons = QHBoxLayout()
+        self.gic_define_button = QPushButton("Build GIC Definition")
+        self.gic_define_button.clicked.connect(self.run_gic_define)
+        buttons.addWidget(self.gic_define_button)
+        self.gic_bmatrix_button = QPushButton("Build B Matrix")
+        self.gic_bmatrix_button.clicked.connect(self.run_gic_bmatrix)
+        buttons.addWidget(self.gic_bmatrix_button)
+        self.gic_gf_button = QPushButton("Run GIC GF / PED")
+        self.gic_gf_button.clicked.connect(self.run_gic_gf)
+        buttons.addWidget(self.gic_gf_button)
+        run_layout.addLayout(buttons)
+
+        tabs.addTab(define_tab, "Define GICs")
+        tabs.addTab(bmat_tab, "Evaluate B")
+        tabs.addTab(gf_tab, "GF/PED from Hessian")
+        tabs.addTab(run_tab, "Run")
+
+        self.gic_define_schema.setText(str(self.workdir / "gic_definition.json"))
+        self.gic_define_workdir.setText(str(self.workdir / "gic_definition_run"))
+        self.gic_define_gaussian.setText(str(self.workdir / "gauin.gic"))
+        self.gic_bmatrix_out.setText(str(self.workdir / "gic_bmatrix.csv"))
+        self.gic_bmatrix_values.setText(str(self.workdir / "gic_values.csv"))
+        self.gic_bmatrix_metadata.setText(str(self.workdir / "gic_metadata.csv"))
+        self.gic_gf_schema.setText(str(self.workdir / "gic_definition.json"))
+        self.gic_gf_fchk.setText(str(self.workdir / "gauin.fchk"))
+        self.gic_gf_report.setText(str(self.workdir / "gic_gf_ped_report.txt"))
+        self.gic_gf_csv_dir.setText(str(self.workdir / "gic_gf_csv"))
+        return panel
+
+    def gic_define_args(self) -> list[str]:
+        args = [
+            "gic-define",
+            "--geometry",
+            self.gic_define_geometry.text().strip(),
+            "--out",
+            self.gic_define_schema.text().strip(),
+        ]
+        if self.gic_define_workdir.text().strip():
+            args.extend(["--workdir", self.gic_define_workdir.text().strip()])
+        if self.gic_define_gaussian.text().strip():
+            args.extend(["--gaussian-out", self.gic_define_gaussian.text().strip()])
+        if not self.gic_define_symmetry.isChecked():
+            args.append("--no-symmetry")
+        return args
+
+    def gic_bmatrix_args(self) -> list[str]:
+        args = [
+            "gic-bmatrix",
+            "--schema",
+            self.gic_bmatrix_schema.text().strip(),
+            "--geometry",
+            self.gic_bmatrix_geometry.text().strip(),
+            "--out",
+            self.gic_bmatrix_out.text().strip(),
+        ]
+        if self.gic_bmatrix_values.text().strip():
+            args.extend(["--values-out", self.gic_bmatrix_values.text().strip()])
+        if self.gic_bmatrix_metadata.text().strip():
+            args.extend(["--metadata-out", self.gic_bmatrix_metadata.text().strip()])
+        return args
+
+    def gic_gf_args(self) -> list[str]:
+        args = [
+            "gic-gf",
+            "--schema",
+            self.gic_gf_schema.text().strip(),
+            "--fchk",
+            self.gic_gf_fchk.text().strip(),
+        ]
+        if self.gic_gf_geometry.text().strip():
+            args.extend(["--geometry", self.gic_gf_geometry.text().strip()])
+        if self.gic_gf_scale.text().strip():
+            args.extend(["--scale-file", self.gic_gf_scale.text().strip()])
+        if self.gic_gf_report.text().strip():
+            args.extend(["--out", self.gic_gf_report.text().strip()])
+        if self.gic_gf_csv_dir.text().strip():
+            args.extend(["--csv-dir", self.gic_gf_csv_dir.text().strip()])
+        return args
+
+    def _update_gic_preview(self) -> None:
+        if not hasattr(self, "gic_command"):
+            return
+        define_args = self.gic_define_args()
+        bmatrix_args = self.gic_bmatrix_args()
+        gf_args = self.gic_gf_args()
+        define_complete = bool(define_args[2] and define_args[4])
+        bmatrix_complete = bool(bmatrix_args[2] and bmatrix_args[4] and bmatrix_args[6])
+        gf_complete = bool(self.gic_gf_schema.text().strip() and self.gic_gf_fchk.text().strip())
+        lines = [
+            "Definition utility:",
+            "python -m merlino " + " ".join(shlex.quote(item) for item in define_args),
+            "",
+            "B-matrix utility:",
+            "python -m merlino " + " ".join(shlex.quote(item) for item in bmatrix_args),
+            "",
+            "Frozen-GIC GF/PED utility:",
+            "python -m merlino " + " ".join(shlex.quote(item) for item in gf_args),
+        ]
+        if not define_complete:
+            lines.append("\nSelect Cartesian geometry and definition JSON before building GICs.")
+        if not bmatrix_complete:
+            lines.append("\nSelect definition JSON, current geometry and B-matrix CSV before evaluating B.")
+        if not gf_complete:
+            lines.append("\nSelect definition JSON and FCHK Hessian before running frozen-GIC GF/PED.")
+        self.gic_command.setPlainText("\n".join(lines))
+        self.gic_define_button.setEnabled(define_complete)
+        self.gic_bmatrix_button.setEnabled(bmatrix_complete)
+        self.gic_gf_button.setEnabled(gf_complete)
+
+    def run_gic_define(self) -> None:
+        args = self.gic_define_args()
+        if not (args[2] and args[4]):
+            self._update_gic_preview()
+            return
+        self._run_gic_process(args)
+
+    def run_gic_bmatrix(self) -> None:
+        args = self.gic_bmatrix_args()
+        if not (args[2] and args[4] and args[6]):
+            self._update_gic_preview()
+            return
+        self._run_gic_process(args)
+
+    def run_gic_gf(self) -> None:
+        args = self.gic_gf_args()
+        if not (self.gic_gf_schema.text().strip() and self.gic_gf_fchk.text().strip()):
+            self._update_gic_preview()
+            return
+        self._run_gic_process(args)
+
+    def _run_gic_process(self, args: list[str]) -> None:
+        self._gic_process = QProcess(self)
+        self._gic_process.setWorkingDirectory(str(self.workdir))
+        self._gic_process.setProgram("python")
+        self._gic_process.setArguments(["-m", "merlino", *args])
+        self._gic_process.readyReadStandardOutput.connect(self._append_gic_output)
+        self._gic_process.readyReadStandardError.connect(self._append_gic_output)
+        self._gic_process.finished.connect(self._gic_finished)
+        self._append_gic_text("\nrunning...\n")
+        self._gic_process.start()
+
+    def _gic_finished(self, code: int, status) -> None:
+        self._append_gic_text(f"\nfinished: {code}\n")
+        schema = self.gic_define_schema.text().strip()
+        if schema and Path(schema).exists():
+            self.gic_bmatrix_schema.setText(schema)
+            self.gic_gf_schema.setText(schema)
+
+    def _append_gic_output(self) -> None:
+        if self._gic_process is None:
+            return
+        text = bytes(self._gic_process.readAllStandardOutput()).decode(errors="replace")
+        text += bytes(self._gic_process.readAllStandardError()).decode(errors="replace")
+        self._append_gic_text(text)
+
+    def _append_gic_text(self, text: str) -> None:
+        self.gic_command.moveCursor(QTextCursor.MoveOperation.End)
+        self.gic_command.insertPlainText(text)
 
     def _build_semiexp_panel(self) -> QGroupBox:
         panel = QGroupBox("Semiexperimental Geometry Run")
@@ -236,6 +550,11 @@ class DashboardWindow(QMainWindow):
         self.semiexp_observable.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
         option_form.addRow("Fit target:", self.semiexp_observable)
 
+        self.semiexp_coordinate_model = QComboBox()
+        self.semiexp_coordinate_model.addItems(["gic", "cartesian_symmetry"])
+        self.semiexp_coordinate_model.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Coordinate model:", self.semiexp_coordinate_model)
+
         self.semiexp_components = QComboBox()
         self.semiexp_components.addItems(["auto", "ABC", "AB", "AC", "BC"])
         self.semiexp_components.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
@@ -245,6 +564,10 @@ class DashboardWindow(QMainWindow):
         self.semiexp_fixed.setPlaceholderText("e.g. GIC001, angle(2,1,3)")
         self.semiexp_fixed.textChanged.connect(lambda _text: self._update_semiexp_preview())
         option_form.addRow("Fixed GIC patterns:", self.semiexp_fixed)
+
+        self.semiexp_fix_hydrogens = QCheckBox("Freeze local H/D/T geometry constraints")
+        self.semiexp_fix_hydrogens.toggled.connect(lambda _checked: self._update_semiexp_preview())
+        option_form.addRow("Hydrogen parameters:", self.semiexp_fix_hydrogens)
 
         self.semiexp_qm = QLineEdit()
         self.semiexp_qm.setPlaceholderText("pattern:value:sigma[:source]; repeat with semicolons")
@@ -331,6 +654,8 @@ class DashboardWindow(QMainWindow):
             self.semiexp_outdir.text().strip(),
             "--backend",
             self.selected_backends.get("semiexp_geometry", "python"),
+            "--coordinate-model",
+            self.semiexp_coordinate_model.currentText(),
             "--observable",
             self.semiexp_observable.currentText(),
             "--rotational-components",
@@ -340,6 +665,8 @@ class DashboardWindow(QMainWindow):
         ]
         if self.semiexp_fixed.text().strip():
             args.extend(["--fixed", self.semiexp_fixed.text().strip()])
+        if self.semiexp_fix_hydrogens.isChecked():
+            args.append("--fix-hydrogens")
         for predicate in _split_semiexp_items(self.semiexp_qm.text()):
             args.extend(["--qm-predicate", predicate])
         for parameter_class in _split_semiexp_items(self.semiexp_classes.text()):
@@ -368,9 +695,15 @@ class DashboardWindow(QMainWindow):
         self._semiexp_process.setArguments(["-m", "merlino", *args])
         self._semiexp_process.readyReadStandardOutput.connect(self._append_semiexp_output)
         self._semiexp_process.readyReadStandardError.connect(self._append_semiexp_output)
-        self._semiexp_process.finished.connect(lambda code, status: self._append_semiexp_text(f"\nfinished: {code}\n"))
+        self._semiexp_process.finished.connect(self._semiexp_finished)
         self._append_semiexp_text("\nrunning...\n")
         self._semiexp_process.start()
+
+    def _semiexp_finished(self, code: int, status) -> None:
+        self._append_semiexp_text(f"\nfinished: {code}\n")
+        manifest = Path(self.semiexp_outdir.text().strip()) / "semiexp_manifest.json"
+        if manifest.exists():
+            self._append_semiexp_text(_semiexp_expert_diagnostics(manifest))
 
     def add_semiexp_isotopologue_row(self, checked: bool = False, *, label: str = "") -> None:
         row = self.semiexp_iso_table.rowCount()
@@ -453,9 +786,11 @@ class DashboardWindow(QMainWindow):
             "xyz": self.semiexp_xyz.text().strip(),
             "observations": self.semiexp_observations.text().strip(),
             "outdir": self.semiexp_outdir.text().strip(),
+            "coordinate_model": self.semiexp_coordinate_model.currentText(),
             "observable": self.semiexp_observable.currentText(),
             "components": self.semiexp_components.currentText(),
             "fixed": self.semiexp_fixed.text().strip(),
+            "fix_hydrogens": self.semiexp_fix_hydrogens.isChecked(),
             "qm": self.semiexp_qm.text().strip(),
             "classes": self.semiexp_classes.text().strip(),
             "backend": self.selected_backends.get("semiexp_geometry", "python"),
@@ -473,9 +808,11 @@ class DashboardWindow(QMainWindow):
         self.semiexp_xyz.setText(str(data.get("xyz", "")))
         self.semiexp_observations.setText(str(data.get("observations", "")))
         self.semiexp_outdir.setText(str(data.get("outdir", "")))
+        self.semiexp_coordinate_model.setCurrentText(str(data.get("coordinate_model", "gic")))
         self.semiexp_observable.setCurrentText(str(data.get("observable", "moments")))
         self.semiexp_components.setCurrentText(str(data.get("components", "auto")))
         self.semiexp_fixed.setText(str(data.get("fixed", "")))
+        self.semiexp_fix_hydrogens.setChecked(bool(data.get("fix_hydrogens", False)))
         self.semiexp_qm.setText(str(data.get("qm", "")))
         self.semiexp_classes.setText(str(data.get("classes", "")))
         backend = str(data.get("backend", "python"))
@@ -551,9 +888,12 @@ class DashboardWindow(QMainWindow):
             "",
             "[files]",
             f'observations = "{_toml_string(str(observations_path))}"',
+        ]
+        lines.extend([
             "",
             "[fit]",
             f'backend = "{_toml_string(self.selected_backends.get("semiexp_geometry", "python"))}"',
+            f'coordinate_model = "{_toml_string(self.semiexp_coordinate_model.currentText())}"',
             f'observable = "{_toml_string(self.semiexp_observable.currentText())}"',
             f'rotational_components = "{_toml_string(self.semiexp_components.currentText())}"',
             f"prune_condition = {self.semiexp_prune_condition.value():.12g}",
@@ -561,10 +901,12 @@ class DashboardWindow(QMainWindow):
             "[geometry]",
             'units = "angstrom"',
             "atoms = [",
-        ]
+        ])
         for atom, xyz in zip(geometry.atoms, geometry.coordinates_angstrom):
             lines.append(f'  ["{_toml_string(atom)}", {xyz[0]:.12g}, {xyz[1]:.12g}, {xyz[2]:.12g}],')
         lines.extend(["]", "", "[constraints]"])
+        if self.semiexp_fix_hydrogens.isChecked():
+            lines.append("fix_hydrogen_parameters = true")
         if fixed:
             lines.append("fixed_gic_patterns = [")
             lines.extend(f'  "{_toml_string(item)}",' for item in fixed)
@@ -627,14 +969,18 @@ class DashboardWindow(QMainWindow):
             parts = item.split(":", 2)
             if len(parts) == 3:
                 classes.append(ParameterClassConstraint(parts[0], tuple(p for p in parts[2].split("|") if p), parts[1]))
+        fixed = list(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";")))
+        if self.semiexp_fix_hydrogens.isChecked():
+            fixed.append(HYDROGEN_PARAMETER_CONSTRAINT)
         return SemiexperimentalFitRequest(
             Path(xyz),
             read_observations(Path(obs_path)),
-            fixed_parameters=tuple(_split_semiexp_items(self.semiexp_fixed.text().replace(",", ";"))),
+            fixed_parameters=tuple(dict.fromkeys(fixed)),
             qm_predicates=tuple(_parse_semiexp_qm_predicates(self.semiexp_qm.text())),
             observable=self.semiexp_observable.currentText(),
             rotational_components=self.semiexp_components.currentText(),
             parameter_classes=tuple(classes),
+            coordinate_model=self.semiexp_coordinate_model.currentText(),
         )
 
 
@@ -691,11 +1037,46 @@ def workflow_state_lines(workflow: WorkflowSpec, workdir: Path) -> list[str]:
     return ["not started in this workdir"]
 
 
+def _semiexp_expert_diagnostics(manifest_path: Path) -> str:
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return f"\nexpert diagnostics unavailable: {exc}\n"
+    params = manifest.get("parameters", {})
+    keys = (
+        "convergence_reason",
+        "rank",
+        "incremental_rank",
+        "condition_number",
+        "weighted_rms",
+        "gicforge_calls",
+        "coordinate_model_reuse_steps",
+        "b_projector_analytic_refreshes",
+        "b_projector_secant_updates",
+        "b_projector_secant_rejections",
+        "last_b_projector_secant_error",
+        "last_trust_ratio",
+        "last_line_search_scale",
+        "parameter_scale_min",
+        "parameter_scale_max",
+    )
+    lines = ["\nExpert diagnostics:"]
+    for key in keys:
+        if key in params:
+            lines.append(f"  {key}: {params[key]}")
+    outputs = manifest.get("outputs", {})
+    for key in ("influence", "high_correlations", "diagnostics"):
+        if key in outputs:
+            lines.append(f"  {key}: {outputs[key]}")
+    return "\n".join(lines) + "\n"
+
+
 def _workflow_manifests(workdir: Path, workflow_id: str) -> list[dict]:
     aliases = {
         "semiexp_geometry": {"semiexperimental_geometry"},
         "gic": {"gicforge"},
-        "vpt2_vci": {"vpt2_vci", "gf"},
+        "gic_gf": {"gic_gf", "gf"},
+        "vpt2_vci": {"vpt2_vci"},
         "dvr": {"dvr"},
     }
     accepted = {workflow_id, *aliases.get(workflow_id, set())}
@@ -719,7 +1100,18 @@ def _expected_workflow_files(workflow_id: str, workdir: Path) -> dict[str, Path]
             "report": workdir / "semiexp_report.html",
         }
     if workflow_id == "gic":
-        return {"gaussian_input": workdir / "gauin", "report": workdir / "gicforge.out"}
+        return {
+            "gic_definition": workdir / "gic_definition.json",
+            "gaussian_input": workdir / "gauin.gic",
+            "b_matrix": workdir / "gic_bmatrix.csv",
+        }
+    if workflow_id == "gic_gf":
+        return {
+            "report": workdir / "gic_gf_ped_report.txt",
+            "frequencies": workdir / "gic_gf_csv" / "gic_gf_frequencies.csv",
+            "ped": workdir / "gic_gf_csv" / "gic_gf_ped.csv",
+            "normal_modes": workdir / "gic_gf_csv" / "gic_gf_normal_modes.csv",
+        }
     return {}
 
 
@@ -730,10 +1122,18 @@ def _group_workflows(workflows: list[WorkflowSpec]) -> dict[str, list[WorkflowSp
     return grouped
 
 
-def _path_row(parent: QWidget, form: QFormLayout, label: str, title: str, name_filter: str) -> QLineEdit:
+def _path_row(
+    parent: QWidget,
+    form: QFormLayout,
+    label: str,
+    title: str,
+    name_filter: str,
+    *,
+    update_callback: str = "_update_semiexp_preview",
+) -> QLineEdit:
     row = QHBoxLayout()
     edit = QLineEdit()
-    edit.textChanged.connect(lambda _text: parent._update_semiexp_preview())
+    edit.textChanged.connect(lambda _text: getattr(parent, update_callback)())
     button = QPushButton("Browse")
     button.clicked.connect(lambda: _select_file(parent, edit, title, name_filter))
     row.addWidget(edit, stretch=1)
@@ -742,10 +1142,36 @@ def _path_row(parent: QWidget, form: QFormLayout, label: str, title: str, name_f
     return edit
 
 
-def _directory_row(parent: QWidget, form: QFormLayout, label: str) -> QLineEdit:
+def _save_path_row(
+    parent: QWidget,
+    form: QFormLayout,
+    label: str,
+    title: str,
+    name_filter: str,
+    *,
+    update_callback: str = "_update_semiexp_preview",
+) -> QLineEdit:
     row = QHBoxLayout()
     edit = QLineEdit()
-    edit.textChanged.connect(lambda _text: parent._update_semiexp_preview())
+    edit.textChanged.connect(lambda _text: getattr(parent, update_callback)())
+    button = QPushButton("Browse")
+    button.clicked.connect(lambda: _select_save_file(parent, edit, title, name_filter))
+    row.addWidget(edit, stretch=1)
+    row.addWidget(button)
+    form.addRow(label, row)
+    return edit
+
+
+def _directory_row(
+    parent: QWidget,
+    form: QFormLayout,
+    label: str,
+    *,
+    update_callback: str = "_update_semiexp_preview",
+) -> QLineEdit:
+    row = QHBoxLayout()
+    edit = QLineEdit()
+    edit.textChanged.connect(lambda _text: getattr(parent, update_callback)())
     button = QPushButton("Browse")
     button.clicked.connect(lambda: _select_directory(parent, edit))
     row.addWidget(edit, stretch=1)
@@ -756,6 +1182,12 @@ def _directory_row(parent: QWidget, form: QFormLayout, label: str) -> QLineEdit:
 
 def _select_file(parent: QWidget, edit: QLineEdit, title: str, name_filter: str) -> None:
     path, _selected_filter = QFileDialog.getOpenFileName(parent, title, str(parent.workdir), name_filter)
+    if path:
+        edit.setText(path)
+
+
+def _select_save_file(parent: QWidget, edit: QLineEdit, title: str, name_filter: str) -> None:
+    path, _selected_filter = QFileDialog.getSaveFileName(parent, title, str(parent.workdir), name_filter)
     if path:
         edit.setText(path)
 

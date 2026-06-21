@@ -7,18 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .gaussian_qff import anharmonic_input_from_gaussian_fchk, hessian_input_from_gaussian_fchk, read_indexed_qff_text
-from .internal_gf import InternalGFResult, gf_from_hessian_input_with_merlino_gics
-from .vci import QuarticForceField, VCIOptions, force_field_from_anharmonic_input
+from .gaussian_qff import anharmonic_input_from_gaussian_fchk, read_indexed_qff_text
 from .validation import validate_force_field
+from .vci import QuarticForceField, VCIOptions, force_field_from_anharmonic_input
 from .vpt2 import VPT2VCIComparison, compare_vpt2_vci
-
-
-@dataclass(frozen=True)
-class GFReport:
-    fchk_path: Path
-    result: InternalGFResult
-    text: str
 
 
 @dataclass(frozen=True)
@@ -26,17 +18,6 @@ class VPT2VCIReport:
     force_field: QuarticForceField
     comparison: VPT2VCIComparison
     text: str
-
-
-Report = GFReport | VPT2VCIReport
-
-
-def run_gf_report_from_fchk(fchk_path: Path) -> GFReport:
-    """Read an FCHK adapter and return a formatted GF/PED report."""
-    path = Path(fchk_path)
-    hessian_input = hessian_input_from_gaussian_fchk(path)
-    result = gf_from_hessian_input_with_merlino_gics(hessian_input)
-    return GFReport(path, result, format_gf_report(path, result))
 
 
 def load_force_field(fchk_path: Path | None = None, qff_path: Path | None = None) -> QuarticForceField:
@@ -68,30 +49,6 @@ def run_vpt2_vci_report(
     validate_force_field(force_field)
     comparison = compare_vpt2_vci(force_field, max_quanta=max_quanta, n_roots=roots, options=options)
     return VPT2VCIReport(force_field, comparison, format_vpt2_vci_report(force_field, comparison))
-
-
-def format_gf_report(fchk_path: Path, result: InternalGFResult) -> str:
-    lines = [
-        "GF/PED from Merlino non-redundant GICs",
-        f"Source FCHK: {Path(fchk_path)}",
-        f"GIC count: {len(result.gic_labels)}",
-        "",
-        "Frequencies (cm-1):",
-    ]
-    for idx, freq in enumerate(result.frequencies_cm, start=1):
-        lines.append(f"  mode {idx:3d}: {freq:12.3f}")
-
-    lines.extend(["", "GIC labels:"])
-    for idx, label in enumerate(result.gic_labels, start=1):
-        lines.append(f"  GIC{idx:03d}: {label}")
-
-    lines.extend(["", "PED (%) rows=GIC cols=modes:"])
-    header = "          " + " ".join(f"M{idx:02d}" for idx in range(1, len(result.frequencies_cm) + 1))
-    lines.append(header)
-    for idx, row in enumerate(result.ped.values, start=1):
-        values = " ".join(f"{value:7.2f}" for value in row)
-        lines.append(f"  GIC{idx:03d} {values}")
-    return "\n".join(lines)
 
 
 def format_vpt2_vci_report(qff: QuarticForceField, comparison: VPT2VCIComparison) -> str:
@@ -141,25 +98,6 @@ def format_vpt2_vci_report(qff: QuarticForceField, comparison: VPT2VCIComparison
     return "\n".join(lines)
 
 
-def gf_csv_tables(report: GFReport) -> dict[str, str]:
-    """Return CSV tables for GF frequencies, GIC labels and PED."""
-    freq_rows = [["mode", "frequency_cm-1"]]
-    freq_rows.extend([[idx, f"{freq:.10g}"] for idx, freq in enumerate(report.result.frequencies_cm, start=1)])
-
-    label_rows = [["gic", "label"]]
-    label_rows.extend([[f"GIC{idx:03d}", label] for idx, label in enumerate(report.result.gic_labels, start=1)])
-
-    ped_rows = [["gic", *[f"mode_{idx}" for idx in range(1, len(report.result.frequencies_cm) + 1)]]]
-    for idx, row in enumerate(report.result.ped.values, start=1):
-        ped_rows.append([f"GIC{idx:03d}", *[f"{value:.10g}" for value in row]])
-
-    return {
-        "frequencies.csv": _csv_text(freq_rows),
-        "gic_labels.csv": _csv_text(label_rows),
-        "ped.csv": _csv_text(ped_rows),
-    }
-
-
 def vpt2_vci_csv_tables(report: VPT2VCIReport) -> dict[str, str]:
     """Return CSV tables for VPT2/VCI comparison and dominant contributions."""
     qff = report.force_field
@@ -204,20 +142,13 @@ def vpt2_vci_csv_tables(report: VPT2VCIReport) -> dict[str, str]:
     }
 
 
-def write_csv_tables(report: Report, outdir: Path, *, prefix: str = "") -> dict[str, Path]:
-    """Write structured CSV outputs for a GF or VPT2/VCI report."""
+def write_csv_tables(report: VPT2VCIReport, outdir: Path, *, prefix: str = "vpt2_vci") -> dict[str, Path]:
+    """Write structured CSV outputs for a VPT2/VCI report."""
     target_dir = Path(outdir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    if isinstance(report, GFReport):
-        tables = gf_csv_tables(report)
-        default_prefix = "gf"
-    else:
-        tables = vpt2_vci_csv_tables(report)
-        default_prefix = "vpt2_vci"
-    stem = prefix or default_prefix
     written: dict[str, Path] = {}
-    for name, text in tables.items():
-        path = target_dir / f"{stem}_{name}"
+    for name, text in vpt2_vci_csv_tables(report).items():
+        path = target_dir / f"{prefix}_{name}"
         path.write_text(text, encoding="utf-8")
         written[name] = path
     return written

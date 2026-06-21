@@ -9,6 +9,7 @@ import numpy as np
 from .contracts import (
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
+    HYDROGEN_PARAMETER_CONSTRAINT,
     ParameterClassConstraint,
     QMParameterPredicate,
 )
@@ -27,6 +28,7 @@ class SemiexperimentalJobInput:
     backend: str = "python"
     observable: str = DEFAULT_SEMIEXP_OBSERVABLE
     rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
+    coordinate_model: str = "gic"
     max_iter: int | None = None
     step: float = 1.0e-4
     damping: float = 1.0e-8
@@ -73,6 +75,7 @@ def read_semiexperimental_job(path: Path) -> SemiexperimentalJobInput:
         backend=str(fit.get("backend", "python")),
         observable=str(fit.get("observable", DEFAULT_SEMIEXP_OBSERVABLE)),
         rotational_components=str(fit.get("rotational_components", DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS)),
+        coordinate_model=str(fit.get("coordinate_model", "gic")),
         max_iter=_optional_int(fit.get("max_iter")),
         step=float(fit.get("step", 1.0e-4)),
         damping=float(fit.get("damping", 1.0e-8)),
@@ -140,7 +143,10 @@ def _fixed_parameters_from_mapping(constraints: dict) -> tuple[str, ...]:
     fixed_gic = constraints.get("fixed_gic_patterns", constraints.get("fixed", ()))
     if isinstance(fixed_gic, str):
         fixed_gic = [item.strip() for item in fixed_gic.replace(";", ",").split(",") if item.strip()]
-    for item in (*_modredundant_fixed_patterns(tuple(modredundant or ())), *(fixed_gic or ())):
+    automatic = []
+    if bool(constraints.get("fix_hydrogen_parameters", False)):
+        automatic.append(HYDROGEN_PARAMETER_CONSTRAINT)
+    for item in (*_modredundant_fixed_patterns(tuple(modredundant or ())), *(fixed_gic or ()), *automatic):
         text = str(item).strip()
         if text and text not in seen:
             result.append(text)

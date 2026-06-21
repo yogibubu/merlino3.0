@@ -16,10 +16,14 @@ the top-level README. New implementation files should not be added at root.
   routines, and `xyzin` utilities.
 - `merlino_fit/`: topology, synthons, fitting, BDPCS3 correction, Gaussian GIC
   generation, and test suite.
+- `merlino_gic/`: frozen GIC definition and reusable B-matrix evaluation.
+- `merlino_gf/`: harmonic Cartesian-Hessian/GIC-B/GF/PED package, physically
+  separated from VPT2/VCI.
+- `merlino_vpt2_vci/`: normal-mode anharmonic QFF, VPT2, VCI and Davidson.
 - `puckering_dvr/`: DVR analysis backend for completed Gaussian outputs.
 - `fortran/`: active Fortran backends. Executable code lives in
   `fortran/gicforge` and `fortran/dvr`; independent source kernels for
-  GF/VPT2/VCI/Davidson live in `fortran/vpt2_vci`.
+  harmonic GF, normal-mode VPT2/VCI and Davidson live in `fortran/vpt2_vci`.
 
 ## Generated And Local Files
 
@@ -31,6 +35,7 @@ the top-level README. New implementation files should not be added at root.
 ## Documentation
 
 - `doc/PROJECT_STATUS.md`: current project state.
+- `doc/PACKAGE_ARCHITECTURE.md`: package boundaries and workflow data flow.
 - `doc/FINAL_CLEANUP_STATUS.md`: cleanup and validation history.
 - `doc/RING_NUMBERING_CONVENTION.md`: ring numbering convention shared by
   Python and Fortran.

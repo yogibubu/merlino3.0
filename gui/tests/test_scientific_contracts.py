@@ -11,11 +11,13 @@ from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
+from merlino_gf import BOHR_TO_ANGSTROM
 from merlino_semiexp import (
     CorrectedRotationalConstants,
     DEFAULT_SEMIEXP_OBSERVABLE,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     ElectronicCorrection,
+    HYDROGEN_PARAMETER_CONSTRAINT,
     IsotopologueObservation,
     ParameterClassConstraint,
     QMParameterPredicate,
@@ -23,6 +25,7 @@ from merlino_semiexp import (
     SEMIEXP_JOB_SCHEMA,
     SemiexperimentalFitRequest,
     VibrationalCorrection,
+    cartesian_symmetry_coordinate_model,
     corrected_constants_rows,
     fit_semiexperimental_geometry,
     kraitchman_comparison,
@@ -39,7 +42,17 @@ from merlino_semiexp import (
     write_semiexperimental_html_report,
     write_observations_csv,
 )
+from merlino_vpt2_vci.gaussian_qff import hessian_input_from_gaussian_fchk
 from merlino_core import repo_root
+from merlino_semiexp.fit import (
+    _atomic_number,
+    _fixed_primitives_from_patterns,
+    _gic_model,
+    _hydrogen_fixed_primitives,
+    _make_gicforge_backend,
+    _primitive_constraint_key,
+    _symmetry_expanded_fixed_primitives,
+)
 from merlino_vpt2_vci import (
     DavidsonSettings,
     ForceFieldSource,
@@ -315,6 +328,7 @@ atoms = [
 ]
 
 [constraints]
+fix_hydrogen_parameters = true
 modredundant = [
   "B 1 2 F",
 ]
@@ -342,6 +356,7 @@ patterns = ["bond(1,2)", "bond(1,3)"]
     assert geometry.source_format == "merlino_semiexp_job"
     assert "bond(1,2)" in job.fixed_parameters
     assert "angle(2,1,3)" in job.fixed_parameters
+    assert HYDROGEN_PARAMETER_CONSTRAINT in job.fixed_parameters
     assert job.qm_predicates[0].source == "test"
     assert job.parameter_classes[0].name == "OH"
 
@@ -433,6 +448,7 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
         "rms_tolerance",
         "gradient_tolerance",
         "objective_tolerance",
+        "line_search_stalled",
         "max_iter",
     }
     assert all(np.isfinite(parameter.sigma) for parameter in result.parameters)
@@ -452,10 +468,65 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_hessian.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_hessian_eigenvalues.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_influence.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_high_correlations.csv").exists()
+    influence_text = (tmp_path / "semiexp" / "semiexp_influence.csv").read_text(encoding="utf-8")
+    assert "chi_square_contribution" in influence_text
+    diagnostics_text = (tmp_path / "semiexp" / "semiexp_diagnostics.csv").read_text(encoding="utf-8")
+    assert "incremental_rank" in diagnostics_text
+    assert "parameter_scale_min" in diagnostics_text
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
     rotconst_text = (tmp_path / "semiexp" / "semiexp_rotational_constants.csv").read_text(encoding="utf-8")
     assert "corrected_experimental_MHz" in rotconst_text
     assert "difference_MHz" in rotconst_text
+
+
+def test_semiexperimental_fit_can_use_hessian_free_symmetry_cartesians(tmp_path):
+    fchk = Path("gui/tests/gaussian/h2o.fchk")
+    hessian_input = hessian_input_from_gaussian_fchk(fchk)
+    atoms = ("H", "O", "H")
+    coords = hessian_input.cartesian_coordinates_bohr * BOHR_TO_ANGSTROM
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water from fchk",
+                *[f"{atom} {x:.12f} {y:.12f} {z:.12f}" for atom, (x, y, z) in zip(atoms, coords)],
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+    model = cartesian_symmetry_coordinate_model(atoms, coords)
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(
+            xyz,
+            (observation,),
+            coordinate_model="cartesian_symmetry",
+        ),
+        max_iter=1,
+        outdir=tmp_path / "cartesian_symmetry",
+    )
+    manifest = json.loads((tmp_path / "cartesian_symmetry" / "semiexp_manifest.json").read_text(encoding="utf-8"))
+    report = (tmp_path / "cartesian_symmetry" / "semiexp_report.txt").read_text(encoding="utf-8")
+
+    assert model.point_group == "C2v"
+    assert model.model_kind == "cartesian_symmetry"
+    assert model.cartesian_from_q.shape == (3 * len(atoms), 3 * len(atoms) - 6)
+    assert "A1" in set(model.irreps)
+    assert result.diagnostics.coordinate_model == "cartesian_symmetry"
+    assert result.b_matrix.shape == (len(result.gic_labels), 3 * len(atoms))
+    assert all(("irrep=A1" in parameter.name) == parameter.active for parameter in result.parameters)
+    assert manifest["backend"]["coordinate_model"] == "symmetry-cartesian"
+    assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "totally symmetric symmetry-adapted Cartesian displacements only"
+    assert "coordinate_basis = totally symmetric Hessian-free symmetry-adapted Cartesian displacements" in report
+    assert "hessian =" not in report
 
 
 def test_semiexperimental_topological_dihedral_errors_are_propagated():
@@ -606,6 +677,79 @@ def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
 
     assert result.parameters[0].active is False
     assert any(parameter.active for parameter in result.parameters)
+
+
+def test_semiexperimental_primitive_constraints_do_not_disable_containing_gics(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    result = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, (observation,), fixed_parameters=("bond(1,2)",)),
+        max_iter=1,
+    )
+
+    active_count = sum(parameter.active for parameter in result.parameters)
+    assert any("bond(1,2)" in parameter.name and parameter.active for parameter in result.parameters)
+    assert result.jacobian.shape[1] < active_count
+
+
+def test_semiexperimental_primitive_constraints_expand_by_symmetry(tmp_path):
+    atoms = ("O", "H", "H")
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+    prims, _u_matrix, _labels = _gic_model(
+        coords,
+        z_numbers,
+        backend=_make_gicforge_backend(atoms, tmp_path),
+    )
+    fixed = _fixed_primitives_from_patterns(("bond(1,2)",))
+
+    expanded = _symmetry_expanded_fixed_primitives(atoms, coords, prims, fixed)
+    expanded_keys = {_primitive_constraint_key(primitive) for primitive in expanded}
+
+    assert expanded_keys == {
+        ("bond", (0, 1), 0),
+        ("bond", (0, 2), 0),
+    }
+
+
+def test_semiexperimental_hydrogen_constraint_generates_h_primitives(tmp_path):
+    atoms = ("O", "H", "H")
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.7570, 0.5860], [0.0, -0.7570, 0.5860]])
+    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+    prims, _u_matrix, _labels = _gic_model(
+        coords,
+        z_numbers,
+        backend=_make_gicforge_backend(atoms, tmp_path),
+    )
+
+    fixed = _hydrogen_fixed_primitives(atoms, prims, (HYDROGEN_PARAMETER_CONSTRAINT,))
+    fixed_keys = {_primitive_constraint_key(primitive) for primitive in fixed}
+
+    assert fixed
+    assert len(fixed_keys) == 3
+    assert all(any(atoms[atom] == "H" for atom in primitive.atoms) for primitive in fixed)
+    assert ("bond", (0, 1), 0) in fixed_keys
+    assert ("bond", (0, 2), 0) in fixed_keys
+    assert ("angle", (1, 0, 2), 0) in fixed_keys
 
 
 def test_semiexperimental_parameter_classes_share_and_fix_parameters(tmp_path):
@@ -797,7 +941,7 @@ def test_semiexperimental_gic_preview_keeps_angstrom_topology_for_cyclopentadien
     assert any("dihedral" in label for label in preview.gic_labels)
 
 
-def test_semiexperimental_fit_always_uses_iterative_gicforge(tmp_path, monkeypatch):
+def test_semiexperimental_fit_uses_adaptive_gicforge_model(tmp_path, monkeypatch):
     atoms = ["O", "H", "H"]
     coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
     xyz = tmp_path / "water.xyz"
@@ -859,14 +1003,19 @@ def test_semiexperimental_fit_always_uses_iterative_gicforge(tmp_path, monkeypat
 
     manifest = json.loads((tmp_path / "run" / "semiexp_manifest.json").read_text(encoding="utf-8"))
     assert calls
+    assert len(calls) == 1
     assert all("GICForge" in parameter.name for parameter in result.parameters)
     assert any(parameter.active for parameter in result.parameters)
     assert any(not parameter.active for parameter in result.parameters)
     assert any("B1Lin" in label for label in result.gic_labels)
     assert any("A2Oop" in label for label in result.gic_labels)
     assert result.b_matrix.shape[0] == 5
-    assert manifest["backend"]["coordinate_model"] == "gicforge-iterative-readallgic"
-    assert "GICForge ReadAllGIC" in manifest["parameters"]["coordinate_generation"]["primitive_source"]
+    assert manifest["backend"]["coordinate_model"] == "gicforge-frozen-definition"
+    assert "run once" in manifest["parameters"]["coordinate_generation"]["primitive_source"]
+    assert "frozen GIC schema" in manifest["parameters"]["coordinate_generation"]["line_search"]
+    assert "secant-updated B projector" in manifest["parameters"]["coordinate_generation"]["line_search"]
+    assert manifest["parameters"]["gicforge_calls"] == 1
+    assert manifest["parameters"]["b_projector_analytic_refreshes"] >= 1
     assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "GICForge-assigned A1 coordinates only"
 
 
