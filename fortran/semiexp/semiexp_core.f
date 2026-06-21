@@ -247,28 +247,40 @@ C     The constant matches h/(8*pi*pi*c*I) expressed for I in amu A**2.
 
       Subroutine M4SENormalEq(NObs,NPar,J,Res,W,Damp,DQ,Cov,Hess,
      $                        Info)
-C     Weighted least-squares normal equations for semiexperimental fits.
+C     Weighted least-squares step for semiexperimental fits.
+C     The step is computed from a column-scaled augmented LM system by
+C     rank-revealing modified Gram-Schmidt QR, avoiding normal-equation
+C     squaring in the displacement itself.  Hessian/covariance are still
+C     reported in the original parameter basis for compatibility.
       Integer NObs,NPar,Info
       Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp
       Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar)
-      Double Precision A(100,100),B(100),Scale,Sigma2
-      Integer I,JCol,K,L,Dof
+      Double Precision A(100,100),Scale,Sigma2,ColScale(100)
+      Double Precision WEff(500)
+      Integer I,JCol,K,L,Dof,Rank
       Info=0
-      If(NPar.gt.100) Then
+      If(NObs.gt.500.or.NPar.gt.100) Then
          Info=2
          Return
       End If
+      Do 5 K=1,NObs
+         WEff(K)=W(K)
+5     Continue
       Do 20 I=1,NPar
-         B(I)=0.0D0
+         DQ(I)=0.0D0
          Do 10 JCol=1,NPar
             A(I,JCol)=0.0D0
+            Cov(I,JCol)=0.0D0
             Hess(I,JCol)=0.0D0
 10       Continue
 20    Continue
+      Call M4SEColumnScale(NObs,NPar,J,WEff,ColScale)
+      Call M4SEQRLmStep(NObs,NPar,J,Res,WEff,Damp,ColScale,DQ,
+     $                  Rank,Info)
+      If(Info.ne.0) Return
       Do 50 K=1,NObs
-         Scale=W(K)
+         Scale=WEff(K)
          Do 40 I=1,NPar
-            B(I)=B(I)+J(K,I)*Res(K)*Scale
             Do 30 JCol=1,NPar
                A(I,JCol)=A(I,JCol)+J(K,I)*J(K,JCol)*Scale
 30          Continue
@@ -279,17 +291,17 @@ C     Weighted least-squares normal equations for semiexperimental fits.
             Hess(I,JCol)=2.0D0*A(I,JCol)
             Cov(I,JCol)=A(I,JCol)
 60       Continue
-         A(I,I)=A(I,I)+Damp
 70    Continue
-      Call M4SEGauss(NPar,A,B,DQ,Info)
-      If(Info.ne.0) Return
       Call M4SEInvert(NPar,Cov,Info)
-      If(Info.ne.0) Return
+      If(Info.ne.0) Then
+         Info=0
+         Return
+      End If
       Sigma2=0.0D0
       Do 80 K=1,NObs
-         Sigma2=Sigma2+W(K)*Res(K)*Res(K)
+         Sigma2=Sigma2+WEff(K)*Res(K)*Res(K)
 80    Continue
-      Dof=NObs-NPar
+      Dof=NObs-Rank
       If(Dof.lt.1) Dof=1
       Sigma2=Sigma2/DBLE(Dof)
       Do 100 I=1,NPar
@@ -297,6 +309,217 @@ C     Weighted least-squares normal equations for semiexperimental fits.
             Cov(I,JCol)=Sigma2*Cov(I,JCol)
 90       Continue
 100   Continue
+      Return
+      End
+
+      Subroutine M4SEColumnScale(NObs,NPar,J,W,Scale)
+C     Dynamic column scaling: columns are equilibrated to the mean
+C     weighted norm, with deterministic clipping.
+      Integer NObs,NPar,I,K,NPos
+      Double Precision J(NObs,NPar),W(NObs),Scale(NPar)
+      Double Precision Norm(100),Target,WK
+      Target=0.0D0
+      NPos=0
+      Do 20 I=1,NPar
+         Norm(I)=0.0D0
+         Do 10 K=1,NObs
+            WK=W(K)
+            If(WK.lt.0.0D0) WK=0.0D0
+            Norm(I)=Norm(I)+WK*J(K,I)*J(K,I)
+10       Continue
+         Norm(I)=DSQRT(Norm(I))
+         If(Norm(I).gt.0.0D0) Then
+            Target=Target+Norm(I)
+            NPos=NPos+1
+         End If
+20    Continue
+      If(NPos.gt.0) Then
+         Target=Target/DBLE(NPos)
+      Else
+         Target=1.0D0
+      End If
+      Do 30 I=1,NPar
+         If(Norm(I).gt.0.0D0) Then
+            Scale(I)=Target/Norm(I)
+            If(Scale(I).lt.1.0D-4) Scale(I)=1.0D-4
+            If(Scale(I).gt.1.0D4) Scale(I)=1.0D4
+         Else
+            Scale(I)=1.0D0
+         End If
+30    Continue
+      Return
+      End
+
+      Subroutine M4SEQRLmStep(NObs,NPar,J,Res,W,Damp,Scale,DQ,
+     $                        Rank,Info)
+C     Rank-revealing QR step for [sqrt(W) J S; sqrt(Damp) I] y =
+C     [sqrt(W) Res; 0], followed by DQ=S*y.
+      Integer NObs,NPar,Rank,Info
+      Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp
+      Double Precision Scale(NPar),DQ(NPar)
+      Double Precision A(600,100),Q(600,100),R(100,100)
+      Double Precision B(600),Y(100),V(600)
+      Double Precision WK,RootW,RootD,Norm,Dot,Tol,MaxDiag,Sum
+      Integer I,K,L,M,JCol
+      Info=0
+      Rank=0
+      If(NObs.gt.500.or.NPar.gt.100) Then
+         Info=2
+         Return
+      End If
+      M=NObs
+      If(Damp.gt.0.0D0) M=NObs+NPar
+      Do 20 K=1,M
+         B(K)=0.0D0
+         Do 10 JCol=1,NPar
+            A(K,JCol)=0.0D0
+            Q(K,JCol)=0.0D0
+10       Continue
+20    Continue
+      Do 40 K=1,NObs
+         WK=W(K)
+         If(WK.lt.0.0D0) WK=0.0D0
+         RootW=DSQRT(WK)
+         B(K)=RootW*Res(K)
+         Do 30 JCol=1,NPar
+            A(K,JCol)=RootW*J(K,JCol)*Scale(JCol)
+30       Continue
+40    Continue
+      If(Damp.gt.0.0D0) Then
+         RootD=DSQRT(Damp)
+         Do 50 JCol=1,NPar
+            A(NObs+JCol,JCol)=RootD
+50       Continue
+      End If
+      Do 70 I=1,NPar
+         Y(I)=0.0D0
+         Do 60 JCol=1,NPar
+            R(I,JCol)=0.0D0
+60       Continue
+70    Continue
+      MaxDiag=0.0D0
+      Do 130 JCol=1,NPar
+         Do 80 K=1,M
+            V(K)=A(K,JCol)
+80       Continue
+         Do 100 I=1,JCol-1
+            Dot=0.0D0
+            Do 90 K=1,M
+               Dot=Dot+Q(K,I)*V(K)
+90          Continue
+            R(I,JCol)=Dot
+            Do 95 K=1,M
+               V(K)=V(K)-Dot*Q(K,I)
+95          Continue
+100      Continue
+         Norm=0.0D0
+         Do 110 K=1,M
+            Norm=Norm+V(K)*V(K)
+110      Continue
+         Norm=DSQRT(Norm)
+         If(Norm.gt.MaxDiag) MaxDiag=Norm
+         Tol=1.0D-12*DMAX1(MaxDiag,1.0D0)
+         R(JCol,JCol)=Norm
+         If(Norm.gt.Tol) Then
+            Rank=Rank+1
+            Do 120 K=1,M
+               Q(K,JCol)=V(K)/Norm
+120         Continue
+         End If
+130   Continue
+      Do 150 I=1,NPar
+         Dot=0.0D0
+         Do 140 K=1,M
+            Dot=Dot+Q(K,I)*B(K)
+140      Continue
+         Y(I)=Dot
+150   Continue
+      Do 180 I=NPar,1,-1
+         Sum=Y(I)
+         Do 160 L=I+1,NPar
+            Sum=Sum-R(I,L)*Y(L)
+160      Continue
+         Tol=1.0D-12*DMAX1(MaxDiag,1.0D0)
+         If(DABS(R(I,I)).gt.Tol) Then
+            Y(I)=Sum/R(I,I)
+         Else
+            Y(I)=0.0D0
+         End If
+180   Continue
+      Do 190 I=1,NPar
+         DQ(I)=Scale(I)*Y(I)
+190   Continue
+      Return
+      End
+
+      Subroutine M4SERobustGroupWeights(NObs,NGroup,Group,Res,W,Loss,
+     $                                  RobScale,WOut,ScaleUsed,NDown,
+     $                                  Info)
+C     Robust IRLS weights by isotopologue/group.  Loss: 0 none, 1 Huber,
+C     2 soft_l1, 3 Cauchy.  WOut contains final statistical*robust weights.
+      Integer NObs,NGroup,Group(NObs),Loss,NDown,Info
+      Double Precision Res(NObs),W(NObs),RobScale,WOut(NObs),ScaleUsed
+      Double Precision Score(500),Count(500),GWeight(500),WK,Z
+      Double Precision Sum,Mean
+      Integer I,G
+      Info=0
+      NDown=0
+      ScaleUsed=0.0D0
+      If(NGroup.gt.500) Then
+         Info=2
+         Return
+      End If
+      Do 10 G=1,NGroup
+         Score(G)=0.0D0
+         Count(G)=0.0D0
+         GWeight(G)=1.0D0
+10    Continue
+      Do 20 I=1,NObs
+         WOut(I)=W(I)
+         G=Group(I)
+         If(G.ge.1.and.G.le.NGroup) Then
+            WK=W(I)
+            If(WK.lt.0.0D0) WK=0.0D0
+            Score(G)=Score(G)+WK*Res(I)*Res(I)
+            Count(G)=Count(G)+1.0D0
+         End If
+20    Continue
+      If(Loss.eq.0) Return
+      Sum=0.0D0
+      Mean=0.0D0
+      Do 30 G=1,NGroup
+         If(Count(G).gt.0.0D0) Then
+            Score(G)=DSQRT(Score(G)/Count(G))
+            Mean=Mean+Score(G)
+            Sum=Sum+1.0D0
+         End If
+30    Continue
+      If(RobScale.gt.0.0D0) Then
+         ScaleUsed=RobScale
+      Else If(Sum.gt.0.0D0) Then
+         ScaleUsed=Mean/Sum
+         If(ScaleUsed.lt.1.0D0) ScaleUsed=1.0D0
+      Else
+         ScaleUsed=1.0D0
+      End If
+      Do 50 G=1,NGroup
+         If(Count(G).gt.0.0D0) Then
+            Z=DABS(Score(G))/ScaleUsed
+            If(Loss.eq.1) Then
+               If(Z.gt.1.0D0) GWeight(G)=1.0D0/Z
+            Else If(Loss.eq.2) Then
+               GWeight(G)=1.0D0/DSQRT(1.0D0+Z*Z)
+            Else If(Loss.eq.3) Then
+               GWeight(G)=1.0D0/(1.0D0+Z*Z)
+            End If
+            If(GWeight(G).lt.1.0D-12) GWeight(G)=1.0D-12
+            If(GWeight(G).lt.9.99D-1) NDown=NDown+1
+         End If
+50    Continue
+      Do 60 I=1,NObs
+         G=Group(I)
+         If(G.ge.1.and.G.le.NGroup) WOut(I)=W(I)*GWeight(G)
+60    Continue
       Return
       End
 

@@ -6,7 +6,7 @@ the input geometry is Cartesian, the optimized
 parameters are non-redundant Merlino GICs by default, and the final result is
 a Cartesian equilibrium structure with propagated errors for the fitted
 internal parameters. The alternative working-coordinate model uses
-Hessian-free symmetry-adapted Cartesian displacements; the final structural
+symmetry-adapted Cartesian displacements; the final structural
 report is still given as primitive bond lengths, angles and dihedrals with
 propagated errors.
 
@@ -24,8 +24,9 @@ molecule-specific parameter choices. The Merlino solver instead uses:
   non-redundant GICs within homogeneous coordinate families.
 - Analytic Wilson B matrix for standard internal primitives and analytic
   Cartesian derivatives of principal moments/rotational constants.
-- Weighted trust-region Levenberg-Marquardt least squares with coordinate-block
-  scaling and predicted/actual reduction control.
+- Weighted trust-region Levenberg-Marquardt least squares with SVD/QR
+  rank-revealing steps, dynamic Jacobian-column scaling, optional robust loss
+  grouped by isotopologue and predicted/actual reduction control.
 - Direct propagation of experimental uncertainties to GIC parameters.
 - Optional totally symmetric symmetry-Cartesian working coordinates requiring
   neither a Hessian nor a Wilson B-matrix inversion.
@@ -77,10 +78,13 @@ These defaults are intentional:
 - `--observable moments` is the standard target. Principal moments of inertia
   are more stable than rotational constants because rotational constants are
   reciprocal in the moments and amplify small errors when moments are small.
-- `--rotational-components auto` only matters if `--observable
-  rotational_constants` is selected. For planar molecules it selects the
-  best-conditioned pair among `AB`, `AC` and `BC`; non-planar molecules use
-  `ABC`.
+- `--rotational-components auto` selects a stable independent component set.
+  For planar molecules only two components are independent, so
+  Merlino chooses one pair among `AB`, `AC` and `BC`; with
+  `--observable moments` this pair is mapped internally to `Ia/Ib`, `Ia/Ic` or
+  `Ib/Ic`. The planar auto choice minimizes the propagated instability of the
+  omitted component before using Jacobian conditioning as a tie-breaker.
+  Non-planar molecules use all three components.
 - `--max-step 0.25` limits the norm of active-coordinate steps and prevents
   aggressive updates from leaving the chemically valid topology basin.
 - `--prune-condition 0` leaves the full totally symmetric GIC subspace active.
@@ -144,8 +148,10 @@ The complete file-format contract is documented in
 
 For interoperability, the parent geometry can still be provided as standard XYZ
 or as a Gaussian `.com` / `.gjf` input with Cartesian coordinates. Gaussian
-Z-matrices are intentionally not accepted in this workflow. If the Gaussian
-input contains a ModRedundant section, freeze constraints written as
+Z-matrices are intentionally not accepted in this workflow. Legacy MSR
+monolithic inputs use the explicit `.msr` and `.msr.inp` compatibility
+extensions; existing `*_msr.inp` files are accepted as a legacy alias, but a
+generic `.inp` is not auto-detected as MSR. If the Gaussian input contains a ModRedundant section, freeze constraints written as
 `B/A/D/O/L ... F` are converted into primitive-coordinate constraints. Each
 fixed primitive is expanded automatically to all symmetry-equivalent primitives
 before the constraint projector is built in the active GIC space.
@@ -171,8 +177,38 @@ B 1 2 F
 
 Everything after the blank line following the Cartesian block is interpreted as
 Gaussian ModRedundant data. Fixed parameters must be expressed there with the
-standard freeze action `F`; Z-matrix variables and MSR-style `R0001/A0001`
-cards are not part of the Merlino4 SE input.
+standard freeze action `F`.
+
+Legacy MSR files are translated at input time into the same Cartesian geometry
+and observation objects used by native Merlino jobs. They may contain either an
+MSR Z-matrix or direct Cartesian coordinates. In the Z-matrix branch a variable
+token prefixed by `#` marks the corresponding bond, angle or dihedral as
+frozen; the imported freeze is kept only when all atoms involved are real
+atoms, while dummy-atom coordinates are used only to build the Cartesian
+structure. The reader accepts Fortran `D` exponents, atom labels such as `C1`
+or `H2`, and variable definitions in either `NAME = value` or `NAME value`
+form, but Z-matrix references must point only to previously defined atoms.
+
+If the MSR geometry is already Cartesian, constraints are given immediately
+after the Cartesian block with Gaussian-style ModRedundant freeze records. An
+optional `constraints`, `modredundant`, `freeze`, or `frozen` header may be
+used, and an optional `end` line may close the block before the isotope mass
+blocks:
+
+```text
+C  0.000000  0.000000  0.000000
+H  0.000000  0.000000  1.089000
+H  1.026719  0.000000 -0.363000
+
+constraints
+B 1 2 F
+A 2 1 3 F
+end
+```
+
+Labels after backslashes in mass and data blocks are optional comments, not
+required identifiers. If absent, deterministic labels are generated and isotope
+substitutions are inferred by comparing each mass block with the parent block.
 
 Isotopologue observations are provided separately as TOML, JSON or CSV. TOML is
 the recommended human-edited format because it keeps constants, isotope
@@ -340,9 +376,13 @@ The default GIC fit model is:
    coordinates from analytic Cartesian derivatives of principal moments or
    rotational constants. The finite-difference path is retained only as a
    parallel fallback for future non-analytic observables.
-10. Solve weighted trust-region LM equations with Cauchy fallback, predicted
-    objective reduction, homogeneous coordinate-block scaling and adaptive
-    trust-radius/damping control.
+10. Solve weighted trust-region LM equations with a rank-revealing SVD step
+    and QR/lstsq fallback on the augmented LM system. Columns are dynamically
+    equilibrated on top of the homogeneous coordinate-block scaling. Optional
+    IRLS robust losses are evaluated per isotopologue, then the same robust
+    weight is applied to all selected components of that isotopologue; QM
+    predicates keep their declared weights. Cauchy fallback is used only when
+    the computed step is non-finite or not descending.
 11. For the GIC model, back-transform GIC steps to Cartesian displacements
     using the analytic B matrix. Line-search trials reuse the current GICForge
     coordinate model. Every accepted GIC step is validated by rerunning
@@ -451,8 +491,17 @@ explicit generated GIC labels; users should include enough label context
 different coordinate types.
 
 The covariance and Hessian are computed for the effective least-squares
-variables. The reported parameter table expands the resulting one-sigma error
-back to each member of a shared class and records the class name.
+variables using the final weighted Jacobian. The covariance uses a direct SVD
+of the Jacobian rather than the pseudo-inverse of normal equations, avoiding
+unnecessary condition-number squaring. The reported parameter table expands
+the resulting one-sigma error back to each member of a shared class and records
+the class name.
+
+`semiexp_svd_diagnostics.csv` reports the singular values of the final weighted
+Jacobian and the dominant coordinate combinations in each right singular
+vector. Small singular values therefore identify the actual weak combinations
+of GICs, parameter classes or symmetry-Cartesian directions, instead of only an
+opaque condition number.
 
 ## Kraitchman Comparison
 
@@ -480,16 +529,19 @@ outlier isotopologues before accepting the final fit.
 
 ## Planar Molecules
 
-For planar molecules, fitting all three rotational constants can be less stable
-than fitting a well-conditioned pair. With:
+For planar molecules, only two rotational constants are independent. Merlino
+therefore never uses all three components in a planar SE fit. With:
 
 ```bash
 --observable rotational_constants --rotational-components auto
 ```
 
-Merlino evaluates the initial Jacobian for `AB`, `AC` and `BC`, then chooses
-the pair with highest rank and lowest condition number. The selected components
-are written to `semiexp_diagnostics.csv`.
+Merlino evaluates the three pairs `AB`, `AC` and `BC`. Among pairs with the
+same numerical rank it first minimizes the propagated uncertainty of the
+omitted component using the planar moment relation `Ic = Ia + Ib`; the Jacobian
+condition number is then used only as a tie-breaker. With the default
+moment-based target the selected pair is converted to `Ia/Ib`, `Ia/Ic` or
+`Ib/Ic`. The selected components are written to `semiexp_diagnostics.csv`.
 
 The default `--observable moments` remains preferred for planar and non-planar
 molecules unless direct MHz residuals are specifically required.
@@ -542,9 +594,9 @@ The output directory contains:
 - `semiexp_report.txt`: canonical plain-text `SEFIT TEXT OUTPUT v1` report. It
   records method, solver, coordinate model and coordinate basis used in the fit,
   input constraints, QM predicates and parameter classes, fit statistics,
-  working-coordinate values/errors, primitive internal bond lengths, angles and
-  dihedrals with propagated errors, rotational-constant comparison and fit
-  residuals.
+  non-blocking diagnostic warnings, working-coordinate values/errors, primitive
+  internal bond lengths, angles and dihedrals with propagated errors,
+  rotational-constant comparison and fit residuals.
 - `semiexp_report.html`: self-contained run report with diagnostics, parameter
   classes, fitted GICs, final Cartesian bond lengths/angles/dihedrals with
   propagated errors, rotational-constant comparison, residuals and Kraitchman
@@ -584,6 +636,18 @@ The output directory contains:
   automatic/explicit iteration cap, selected observable and selected
   components, plus any `auto_pruned_weak` parameters removed from the active
   fit.
+- `semiexp_svd_diagnostics.csv`: final weighted-Jacobian singular values and
+  dominant coordinate combinations for each singular vector.
+- `semiexp_constraints.csv`: input fixed patterns, symmetry-expanded primitive
+  constraints, parameter classes and matched active labels.
+- `semiexp_warnings.csv`: non-blocking diagnostic warnings for reduced rank,
+  small singular values, ill-conditioned planar component pairs, low robust
+  isotopologue weights and unusually large propagated primitive-coordinate
+  uncertainties.
+- `semiexp_checkpoint.json`: restartable Cartesian geometry and solver state,
+  including damping, trust radius, active labels and robust weights.
+- `semiexp_leave_one_out.csv`: exact leave-one-isotopologue-out refits, written
+  only when `--leave-one-out` or `leave_one_out = true` is selected.
 - `semiexp_manifest.json`: reproducibility manifest with checksums.
 
 The GIC parameter values use native Merlino units: stretches in Angstrom and

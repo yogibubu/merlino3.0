@@ -3,6 +3,7 @@
 from .contracts import (
     CorrectedRotationalConstants,
     DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROBUST_LOSS,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     ElectronicCorrection,
     HYDROGEN_PARAMETER_CONSTRAINT,
@@ -37,10 +38,19 @@ from .job_input import (
     is_semiexperimental_job_file,
     read_semiexperimental_job,
 )
+from .msr_legacy import (
+    MSR_LEGACY_SUFFIXES,
+    MSRLegacyInput,
+    is_msr_legacy_file,
+    read_msr_legacy_geometry,
+    read_msr_legacy_input,
+    read_msr_legacy_observations,
+)
 from .fit import (
     SemiexperimentalFitDiagnostics,
     SemiexperimentalFitResult,
     SemiexperimentalGeometryParameter,
+    SemiexperimentalLeaveOneOutRow,
     SemiexperimentalParameter,
     SemiexperimentalResidual,
     SemiexperimentalRotationalConstantComparison,
@@ -72,6 +82,7 @@ from .report import (
 __all__ = [
     "CorrectedRotationalConstants",
     "DEFAULT_SEMIEXP_OBSERVABLE",
+    "DEFAULT_SEMIEXP_ROBUST_LOSS",
     "DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS",
     "HYDROGEN_PARAMETER_CONSTRAINT",
     "ElectronicCorrection",
@@ -83,12 +94,14 @@ __all__ = [
     "SemiexperimentalFitResult",
     "SemiexperimentalGeometryInput",
     "SemiexperimentalJobInput",
+    "MSRLegacyInput",
     "SemiexperimentalBenchmarkCase",
     "SemiexperimentalBenchmarkRow",
     "SemiexperimentalConditioningPreview",
     "SemiexperimentalGICPreview",
     "SemiexperimentalGICPreviewRow",
     "SemiexperimentalGeometryParameter",
+    "SemiexperimentalLeaveOneOutRow",
     "SemiexperimentalValidationIssue",
     "SemiexperimentalParameter",
     "SemiexperimentalResidual",
@@ -117,6 +130,9 @@ __all__ = [
     "residuals_csv",
     "read_gaussian_cartesian_input",
     "read_geometry_input",
+    "read_msr_legacy_geometry",
+    "read_msr_legacy_input",
+    "read_msr_legacy_observations",
     "read_semiexperimental_job",
     "rotational_constants_csv",
     "run_semiexperimental_benchmark",
@@ -129,4 +145,6 @@ __all__ = [
     "write_semiexperimental_html_report",
     "is_semiexperimental_job_file",
     "SEMIEXP_JOB_SCHEMA",
+    "MSR_LEGACY_SUFFIXES",
+    "is_msr_legacy_file",
 ]

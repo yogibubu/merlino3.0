@@ -70,6 +70,12 @@ supplied geometry file. For Hessian transformation, `gic-gf` evaluates B with
 Cartesian coordinates in bohr, matching the canonical Hessian units
 Eh/bohr^2.
 
+The Python ReadGIC command in `survibfit` uses the same canonical definition:
+`python -m survibfit.cli gic --xyz in.xyz --out gic.txt` runs GICForge and
+writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
+pure-Python local coordinate builder is available only with `--python-local`
+for diagnostics and is not an alternative production GIC definition.
+
 In semiexperimental refinements, `SEfit` calls the definition utility only at
 the beginning of a fresh fit.  All ordinary iterations reuse the same frozen
 GIC schema and rebuild only the B projector when necessary.  A restart is the

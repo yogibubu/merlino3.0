@@ -279,6 +279,91 @@ def test_semiexp_dashboard_preview_validate_and_conditioning(tmp_path, qtbot):
     assert "condition number" in text
 
 
+@pytest.mark.usefixtures("qtbot")
+def test_semiexp_dashboard_builds_advanced_sefit_command_and_job(tmp_path, qtbot):
+    xyz = tmp_path / "parent.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    obs = tmp_path / "isotopologues.toml"
+    obs.write_text(
+        "\n".join(
+            [
+                "[[isotopologues]]",
+                'label = "parent"',
+                "[isotopologues.constants]",
+                "A_MHz = 822180.189172425",
+                "B_MHz = 437776.592728178",
+                "C_MHz = 285669.514220614",
+                "[isotopologues.vibrational_correction]",
+                "delta_A_MHz = 0.0",
+                "delta_B_MHz = 0.0",
+                "delta_C_MHz = 0.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    window = DashboardWindow(tmp_path)
+    qtbot.addWidget(window)
+    window.select_workflow("semiexp_geometry")
+    window.backend_selector.setCurrentText("fortran77")
+    window.semiexp_xyz.setText(str(xyz))
+    window.semiexp_observations.setText(str(obs))
+    window.semiexp_outdir.setText(str(tmp_path / "run"))
+    window.semiexp_coordinate_model.setCurrentText("cartesian_symmetry")
+    window.semiexp_observable.setCurrentText("moments")
+    window.semiexp_components.setCurrentText("AB")
+    window.semiexp_prune_condition.setValue(1000.0)
+    window.semiexp_robust_loss.setCurrentText("huber")
+    window.semiexp_robust_scale.setValue(2.5)
+    window.semiexp_leave_one_out.setChecked(True)
+    window.semiexp_checkpoint.setText(str(tmp_path / "checkpoint.json"))
+    window.semiexp_restart.setText(str(tmp_path / "restart.json"))
+    window.semiexp_fix_hydrogens.setChecked(True)
+    window.semiexp_qm.setText("bond(1,2):0.9572:0.002:BDPCS3")
+    window.semiexp_classes.setText("OH:shared:bond(1,2)|bond(1,3)")
+
+    args = window.semiexp_command_args()
+
+    assert args[args.index("--backend") + 1] == "fortran77"
+    assert args[args.index("--coordinate-model") + 1] == "cartesian_symmetry"
+    assert args[args.index("--observable") + 1] == "moments"
+    assert args[args.index("--rotational-components") + 1] == "AB"
+    assert args[args.index("--prune-condition") + 1] == "1000"
+    assert args[args.index("--robust-loss") + 1] == "huber"
+    assert args[args.index("--robust-scale") + 1] == "2.5"
+    assert "--leave-one-out" in args
+    assert args[args.index("--checkpoint") + 1] == str(tmp_path / "checkpoint.json")
+    assert args[args.index("--restart") + 1] == str(tmp_path / "restart.json")
+    assert "--fix-hydrogens" in args
+    assert args[args.index("--qm-predicate") + 1] == "bond(1,2):0.9572:0.002:BDPCS3"
+    assert args[args.index("--parameter-class") + 1] == "OH:shared:bond(1,2)|bond(1,3)"
+    job = window.save_semiexp_job_toml()
+    assert job is not None
+    text = job.read_text(encoding="utf-8")
+    assert 'backend = "fortran77"' in text
+    assert 'coordinate_model = "cartesian_symmetry"' in text
+    assert 'rotational_components = "AB"' in text
+    assert 'robust_loss = "huber"' in text
+    assert "robust_scale = 2.5" in text
+    assert "leave_one_out = true" in text
+    assert f'checkpoint = "{tmp_path / "checkpoint.json"}"' in text
+    assert f'restart = "{tmp_path / "restart.json"}"' in text
+    assert "fix_hydrogen_parameters = true" in text
+    assert 'pattern = "bond(1,2)"' in text
+
+
 def test_dashboard_launcher_parser_accepts_workdir(tmp_path):
     args = build_parser().parse_args(["--workdir", str(tmp_path)])
     assert args.workdir == tmp_path

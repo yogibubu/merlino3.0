@@ -22,6 +22,10 @@ class SemiexperimentalGeometryInput:
 def read_geometry_input(path: Path) -> SemiexperimentalGeometryInput:
     target = Path(path)
     suffix = target.suffix.lower()
+    from .msr_legacy import is_msr_legacy_file, read_msr_legacy_geometry
+
+    if is_msr_legacy_file(target):
+        return read_msr_legacy_geometry(target)
     if suffix == ".xyz":
         atoms, coords, comment = read_xyz(target)
         return SemiexperimentalGeometryInput(tuple(atoms), np.asarray(coords, dtype=float), comment, (), "xyz")
@@ -36,7 +40,7 @@ def read_geometry_input(path: Path) -> SemiexperimentalGeometryInput:
 
         if is_semiexperimental_job_file(target):
             return read_semiexperimental_job_geometry(target)
-    raise ValueError("Semiexperimental geometry input must be .xyz, .com, .gjf or a Merlino semiexp job TOML")
+    raise ValueError("Semiexperimental geometry input must be .xyz, .com, .gjf, .msr, .msr.inp or a Merlino semiexp job TOML")
 
 
 def read_gaussian_cartesian_input(path: Path) -> SemiexperimentalGeometryInput:
@@ -205,5 +209,5 @@ def _fixed_patterns_for_coordinate(kind: str, atoms: tuple[int, ...]) -> tuple[s
         return (f"out_of_plane({i},{j},{k},{l})", f"out_of_plane({l},{k},{j},{i})")
     if kind == "L":
         i, j, k = atoms
-        return (f"linear_bend({i},{j},{k}", f"linear_bend({k},{j},{i}")
+        return (f"linear_bend({i},{j},{k})", f"linear_bend({k},{j},{i})")
     return ()

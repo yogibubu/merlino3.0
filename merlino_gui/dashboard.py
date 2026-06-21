@@ -587,6 +587,33 @@ class DashboardWindow(QMainWindow):
         self.semiexp_prune_condition.valueChanged.connect(lambda _value: self._update_semiexp_preview())
         option_form.addRow("Prune condition target:", self.semiexp_prune_condition)
 
+        self.semiexp_robust_loss = QComboBox()
+        self.semiexp_robust_loss.addItems(["none", "huber", "soft_l1", "cauchy"])
+        self.semiexp_robust_loss.currentTextChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Robust loss:", self.semiexp_robust_loss)
+
+        self.semiexp_robust_scale = QDoubleSpinBox()
+        self.semiexp_robust_scale.setRange(0.0, 1.0e9)
+        self.semiexp_robust_scale.setDecimals(6)
+        self.semiexp_robust_scale.setValue(0.0)
+        self.semiexp_robust_scale.setSpecialValueText("auto")
+        self.semiexp_robust_scale.valueChanged.connect(lambda _value: self._update_semiexp_preview())
+        option_form.addRow("Robust scale:", self.semiexp_robust_scale)
+
+        self.semiexp_leave_one_out = QCheckBox("Run exact leave-one-isotopologue-out refits")
+        self.semiexp_leave_one_out.toggled.connect(lambda _checked: self._update_semiexp_preview())
+        option_form.addRow("Leave-one-out:", self.semiexp_leave_one_out)
+
+        self.semiexp_checkpoint = QLineEdit()
+        self.semiexp_checkpoint.setPlaceholderText("optional; default is outdir/semiexp_checkpoint.json")
+        self.semiexp_checkpoint.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Checkpoint:", self.semiexp_checkpoint)
+
+        self.semiexp_restart = QLineEdit()
+        self.semiexp_restart.setPlaceholderText("optional checkpoint JSON to restart from")
+        self.semiexp_restart.textChanged.connect(lambda _text: self._update_semiexp_preview())
+        option_form.addRow("Restart:", self.semiexp_restart)
+
         preview_tab = QWidget()
         preview_layout = QVBoxLayout(preview_tab)
         self.semiexp_preview_table = QTableWidget(0, 5)
@@ -662,11 +689,21 @@ class DashboardWindow(QMainWindow):
             self.semiexp_components.currentText(),
             "--prune-condition",
             f"{self.semiexp_prune_condition.value():.12g}",
+            "--robust-loss",
+            self.semiexp_robust_loss.currentText(),
+            "--robust-scale",
+            f"{self.semiexp_robust_scale.value():.12g}",
         ]
         if self.semiexp_fixed.text().strip():
             args.extend(["--fixed", self.semiexp_fixed.text().strip()])
         if self.semiexp_fix_hydrogens.isChecked():
             args.append("--fix-hydrogens")
+        if self.semiexp_leave_one_out.isChecked():
+            args.append("--leave-one-out")
+        if self.semiexp_checkpoint.text().strip():
+            args.extend(["--checkpoint", self.semiexp_checkpoint.text().strip()])
+        if self.semiexp_restart.text().strip():
+            args.extend(["--restart", self.semiexp_restart.text().strip()])
         for predicate in _split_semiexp_items(self.semiexp_qm.text()):
             args.extend(["--qm-predicate", predicate])
         for parameter_class in _split_semiexp_items(self.semiexp_classes.text()):
@@ -793,6 +830,11 @@ class DashboardWindow(QMainWindow):
             "fix_hydrogens": self.semiexp_fix_hydrogens.isChecked(),
             "qm": self.semiexp_qm.text().strip(),
             "classes": self.semiexp_classes.text().strip(),
+            "robust_loss": self.semiexp_robust_loss.currentText(),
+            "robust_scale": self.semiexp_robust_scale.value(),
+            "leave_one_out": self.semiexp_leave_one_out.isChecked(),
+            "checkpoint": self.semiexp_checkpoint.text().strip(),
+            "restart": self.semiexp_restart.text().strip(),
             "backend": self.selected_backends.get("semiexp_geometry", "python"),
         }
         path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -815,6 +857,11 @@ class DashboardWindow(QMainWindow):
         self.semiexp_fix_hydrogens.setChecked(bool(data.get("fix_hydrogens", False)))
         self.semiexp_qm.setText(str(data.get("qm", "")))
         self.semiexp_classes.setText(str(data.get("classes", "")))
+        self.semiexp_robust_loss.setCurrentText(str(data.get("robust_loss", "none")))
+        self.semiexp_robust_scale.setValue(float(data.get("robust_scale", 0.0)))
+        self.semiexp_leave_one_out.setChecked(bool(data.get("leave_one_out", False)))
+        self.semiexp_checkpoint.setText(str(data.get("checkpoint", "")))
+        self.semiexp_restart.setText(str(data.get("restart", "")))
         backend = str(data.get("backend", "python"))
         if self.backend_selector.findText(backend) >= 0:
             self.backend_selector.setCurrentText(backend)
@@ -897,6 +944,15 @@ class DashboardWindow(QMainWindow):
             f'observable = "{_toml_string(self.semiexp_observable.currentText())}"',
             f'rotational_components = "{_toml_string(self.semiexp_components.currentText())}"',
             f"prune_condition = {self.semiexp_prune_condition.value():.12g}",
+            f'robust_loss = "{_toml_string(self.semiexp_robust_loss.currentText())}"',
+            f"robust_scale = {self.semiexp_robust_scale.value():.12g}",
+            f"leave_one_out = {str(self.semiexp_leave_one_out.isChecked()).lower()}",
+        ])
+        if self.semiexp_checkpoint.text().strip():
+            lines.append(f'checkpoint = "{_toml_string(self.semiexp_checkpoint.text().strip())}"')
+        if self.semiexp_restart.text().strip():
+            lines.append(f'restart = "{_toml_string(self.semiexp_restart.text().strip())}"')
+        lines.extend([
             "",
             "[geometry]",
             'units = "angstrom"',
@@ -981,6 +1037,9 @@ class DashboardWindow(QMainWindow):
             rotational_components=self.semiexp_components.currentText(),
             parameter_classes=tuple(classes),
             coordinate_model=self.semiexp_coordinate_model.currentText(),
+            robust_loss=self.semiexp_robust_loss.currentText(),
+            robust_scale=self.semiexp_robust_scale.value(),
+            leave_one_out=self.semiexp_leave_one_out.isChecked(),
         )
 
 
@@ -1059,13 +1118,16 @@ def _semiexp_expert_diagnostics(manifest_path: Path) -> str:
         "last_line_search_scale",
         "parameter_scale_min",
         "parameter_scale_max",
+        "robust_downweighted_isotopologues",
+        "linear_solver",
+        "leave_one_out",
     )
     lines = ["\nExpert diagnostics:"]
     for key in keys:
         if key in params:
             lines.append(f"  {key}: {params[key]}")
     outputs = manifest.get("outputs", {})
-    for key in ("influence", "high_correlations", "diagnostics"):
+    for key in ("influence", "high_correlations", "svd_diagnostics", "constraints", "leave_one_out", "checkpoint", "diagnostics"):
         if key in outputs:
             lines.append(f"  {key}: {outputs[key]}")
     return "\n".join(lines) + "\n"

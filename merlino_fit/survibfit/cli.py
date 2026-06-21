@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import configparser
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -31,6 +32,8 @@ from .puckering_gaussian import (
     DEFAULT_GAUSSIAN_ROUTE,
     write_gaussian_scan_from_xyz,
 )
+from merlino_gic import define_gics_from_cartesian
+from merlino_gic.model import parse_gicforge_line
 
 
 def build_basis_cfg(cfg: configparser.ConfigParser, nvib: int):
@@ -233,6 +236,19 @@ def _gic_main(args):
         import os
         os.environ["MERLINO_FIT_CACHE_DIR"] = args.cache_dir
     atoms, coords_ang, _ = read_xyz(Path(args.xyz))
+    if not args.python_local:
+        symmetrize = bool(args.symmetrize_global or args.keep_a1_only or args.assign_symmetry_labels)
+        workdir = Path(args.workdir) if args.workdir else Path(tempfile.mkdtemp(prefix="survibfit_gicforge_"))
+        definition = define_gics_from_cartesian(
+            tuple(atoms),
+            coords_ang,
+            workdir=workdir,
+            symmetrize=symmetrize,
+        )
+        lines = _canonical_gicforge_lines(definition.gaussian_input, definition.irreps, keep_a1_only=args.keep_a1_only)
+        Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
+
     coords_au = coords_ang / 0.52917721092
     atomic_number = _load_topology_elements()
     Z = np.array([atomic_number(a) for a in atoms], dtype=int)
@@ -287,6 +303,21 @@ def _gic_main(args):
     )
     lines = format_readgic_lines(names)
     Path(args.out).write_text("\n".join(lines) + "\n")
+
+
+def _canonical_gicforge_lines(text: str, irreps: tuple[str, ...], *, keep_a1_only: bool = False) -> list[str]:
+    lines: list[str] = []
+    irrep_index = 0
+    for raw in text.splitlines():
+        parsed = parse_gicforge_line(raw)
+        if parsed is None:
+            continue
+        irrep = irreps[irrep_index] if irrep_index < len(irreps) else "UNK"
+        irrep_index += 1
+        if keep_a1_only and irrep not in {"A1", "A", "Ag", "A'"}:
+            continue
+        lines.append(raw.rstrip())
+    return lines
 
 
 def _pucker_gaussian_main(args):
@@ -358,6 +389,8 @@ def main():
     ap_gic.add_argument("--geometry-match-tol", type=float, default=12.0)
     ap_gic.add_argument("--pattern-report", default=None)
     ap_gic.add_argument("--cache-dir", default=None, help="Enable disk cache for eval_primitives/b_matrix")
+    ap_gic.add_argument("--workdir", default=None, help="GICForge work directory for canonical Python/Fortran output")
+    ap_gic.add_argument("--python-local", action="store_true", help="Use the legacy pure-Python local GIC builder")
     ap_gic.add_argument("--symmetrize-global", action="store_true")
     ap_gic.add_argument("--keep-a1-only", action="store_true")
     ap_gic.add_argument("--assign-symmetry-labels", action="store_true")

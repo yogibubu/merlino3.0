@@ -65,13 +65,17 @@ def format_substitutions(substitutions: dict[int, int]) -> str:
 def read_observations(path: Path) -> tuple[IsotopologueObservation, ...]:
     target = Path(path)
     suffix = target.suffix.lower()
+    from .msr_legacy import is_msr_legacy_file, read_msr_legacy_observations
+
+    if is_msr_legacy_file(target):
+        return read_msr_legacy_observations(target)
     if suffix == ".csv":
         return read_observations_csv(target)
     if suffix == ".json":
         return read_observations_json(target)
     if suffix == ".toml":
         return read_observations_toml(target)
-    raise ValueError("Semiexp observations must be .csv, .json or .toml")
+    raise ValueError("Semiexp observations must be .csv, .json, .toml, .msr or .msr.inp")
 
 
 def read_observations_csv(path: Path) -> tuple[IsotopologueObservation, ...]:

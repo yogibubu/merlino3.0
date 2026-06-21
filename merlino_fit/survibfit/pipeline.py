@@ -195,7 +195,8 @@ def primitives_from_topology(coords, Z, linear_threshold, include_fragments=True
 
 def eval_primitives(prims, coords):
     coords_b = np.array(coords, dtype=float).tobytes()
-    key = (id(prims), coords_b)
+    psig = _prims_signature(prims)
+    key = (psig, coords_b)
     cache = getattr(eval_primitives, "_cache", None)
     order = getattr(eval_primitives, "_order", None)
     if cache is None:
@@ -208,7 +209,6 @@ def eval_primitives(prims, coords):
     cdir = _cache_dir()
     if cdir:
         os.makedirs(cdir, exist_ok=True)
-        psig = _prims_signature(prims)
         ckey = _hash_bytes(coords_b)
         path = Path(cdir) / f"eval_primitives_{psig}_{ckey}.npy"
         if path.exists():
@@ -226,7 +226,8 @@ def eval_primitives(prims, coords):
 
 def b_matrix(prims, coords, fd_step):
     coords_b = np.array(coords, dtype=float).tobytes()
-    key = (id(prims), float(fd_step), coords_b)
+    psig = _prims_signature(prims)
+    key = (psig, float(fd_step), coords_b)
     cache = getattr(b_matrix, "_cache", None)
     order = getattr(b_matrix, "_order", None)
     if cache is None:
@@ -239,7 +240,6 @@ def b_matrix(prims, coords, fd_step):
     cdir = _cache_dir()
     if cdir:
         os.makedirs(cdir, exist_ok=True)
-        psig = _prims_signature(prims)
         ckey = _hash_bytes(coords_b)
         path = Path(cdir) / f"b_matrix_{psig}_{ckey}_{fd_step:.2e}.npy"
         if path.exists():

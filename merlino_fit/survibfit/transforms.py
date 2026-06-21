@@ -668,7 +668,7 @@ def dihedral_u(
     Z=None,
     priority=None,
     mode="pick",
-    coords_units="au",
+    coords_units="auto",
     ringset=None,
     return_info=False,
 ):
@@ -949,7 +949,7 @@ def _build_u_blocks_gblock(
         Z=Z,
         priority=dihedral_priority,
         mode=dihedral_mode,
-        coords_units="au",
+        coords_units="auto",
         ringset=ringset,
     )
     if idx_dih:
@@ -1107,7 +1107,7 @@ def _build_u_blocks_symmetry(
         Z=Z,
         priority=dihedral_priority,
         mode=dihedral_mode,
-        coords_units="au",
+        coords_units="auto",
         ringset=ringset,
         return_info=True,
     )
@@ -1236,13 +1236,9 @@ def build_u(
         pattern_report_path=pattern_report_path,
         g_prune_tol=g_prune_tol,
     )
-    ncols = sum(Ub.shape[1] for _, _, Ub in blocks)
-    U = np.zeros((nprim, ncols), dtype=float)
-    col = 0
-    for _, idxs, Ub in blocks:
-        rows = np.array(idxs, dtype=int)
-        U[np.ix_(rows, range(col, col + Ub.shape[1]))] = Ub
-        col += Ub.shape[1]
+    U_raw, column_labels = _assemble_u_from_blocks(nprim, blocks)
+    keep = _rank_pruned_column_indices(prims, coords, U_raw, column_labels, fd_step=fd_step)
+    U = U_raw[:, keep]
     if symmetrize_global:
         from .symmetry_global import symmetrize_u
         U, symm_info = symmetrize_u(
@@ -1285,8 +1281,110 @@ def build_u(
     if os.environ.get("MERLINO_FIT_PROFILE") == "1":
         import time
         t1 = time.perf_counter()
-        print(f"build_u: {t1 - t0:.6f}s, nprim={nprim}, ncols={ncols}")
+        print(f"build_u: {t1 - t0:.6f}s, nprim={nprim}, ncols={U.shape[1]}")
     return U
+
+
+def _assemble_u_from_blocks(nprim: int, blocks) -> tuple[np.ndarray, list[str]]:
+    ncols = sum(Ub.shape[1] for _, _, Ub in blocks)
+    U = np.zeros((nprim, ncols), dtype=float)
+    column_labels: list[str] = []
+    col = 0
+    for label, idxs, Ub in blocks:
+        rows = np.array(idxs, dtype=int)
+        U[np.ix_(rows, range(col, col + Ub.shape[1]))] = Ub
+        column_labels.extend([label] * Ub.shape[1])
+        col += Ub.shape[1]
+    return U, column_labels
+
+
+def _rank_pruned_column_indices(prims, coords, U, column_labels, fd_step=1e-4, tol=1e-7):
+    """Return a deterministic non-redundant column subset.
+
+    Local blocks preserve chemical meaning.  This final pass only removes
+    residual dependencies between already-built columns, using Wilson B rows
+    projected onto the vibrational Cartesian subspace.
+    """
+    if U.size == 0:
+        return []
+    target = _vibrational_rank(coords)
+    if U.shape[1] <= target:
+        return list(range(U.shape[1]))
+    B = b_matrix(prims, coords, fd_step)
+    projector = _vibrational_projector_local(coords)
+    rows = U.T @ B @ projector
+    if np.linalg.matrix_rank(rows, tol=tol) < min(target, U.shape[1]):
+        return list(range(U.shape[1]))
+
+    priorities = {
+        "bond": 0,
+        "fragment": 1,
+        "linear_bend": 2,
+        "angle": 3,
+        "cyclic_valence_bend": 4,
+        "out_of_plane": 5,
+        "cyclic_torsion": 6,
+        "dihedral": 7,
+        "butterfly": 8,
+        "hinge": 9,
+    }
+    candidates = sorted(range(U.shape[1]), key=lambda col: (priorities.get(column_labels[col], 99), col))
+    basis: list[np.ndarray] = []
+    keep: list[int] = []
+    for col in candidates:
+        row = rows[col].astype(float, copy=True)
+        row_norm0 = float(np.linalg.norm(row))
+        if row_norm0 <= 1.0e-12:
+            continue
+        for item in basis:
+            row -= np.dot(row, item) * item
+        row_norm = float(np.linalg.norm(row))
+        if row_norm > tol and row_norm > 1.0e-8 * row_norm0:
+            basis.append(row / row_norm)
+            keep.append(col)
+        if len(keep) == target:
+            break
+    if len(keep) != target:
+        return list(range(U.shape[1]))
+    return sorted(keep)
+
+
+def _vibrational_rank(coords) -> int:
+    natoms = int(np.asarray(coords).shape[0])
+    external = []
+    for axis in range(3):
+        vec = np.zeros(3 * natoms, dtype=float)
+        vec[axis::3] = 1.0
+        external.append(vec)
+    for axis in np.eye(3):
+        vec = np.array([component for coord in coords for component in np.cross(axis, coord)], dtype=float)
+        external.append(vec)
+    rank = int(np.linalg.matrix_rank(np.vstack(external), tol=1.0e-10))
+    return max(0, 3 * natoms - rank)
+
+
+def _vibrational_projector_local(coords) -> np.ndarray:
+    natoms = int(np.asarray(coords).shape[0])
+    basis = []
+    for axis in range(3):
+        vec = np.zeros(3 * natoms, dtype=float)
+        vec[axis::3] = 1.0
+        basis.append(vec)
+    for axis in np.eye(3):
+        vec = np.array([component for coord in coords for component in np.cross(axis, coord)], dtype=float)
+        basis.append(vec)
+    ortho: list[np.ndarray] = []
+    for vec in basis:
+        residual = vec.astype(float, copy=True)
+        for item in ortho:
+            residual -= np.dot(residual, item) * item
+        norm = float(np.linalg.norm(residual))
+        if norm > 1.0e-10:
+            ortho.append(residual / norm)
+    if not ortho:
+        return np.eye(3 * natoms, dtype=float)
+    q_matrix = np.vstack(ortho).T
+    return np.eye(3 * natoms, dtype=float) - q_matrix @ q_matrix.T
 
 
 def _primitive_label(p):
@@ -1369,15 +1467,11 @@ def build_u_with_names(
         pattern_report_path=pattern_report_path,
         g_prune_tol=g_prune_tol,
     )
-    # assemble U
     nprim = len(prims)
-    ncols = sum(Ub.shape[1] for _, _, Ub in blocks)
-    U = np.zeros((nprim, ncols), dtype=float)
-    col = 0
-    for _, idxs, Ub in blocks:
-        rows = np.array(idxs, dtype=int)
-        U[np.ix_(rows, range(col, col + Ub.shape[1]))] = Ub
-        col += Ub.shape[1]
+    U_raw, column_labels = _assemble_u_from_blocks(nprim, blocks)
+    keep = _rank_pruned_column_indices(prims, coords, U_raw, column_labels, fd_step=fd_step)
+    keep_set = set(keep)
+    U = U_raw[:, keep]
     if symmetrize_global:
         from .symmetry_global import symmetrize_u
         U, symm_info = symmetrize_u(
@@ -1420,7 +1514,7 @@ def build_u_with_names(
 
     # compute values
     s = eval_primitives(prims, coords)
-    q = U.T @ s
+    q_raw = U_raw.T @ s
 
     # naming
     names = []
@@ -1432,6 +1526,10 @@ def build_u_with_names(
             col += Ub.shape[1]
             continue
         for j in range(Ub.shape[1]):
+            raw_col = col
+            col += 1
+            if raw_col not in keep_set:
+                continue
             vec = Ub[:, j]
             terms = []
             for k, coeff in enumerate(vec):
@@ -1486,8 +1584,7 @@ def build_u_with_names(
                 for coeff, lab in terms:
                     parts.append(f"{coeff: .5f}*{lab}")
                 expr = "[ " + " ".join(parts) + " ]"
-            names.append((name, q[col], expr))
-            col += 1
+            names.append((name, q_raw[raw_col], expr))
 
     return U, names
 

@@ -76,10 +76,12 @@ def test_semiexp_fortran_core_runtime(tmp_path):
         """      Program TestSemiexp
       Integer Info
       Integer ClassMap(2)
+      Integer Group(2),NDown
       Double Precision XYZ(3,2),BRow(3,2),Mass(2),ABC(3),PMom(3)
       Double Precision Jac(2,1),Res(2),W(2),DQ(1),Cov(1,1)
       Double Precision Hess(1,1)
       Double Precision JacC(2,2),DQC(2),CovC(2,2),HessC(2,2)
+      Double Precision WOut(2),ScaleUsed
       XYZ(1,1)=0.0D0
       XYZ(2,1)=0.0D0
       XYZ(3,1)=0.0D0
@@ -120,6 +122,16 @@ def test_semiexp_fortran_core_runtime(tmp_path):
       If(DAbs(DQC(2)-3.0D0).gt.1.0D-10) Stop 20
       If(DAbs(HessC(1,1)-4.0D0).gt.1.0D-10) Stop 21
       If(DAbs(HessC(1,2)-4.0D0).gt.1.0D-10) Stop 22
+      Group(1)=1
+      Group(2)=1
+      Res(1)=1.0D0
+      Res(2)=9.0D0
+      Call M4SERobustGroupWeights(2,1,Group,Res,W,1,2.0D0,
+     $                            WOut,ScaleUsed,NDown,Info)
+      If(Info.ne.0) Stop 23
+      If(DAbs(ScaleUsed-2.0D0).gt.1.0D-12) Stop 24
+      If(NDown.ne.1) Stop 25
+      If(WOut(1).ge.1.0D0.or.WOut(2).ge.1.0D0) Stop 26
       End
 """,
         encoding="utf-8",

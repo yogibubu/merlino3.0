@@ -25,12 +25,14 @@ from merlino_gf import (
 )
 from merlino_semiexp import (
     DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROBUST_LOSS,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     HYDROGEN_PARAMETER_CONSTRAINT,
     ParameterClassConstraint,
     QMParameterPredicate,
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
+    is_msr_legacy_file,
     read_observations,
     read_semiexperimental_job,
     semiexperimental_latex_tables,
@@ -136,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
     semiexp.add_argument(
         "--job",
         type=Path,
-        help="Merlino semiexperimental job file (.mfit, .mse.toml or .semiexp.toml)",
+        help="Merlino semiexperimental job file (.mfit, .mse.toml, .semiexp.toml) or legacy MSR file (.msr, .msr.inp)",
     )
     semiexp.add_argument(
         "--xyz",
@@ -145,7 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Initial parent Cartesian geometry in XYZ or Gaussian .com/.gjf format",
     )
-    semiexp.add_argument("--observations", type=Path, help="CSV/JSON/TOML with isotopologue B0 constants and corrections")
+    semiexp.add_argument(
+        "--observations",
+        type=Path,
+        help="CSV/JSON/TOML with isotopologue B0 constants and corrections, or legacy MSR file (.msr, .msr.inp)",
+    )
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
     semiexp.add_argument("--fixed", default="", help="Comma/semicolon-separated GIC label substrings or primitive constraints to keep fixed")
@@ -170,6 +176,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Auto-prune weak SE parameters until the initial weighted Jacobian condition is below this target; default 0 disables pruning",
     )
     semiexp.add_argument(
+        "--robust-loss",
+        choices=("none", "huber", "soft_l1", "cauchy"),
+        default=DEFAULT_SEMIEXP_ROBUST_LOSS,
+        help="Optional robust IRLS loss for experimental outlier isotopologues; default none",
+    )
+    semiexp.add_argument(
+        "--robust-scale",
+        type=float,
+        default=0.0,
+        help="Robust residual scale in weighted units; 0 selects automatic MAD scale",
+    )
+    semiexp.add_argument(
+        "--leave-one-out",
+        action="store_true",
+        help="Run exact leave-one-isotopologue-out refits after the final SE fit",
+    )
+    semiexp.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="Checkpoint path; default is semiexp_checkpoint.json in --outdir",
+    )
+    semiexp.add_argument(
+        "--restart",
+        type=Path,
+        default=None,
+        help="Restart from a Merlino SEfit checkpoint JSON",
+    )
+    semiexp.add_argument(
         "--observable",
         choices=("moments", "rotational_constants", "auto"),
         default=DEFAULT_SEMIEXP_OBSERVABLE,
@@ -179,13 +214,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--coordinate-model",
         choices=("gic", "cartesian_symmetry"),
         default="gic",
-        help="Working coordinates for SEfit: frozen GICs or Hessian-free symmetry Cartesians",
+        help="Working coordinates for SEfit: frozen GICs or symmetry-adapted Cartesians",
     )
     semiexp.add_argument(
         "--rotational-components",
         choices=("auto", "ABC", "AB", "AC", "BC"),
         default=DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
-        help="Rotational constants to use when observable=rotational_constants; auto chooses best-conditioned pair for planar molecules",
+        help=(
+            "Rotational component pair to use: planar molecules use only AB, AC or BC "
+            "(mapped to moment pairs when observable=moments); auto chooses the most stable planar pair"
+        ),
     )
     semiexp.add_argument(
         "--qm-predicate",
@@ -198,6 +236,34 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Class constraint as name:shared|fixed:pattern[|pattern...]; can be repeated",
+    )
+
+    semiexp_benchmark = sub.add_parser(
+        "semiexp-benchmark",
+        help="Generate versioned SEfit benchmark artifacts for regression tests and manuscripts",
+    )
+    semiexp_benchmark.add_argument("--paper", action="store_true", help="Generate the benchmark tables used in the paper")
+    semiexp_benchmark.add_argument(
+        "--snapshot",
+        type=Path,
+        default=Path("benchmarks/semiexp_msr/golden/semiexp_paper_regression.json"),
+        help="Golden paper-regression snapshot",
+    )
+    semiexp_benchmark.add_argument(
+        "--outdir",
+        type=Path,
+        default=Path("benchmarks/semiexp_msr/generated"),
+        help="Directory for generated CSV and LaTeX benchmark tables",
+    )
+    semiexp_benchmark.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Use the snapshot exactly as written instead of refreshing available CSV outputs",
+    )
+    semiexp_benchmark.add_argument(
+        "--update-snapshot",
+        action="store_true",
+        help="Overwrite the golden snapshot after refreshing from available CSV outputs",
     )
     return parser
 
@@ -385,9 +451,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "semiexp":
-        job = read_semiexperimental_job(args.job) if args.job else None
+        legacy_msr_job = bool(args.job and is_msr_legacy_file(args.job))
+        job = None if legacy_msr_job or not args.job else read_semiexperimental_job(args.job)
         geometry_path = args.xyz or (job.path if job is not None else None)
         observations_path = args.observations or (job.observations if job is not None else None)
+        if legacy_msr_job:
+            geometry_path = args.xyz or args.job
+            observations_path = args.observations or args.job
         if geometry_path is None:
             raise ValueError("semiexp needs --geometry or --job")
         if observations_path is None:
@@ -411,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
         damping = _job_default(args.damping, 1.0e-8, job.damping if job else None)
         max_step = _job_default(args.max_step, 0.25, job.max_step if job else None)
         prune_condition = _job_default(args.prune_condition, 0.0, job.prune_condition if job else None)
+        robust_loss = _job_default(args.robust_loss, DEFAULT_SEMIEXP_ROBUST_LOSS, job.robust_loss if job else None)
+        robust_scale = _job_default(args.robust_scale, 0.0, job.robust_scale if job else None)
+        leave_one_out = bool(args.leave_one_out or (job.leave_one_out if job else False))
+        checkpoint = args.checkpoint if args.checkpoint is not None else (job.checkpoint if job else None)
+        restart = args.restart if args.restart is not None else (job.restart if job else None)
         request = SemiexperimentalFitRequest(
             initial_geometry=geometry_path,
             observations=observations,
@@ -420,6 +495,9 @@ def main(argv: list[str] | None = None) -> int:
             qm_predicates=qm_predicates,
             parameter_classes=parameter_classes,
             coordinate_model=coordinate_model,
+            robust_loss=robust_loss,
+            robust_scale=robust_scale,
+            leave_one_out=leave_one_out,
         )
         result = fit_semiexperimental_geometry(
             request,
@@ -428,6 +506,8 @@ def main(argv: list[str] | None = None) -> int:
             damping=damping,
             max_step=max_step,
             prune_condition=prune_condition,
+            checkpoint=checkpoint,
+            restart=restart,
             outdir=args.outdir,
         )
         report_path = write_semiexperimental_html_report(args.outdir / "semiexp_report.html", result, request)
@@ -455,6 +535,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"components: {','.join(result.diagnostics.components)}")
         print(f"backend: {backend}")
         print(f"coordinate_model: {result.diagnostics.coordinate_model}")
+        return 0
+
+    if args.command == "semiexp-benchmark":
+        if not args.paper:
+            raise ValueError("semiexp-benchmark currently requires --paper")
+        from merlino_semiexp.paper_benchmarks import generate_paper_benchmark_artifacts
+
+        _snapshot, artifacts = generate_paper_benchmark_artifacts(
+            snapshot_path=args.snapshot,
+            outdir=args.outdir,
+            refresh_from_outputs=not args.no_refresh,
+            update_snapshot=args.update_snapshot,
+        )
+        for name, path in artifacts.items():
+            print(f"{name}: {path}")
         return 0
 
     if args.command == "gaussian-summary":

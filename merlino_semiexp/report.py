@@ -24,6 +24,7 @@ from .fit import (
     _merge_primitives,
     _parameter_class_transform,
     _primitive_constrained_transform,
+    _semiexp_warning_rows,
     _symmetry_expanded_fixed_primitives,
     fit_semiexperimental_geometry,
 )
@@ -272,11 +273,18 @@ def write_semiexperimental_html_report(
         _row("Iterations", str(result.iterations)),
         _row("Stationary point", result.stationary_point),
         _row("Convergence", result.diagnostics.convergence_reason),
+        _row("Linear solver", result.diagnostics.linear_solver),
+        _row("Robust loss", result.diagnostics.robust_loss),
+        _row("Robust scale", f"{result.diagnostics.robust_scale:.8g}"),
+        _row("Downweighted rows", str(result.diagnostics.robust_downweighted_observations)),
+        _row("Downweighted isotopologues", str(result.diagnostics.robust_downweighted_isotopologues)),
         _row("Rank", str(result.diagnostics.rank)),
         _row("Condition number", f"{result.diagnostics.condition_number:.8g}"),
         _row("Observable", result.diagnostics.observable),
         _row("Components", ",".join(result.diagnostics.components)),
         "</table>",
+        "<h2>Warnings</h2>",
+        _diagnostic_warnings_table(result),
         "<h2>Parameter Classes</h2>",
         _classes_table(request.parameter_classes),
         "<h2>GIC Parameters</h2>",
@@ -477,6 +485,28 @@ def _classes_table(classes: tuple[ParameterClassConstraint, ...]) -> str:
         rows.append(
             f"<tr><td>{escape(item.name)}</td><td>{escape(item.mode)}</td>"
             f"<td><code>{escape('|'.join(item.patterns))}</code></td></tr>"
+        )
+    rows.append("</table>")
+    return "\n".join(rows)
+
+
+def _diagnostic_warnings_table(result: SemiexperimentalFitResult) -> str:
+    warnings = _semiexp_warning_rows(
+        result.diagnostics,
+        (),
+        result.parameters,
+        result.geometry_parameters,
+        None,
+        None,
+        None,
+    )
+    if not warnings:
+        return "<p>No diagnostic warnings.</p>"
+    rows = ["<table><tr><th>Severity</th><th>Code</th><th>Message</th><th>Context</th></tr>"]
+    for item in warnings:
+        rows.append(
+            f"<tr><td>{escape(item.severity)}</td><td>{escape(item.code)}</td>"
+            f"<td>{escape(item.message)}</td><td><code>{escape(item.context)}</code></td></tr>"
         )
     rows.append("</table>")
     return "\n".join(rows)

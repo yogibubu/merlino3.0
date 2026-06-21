@@ -1,28 +1,19 @@
 from pathlib import Path
-import numpy as np
 import re
+import subprocess
+import sys
+import tempfile
 
 from survibfit.modify_geom import read_xyz
-from topology.elements import atomic_number
-from survibfit.pipeline import build_topology, primitives_from_topology
-from survibfit.transforms import build_u_with_names, format_readgic_lines
+from merlino_gic import define_gics_from_cartesian
+from merlino_gic.model import parse_gicforge_line
 
 
 def _generate_lines(xyz_path: Path):
     atoms, coords_ang, _ = read_xyz(xyz_path)
-    coords_au = coords_ang / 0.52917721092
-    Z = np.array([atomic_number(a) for a in atoms], dtype=int)
-    prims = primitives_from_topology(coords_au, Z, np.deg2rad(170.0))
-    _, _, ringset = build_topology(coords_au, Z)
-    _, names = build_u_with_names(
-        prims,
-        coords_au,
-        Z=Z,
-        ringset=ringset,
-        include_frag=False,
-        symmetry_mode="gblock",
-    )
-    return format_readgic_lines(names)
+    with tempfile.TemporaryDirectory(prefix="survibfit_gic_regression_") as tmp:
+        definition = define_gics_from_cartesian(tuple(atoms), coords_ang, workdir=Path(tmp), symmetrize=False)
+        return [line.rstrip() for line in definition.gaussian_input.splitlines() if parse_gicforge_line(line) is not None]
 
 
 def _flip_linear_combo_sign(line: str) -> str:
@@ -79,3 +70,34 @@ def test_gic_regression_c4_chain():
         [l for l in golden.read_text().splitlines() if l.strip()],
         lines,
     )
+
+
+def test_survibfit_gic_cli_is_gicforge_identical(tmp_path):
+    base = Path(__file__).resolve().parent
+    xyz = base / "data" / "c4_chain.xyz"
+    out = tmp_path / "python.gic"
+    workdir = tmp_path / "gicforge"
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "survibfit.cli",
+            "gic",
+            "--xyz",
+            str(xyz),
+            "--out",
+            str(out),
+            "--workdir",
+            str(workdir),
+        ],
+        check=True,
+    )
+
+    python_lines = out.read_text(encoding="utf-8").splitlines()
+    fortran_lines = [
+        line.rstrip()
+        for line in (workdir / "gauin").read_text(encoding="utf-8", errors="replace").splitlines()
+        if parse_gicforge_line(line) is not None
+    ]
+    assert python_lines == fortran_lines

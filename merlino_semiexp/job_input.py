@@ -8,6 +8,7 @@ import numpy as np
 
 from .contracts import (
     DEFAULT_SEMIEXP_OBSERVABLE,
+    DEFAULT_SEMIEXP_ROBUST_LOSS,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     HYDROGEN_PARAMETER_CONSTRAINT,
     ParameterClassConstraint,
@@ -34,6 +35,11 @@ class SemiexperimentalJobInput:
     damping: float = 1.0e-8
     max_step: float = 0.25
     prune_condition: float = 0.0
+    robust_loss: str = DEFAULT_SEMIEXP_ROBUST_LOSS
+    robust_scale: float = 0.0
+    leave_one_out: bool = False
+    checkpoint: Path | None = None
+    restart: Path | None = None
     fixed_parameters: tuple[str, ...] = ()
     qm_predicates: tuple[QMParameterPredicate, ...] = ()
     parameter_classes: tuple[ParameterClassConstraint, ...] = ()
@@ -81,6 +87,11 @@ def read_semiexperimental_job(path: Path) -> SemiexperimentalJobInput:
         damping=float(fit.get("damping", 1.0e-8)),
         max_step=float(fit.get("max_step", 0.25)),
         prune_condition=float(fit.get("prune_condition", 0.0)),
+        robust_loss=str(fit.get("robust_loss", DEFAULT_SEMIEXP_ROBUST_LOSS)),
+        robust_scale=float(fit.get("robust_scale", 0.0)),
+        leave_one_out=bool(fit.get("leave_one_out", False)),
+        checkpoint=_optional_path(target, fit.get("checkpoint")),
+        restart=_optional_path(target, fit.get("restart")),
         fixed_parameters=fixed_parameters,
         qm_predicates=_qm_predicates_from_mapping(data.get("qm_predicates", ())),
         parameter_classes=_parameter_classes_from_mapping(data.get("parameter_classes", ())),
@@ -209,3 +220,9 @@ def _optional_int(value) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _optional_path(base: Path, value) -> Path | None:
+    if value is None or value == "":
+        return None
+    return _resolve_relative(base, Path(str(value)))

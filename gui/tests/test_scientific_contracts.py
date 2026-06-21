@@ -9,6 +9,7 @@ import numpy as np
 
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
+from merlino_core import ScientificValidationError
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_gf import BOHR_TO_ANGSTROM
@@ -34,6 +35,7 @@ from merlino_semiexp import (
     preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
     read_geometry_input,
+    read_msr_legacy_input,
     read_observations,
     read_observations_csv,
     read_semiexperimental_job,
@@ -41,17 +43,28 @@ from merlino_semiexp import (
     validate_semiexperimental_request,
     write_semiexperimental_html_report,
     write_observations_csv,
+    is_msr_legacy_file,
 )
 from merlino_vpt2_vci.gaussian_qff import hessian_input_from_gaussian_fchk
 from merlino_core import repo_root
 from merlino_semiexp.fit import (
+    MeasurementModel,
+    SemiexperimentalFitDiagnostics,
+    SemiexperimentalGeometryParameter,
+    SemiexperimentalParameter,
     _atomic_number,
+    _dynamic_parameter_scales,
     _fixed_primitives_from_patterns,
     _gic_model,
     _hydrogen_fixed_primitives,
     _make_gicforge_backend,
     _primitive_constraint_key,
+    _rank_revealing_lm_step,
+    _robust_sqrt_weights,
+    _semiexp_warning_rows,
+    _svd_diagnostics_csv,
     _symmetry_expanded_fixed_primitives,
+    _warnings_csv,
 )
 from merlino_vpt2_vci import (
     DavidsonSettings,
@@ -128,6 +141,136 @@ def test_semiexperimental_fit_request_validation(tmp_path):
     duplicate = SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs, obs))
     with pytest.raises(ValueError):
         duplicate.validate()
+
+    robust = SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs,), robust_loss="huber", robust_scale=2.0)
+    robust.validate()
+
+    with pytest.raises(ValueError):
+        SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs,), robust_loss="bad").validate()
+
+    with pytest.raises(ValueError):
+        SemiexperimentalFitRequest(tmp_path / "geom.xyz", (obs,), robust_scale=-1.0).validate()
+
+
+def test_semiexperimental_robust_weights_apply_only_to_experimental_rows():
+    residual = np.array([0.1, 20.0, 0.2, 50.0], dtype=float)
+    weights, scale, downweighted_rows, downweighted_isotopologues = _robust_sqrt_weights(
+        residual,
+        "huber",
+        1.0,
+        experimental_rows=3,
+        row_groups=((0, 1), (2,)),
+    )
+
+    assert scale == pytest.approx(1.0)
+    assert downweighted_rows == 2
+    assert downweighted_isotopologues == 1
+    assert weights[0] == pytest.approx(weights[1])
+    assert weights[0] < 1.0
+    assert weights[1] < 1.0
+    assert weights[2] == pytest.approx(1.0)
+    assert weights[3] == pytest.approx(1.0)
+
+
+def test_semiexperimental_dynamic_column_scaling_equilibrates_jacobian():
+    jac = np.array([[1.0e3, 1.0], [2.0e3, 2.0], [3.0e3, 3.0]], dtype=float)
+    scales = _dynamic_parameter_scales(jac, np.ones(2, dtype=float))
+    before = np.linalg.norm(jac, axis=0)
+    after = np.linalg.norm(jac * scales[None, :], axis=0)
+
+    assert scales[0] < scales[1]
+    assert before[0] / before[1] > 1.0e2
+    assert after[0] / after[1] == pytest.approx(1.0)
+
+
+def test_semiexperimental_rank_revealing_step_handles_dependent_columns():
+    jac = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]], dtype=float)
+    residual = np.array([1.0, 2.0, 3.0], dtype=float)
+    step = _rank_revealing_lm_step(jac, residual, damping=1.0e-8)
+    predicted = residual - jac @ step
+
+    assert np.all(np.isfinite(step))
+    assert step[0] == pytest.approx(step[1])
+    assert float(predicted @ predicted) < float(residual @ residual)
+
+
+def test_semiexperimental_svd_diagnostics_report_near_null_combinations():
+    labels = ("q1", "q2")
+    jac = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]], dtype=float)
+    text = _svd_diagnostics_csv(labels, jac)
+
+    assert "dominant_coordinate_combination" in text
+    assert "q1" in text
+    assert "q2" in text
+    assert ",1," in text
+
+
+def test_semiexperimental_diagnostic_warnings_are_machine_readable():
+    diagnostics = SemiexperimentalFitDiagnostics(
+        convergence_reason="max_iter",
+        objective=1.0,
+        weighted_rms=1.0,
+        reduced_chi_square=1.0,
+        rank=1,
+        incremental_rank=1,
+        condition_number=1.0e12,
+        damping=1.0e-6,
+        accepted_steps=1,
+        rejected_steps=0,
+        max_iterations=1,
+        n_optimized_parameters=2,
+        observable="moments",
+        components=("Ia", "Ib"),
+        planar=True,
+        robust_loss="cauchy",
+        robust_scale=1.0,
+        robust_downweighted_observations=2,
+        robust_downweighted_isotopologues=1,
+    )
+    model = MeasurementModel(
+        observable="moments",
+        components=("Ia", "Ib"),
+        labels=(("iso_low", "Ia"), ("iso_low", "Ib")),
+        observed=np.array([1.0, 2.0]),
+        weights=np.ones(2),
+        n_experimental_rows=2,
+        planar=True,
+    )
+    parameters = (
+        SemiexperimentalParameter("q1", 0.0, 1.0e-3, True),
+        SemiexperimentalParameter("q2", 0.0, 1.0, True),
+    )
+    geometry = (
+        SemiexperimentalGeometryParameter(
+            "bond",
+            "R(1,2)",
+            (1, 2),
+            ("C", "C"),
+            value_angstrom=1.40,
+            sigma_angstrom=0.02,
+        ),
+    )
+    jac = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0]], dtype=float)
+
+    rows = _semiexp_warning_rows(
+        diagnostics,
+        ("q1", "q2"),
+        parameters,
+        geometry,
+        jac,
+        model,
+        np.array([0.2, 0.2]),
+    )
+    codes = {row.code for row in rows}
+    csv_text = _warnings_csv(rows)
+
+    assert "rank_deficient" in codes
+    assert "small_singular_value" in codes
+    assert "planar_pair_ill_conditioned" in codes
+    assert "low_robust_isotopologue_weight" in codes
+    assert "large_geometry_uncertainty" in codes
+    assert "severity,code,message,context" in csv_text
+    assert "iso_low" in csv_text
 
 
 def test_semiexperimental_observations_csv_roundtrip(tmp_path):
@@ -361,6 +504,310 @@ patterns = ["bond(1,2)", "bond(1,3)"]
     assert job.parameter_classes[0].name == "OH"
 
 
+def test_semiexperimental_reads_legacy_msr_input_without_required_labels(tmp_path):
+    msr_path = tmp_path / "minimal.msr.inp"
+    msr_path.write_text(
+        """
+#m optim=(method=gaun,coord=zmat) geom=coord=zmat
+#d niso=2
+
+C
+X  1 #XX
+H  1 #CH  2 #A90
+
+CH = 1.0900
+XX = 1.0000
+A90 = 90.0
+
+12.000000
+ 1.000000
+
+12.000000
+ 2.000000
+
+bexp
+ 1000.0 800.0 600.0
+  900.0 700.0 500.0
+
+dbvib
+ 1.0 2.0 3.0
+ 4.0 5.0 6.0
+
+weights
+ 1.0 4.0 9.0
+ 16.0 25.0 36.0
+""",
+        encoding="utf-8",
+    )
+
+    legacy = read_msr_legacy_input(msr_path)
+    geometry = read_geometry_input(msr_path)
+    observations = read_observations(msr_path)
+
+    assert is_msr_legacy_file(msr_path)
+    assert legacy.geometry.source_format == "msr_legacy_zmatrix"
+    assert geometry.atoms == ("C", "H")
+    assert geometry.coordinates_angstrom.shape == (2, 3)
+    assert "bond(1,2)" in geometry.fixed_parameters
+    assert observations[0].label == "parent"
+    assert observations[1].label == "iso_002"
+    assert observations[1].substitutions == {2: 2}
+    assert observations[0].corrected.as_tuple() == pytest.approx((1001.0, 802.0, 603.0))
+    assert observations[1].weights is not None
+    assert observations[1].weights.as_tuple() == pytest.approx((16.0, 25.0, 36.0))
+
+
+def test_legacy_msr_nitrobenzene_zmatrix_keeps_closed_ring_and_nonredundant_gics(tmp_path):
+    msr_path = tmp_path / "nitrobenzene.msr.inp"
+    msr_path.write_text(
+        """
+#m optim=(method=gaun,coord=zmat) geom=coord=zmat
+#d niso=1
+
+ C
+ N  1  CN
+ X  2  #XX  1  #A90
+ X  3  #XX  2  #A90 1 #D180
+ C  1  CC   2  CCN  3 #D000
+ H  5  CH   1  CCH  2 #D000
+ C  1  CC   2  CCN  3 #D180
+ H  7  CH   1  CCH  2 #D000
+ C  5  CC1  1  CCC  2 #D180
+ H  9  CH1  5  CCH1 1 #D180
+ C  7  CC1  1  CCC  2 #D180
+ H 11  CH1  7  CCH1 1 #D180
+ C  2  CC2  3  #A90 4 #D180
+ H  2  CH2  3  #A90 4 #D180
+ O  2  NO   1  CNO  5 #D000
+ O  2  NO   1  CNO  5 #D180
+
+  CN   =    1.4734
+  NO   =    1.2245
+  CC   =    1.389
+  CH   =    1.0807
+  CC1  =    1.3911
+  CH1  =    1.083
+  CC2  =    4.2267
+  CH2  =    5.3101
+  CNO  =   117.5927
+  CCN  =   118.7407
+  CCH  =   119.7612
+  CCC  =   118.3592
+ CCH1  =   119.5806
+  XX   =    1.0
+  A90  =    90.0
+ D180  =   180.0
+ D000  =     0.0
+
+ 12.000000  \\parent
+ 14.000000
+ 12.000000
+  1.000000
+ 12.000000
+  1.000000
+ 12.000000
+  1.000000
+ 12.000000
+  1.000000
+ 12.000000
+  1.000000
+ 16.000000
+ 16.000000
+
+bexp
+   3968.0780   1286.9203   972.6605 \\parent
+""",
+        encoding="utf-8",
+    )
+
+    from merlino_fit.survibfit.primitives import build_primitives
+    from merlino_fit.survibfit.transforms import build_u, _vibrational_projector_local, _vibrational_rank
+    from merlino_fit.topology.pipeline import build_topology_objects
+    from topology.elements import atomic_number
+
+    geometry = read_geometry_input(msr_path)
+    coords = np.asarray(geometry.coordinates_angstrom, dtype=float)
+    z_numbers = [atomic_number(atom) for atom in geometry.atoms]
+    _continuous, graph, ringset, _synthons, _aromaticity = build_topology_objects(coords, z_numbers)
+
+    assert sorted((i + 1, j + 1) for i, j in graph.bonds) == [
+        (1, 2),
+        (1, 3),
+        (1, 5),
+        (2, 13),
+        (2, 14),
+        (3, 4),
+        (3, 7),
+        (5, 6),
+        (5, 9),
+        (7, 8),
+        (7, 11),
+        (9, 10),
+        (9, 11),
+        (11, 12),
+    ]
+    assert [atom + 1 for atom in ringset.rings[0].atoms] == [1, 3, 7, 11, 9, 5]
+
+    primitives = build_primitives(graph, coords)
+    u_matrix = build_u(primitives, coords, Z=z_numbers, ringset=ringset)
+    projector = _vibrational_projector_local(coords)
+    rank = np.linalg.matrix_rank(u_matrix.T @ b_matrix_analytic(primitives, coords) @ projector, tol=1.0e-7)
+
+    assert u_matrix.shape[1] == _vibrational_rank(coords) == 36
+    assert rank == 36
+
+
+def test_semiexperimental_reads_legacy_msr_cartesian_geometry(tmp_path):
+    msr_path = tmp_path / "minimal.msr"
+    msr_path.write_text(
+        """
+#m symmetry=isotopes
+
+C  0.000000  0.000000  0.000000
+H  0.000000  0.000000  1.090000
+
+12.000000  \\parent
+ 1.000000
+
+12.000000
+ 2.000000
+
+bexp
+ 1000.0 800.0 600.0  \\parent
+  900.0 700.0 500.0
+
+dbvib
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+""",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(msr_path)
+    observations = read_observations(msr_path)
+
+    assert geometry.source_format == "msr_legacy_cartesian"
+    assert geometry.atoms == ("C", "H")
+    assert geometry.fixed_parameters == ()
+    assert observations[0].label == "parent"
+    assert observations[1].label == "iso_002"
+    assert observations[1].substitutions == {2: 2}
+
+
+def test_semiexperimental_reads_legacy_msr_cartesian_modredundant_constraints(tmp_path):
+    msr_path = tmp_path / "cartesian_constraints.msr"
+    msr_path.write_text(
+        """
+#m symmetry=isotopes
+
+O  0.000000  0.000000  0.000000
+H  0.000000  0.000000  0.957200
+H  0.926600  0.000000 -0.239600
+
+constraints
+B 1 2 F
+A 2 1 3 F
+end
+
+16.000000  \\parent
+ 1.000000
+ 1.000000
+
+16.000000
+ 2.000000
+ 1.000000
+
+bexp
+ 1000.0 800.0 600.0  \\parent
+  900.0 700.0 500.0
+""",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(msr_path)
+    observations = read_observations(msr_path)
+
+    assert geometry.source_format == "msr_legacy_cartesian"
+    assert geometry.atoms == ("O", "H", "H")
+    assert "bond(1,2)" in geometry.fixed_parameters
+    assert "angle(2,1,3)" in geometry.fixed_parameters
+    assert observations[1].substitutions == {2: 2}
+
+
+def test_semiexperimental_reads_robust_legacy_msr_zmatrix_variants(tmp_path):
+    msr_path = tmp_path / "robust_zmatrix.msr.inp"
+    msr_path.write_text(
+        """
+#m optim=(method=gaun,coord=zmat) geom=coord=zmat
+symmetry=isotopes
+
+C1
+H2, 1, #RCH
+H3  1  RCH  2  AHH
+
+RCH  1.090000D+00
+AHH  =  109.500000D+00
+
+12.000000  \\parent
+ 1.000000
+ 1.000000
+
+12.000000
+ 2.000000
+ 1.000000
+
+bexp
+ 1000.0 800.0 600.0  \\parent
+  900.0 700.0 500.0
+""",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(msr_path)
+
+    assert geometry.source_format == "msr_legacy_zmatrix"
+    assert geometry.atoms == ("C", "H", "H")
+    assert np.isfinite(geometry.coordinates_angstrom).all()
+    assert geometry.coordinates_angstrom.shape == (3, 3)
+    assert "bond(1,2)" in geometry.fixed_parameters
+    assert "bond(1,3)" not in geometry.fixed_parameters
+
+
+def test_semiexperimental_rejects_forward_zmatrix_references(tmp_path):
+    msr_path = tmp_path / "bad_ref.msr.inp"
+    msr_path.write_text(
+        """
+#m geom=coord=zmat
+
+C
+H 2 RCH
+
+RCH = 1.09
+
+12.000000
+1.000000
+
+bexp
+1000.0 800.0 600.0
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="previous atoms"):
+        read_geometry_input(msr_path)
+
+
+def test_semiexperimental_does_not_treat_generic_inp_as_msr(tmp_path):
+    generic = tmp_path / "minimal.inp"
+    generic.write_text("C\nH 1 R\nR = 1.0\n", encoding="utf-8")
+
+    assert not is_msr_legacy_file(generic)
+    with pytest.raises(ValueError, match="Semiexperimental geometry input"):
+        read_geometry_input(generic)
+    with pytest.raises(ValueError, match="Semiexp observations"):
+        read_observations(generic)
+
+
 def test_semiexperimental_rejects_dummy_atoms_in_cartesian_com(tmp_path):
     gaussian_input = tmp_path / "dummy.com"
     gaussian_input.write_text(
@@ -428,14 +875,16 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
         IsotopologueObservation("parent", parent_constants),
         IsotopologueObservation("D1", d1_constants, substitutions={2: 2}),
     )
-    request = SemiexperimentalFitRequest(geometry_input, observations)
+    request = SemiexperimentalFitRequest(geometry_input, observations, leave_one_out=True)
     initial_rms = _rotconst_rms(atoms, initial, observations)
 
     result = fit_semiexperimental_geometry(request, max_iter=8, outdir=tmp_path / "semiexp")
 
     assert result.rms_MHz < initial_rms
     assert result.diagnostics.observable == "moments"
-    assert result.diagnostics.components == ("Ia", "Ib", "Ic")
+    assert result.diagnostics.planar is True
+    assert len(result.diagnostics.components) == 2
+    assert set(result.diagnostics.components).issubset({"Ia", "Ib", "Ic"})
     assert result.b_matrix.shape[0] == len(result.gic_labels)
     assert result.b_matrix.shape[1] == 3 * len(atoms)
     assert result.hessian.shape == result.covariance.shape
@@ -457,6 +906,8 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert any(item.kind == "angle" and item.value_degree is not None for item in result.geometry_parameters)
     assert any(item.kind == "angle" and item.sigma_degree is not None for item in result.geometry_parameters)
     assert len(result.rotational_constants) == 3 * len(observations)
+    assert len(result.leave_one_out) == len(observations)
+    assert all(row.training_isotopologues == 1 for row in result.leave_one_out)
     assert any(item.component == "A" for item in result.rotational_constants)
     assert (tmp_path / "semiexp" / "semiexp_geometry.xyz").exists()
     assert (tmp_path / "semiexp" / "semiexp_parameters.csv").exists()
@@ -470,11 +921,17 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_diagnostics.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_influence.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_high_correlations.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_svd_diagnostics.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_constraints.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_warnings.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_leave_one_out.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_checkpoint.json").exists()
     influence_text = (tmp_path / "semiexp" / "semiexp_influence.csv").read_text(encoding="utf-8")
     assert "chi_square_contribution" in influence_text
     diagnostics_text = (tmp_path / "semiexp" / "semiexp_diagnostics.csv").read_text(encoding="utf-8")
     assert "incremental_rank" in diagnostics_text
     assert "parameter_scale_min" in diagnostics_text
+    assert "robust_downweighted_isotopologues" in diagnostics_text
     assert (tmp_path / "semiexp" / "semiexp_manifest.json").exists()
     rotconst_text = (tmp_path / "semiexp" / "semiexp_rotational_constants.csv").read_text(encoding="utf-8")
     assert "corrected_experimental_MHz" in rotconst_text
@@ -644,8 +1101,49 @@ def test_planar_rotational_constants_auto_selects_stable_pair(tmp_path):
     )
 
     assert result.diagnostics.planar is True
-    assert len(result.diagnostics.components) == 2
-    assert set(result.diagnostics.components).issubset({"A", "B", "C"})
+    assert result.diagnostics.components == ("A", "B")
+
+
+def test_planar_moments_use_two_independent_components_and_explicit_pairs(tmp_path):
+    atoms = ["C", "O", "H", "H"]
+    coords = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [1.2000, 0.0000, 0.0000],
+            [-0.6000, 0.9000, 0.0000],
+            [-0.6000, -0.9000, 0.0000],
+        ],
+        dtype=float,
+    )
+    xyz = tmp_path / "formaldehyde.xyz"
+    xyz.write_text(
+        "\n".join(["4", "planar", *[f"{a} {x:.8f} {y:.8f} {z:.8f}" for a, (x, y, z) in zip(atoms, coords)]])
+        + "\n",
+        encoding="utf-8",
+    )
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+
+    auto = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, (observation,), rotational_components="auto"),
+        max_iter=1,
+    )
+    explicit = fit_semiexperimental_geometry(
+        SemiexperimentalFitRequest(xyz, (observation,), rotational_components="AC"),
+        max_iter=1,
+    )
+
+    assert auto.diagnostics.planar is True
+    assert auto.diagnostics.components == ("Ia", "Ib")
+    assert explicit.diagnostics.components == ("Ia", "Ic")
+
+    with pytest.raises(ScientificValidationError, match="ABC is redundant"):
+        fit_semiexperimental_geometry(
+            SemiexperimentalFitRequest(xyz, (observation,), rotational_components="ABC"),
+            max_iter=1,
+        )
 
 
 def test_semiexperimental_fit_honors_fixed_gic_parameters(tmp_path):
@@ -874,6 +1372,7 @@ def test_semiexperimental_gic_preview_and_html_report(tmp_path):
     assert "Rotational Constants" in report_text
     assert "Corrected experimental / MHz" in report_text
     assert "Angle or dihedral / degree" in report_text
+    assert "Warnings" in report_text
     tables = semiexperimental_latex_tables(result)
     assert {"parameters", "rotational_constants", "residuals", "kraitchman"} == set(tables)
     assert "\\begin{tabular}" in tables["parameters"]

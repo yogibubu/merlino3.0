@@ -75,6 +75,11 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
     assert args.observable == "moments"
     assert args.rotational_components == "auto"
     assert args.prune_condition == 0.0
+    assert args.robust_loss == "none"
+    assert args.robust_scale == pytest.approx(0.0)
+    assert args.leave_one_out is False
+    assert args.checkpoint is None
+    assert args.restart is None
     assert args.max_step == pytest.approx(0.25)
 
     job_args = merlino_parser().parse_args([
@@ -254,6 +259,10 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_diagnostics.csv").exists()
     assert (outdir / "semiexp_influence.csv").exists()
     assert (outdir / "semiexp_high_correlations.csv").exists()
+    assert (outdir / "semiexp_svd_diagnostics.csv").exists()
+    assert (outdir / "semiexp_constraints.csv").exists()
+    assert (outdir / "semiexp_warnings.csv").exists()
+    assert (outdir / "semiexp_checkpoint.json").exists()
     assert (outdir / "semiexp_manifest.json").exists()
     assert (outdir / "semiexp_report.html").exists()
     assert (outdir / "semiexp_tables.tex").exists()
@@ -266,6 +275,10 @@ def test_merlino_cli_semiexp(tmp_path):
     assert manifest["outputs"]["text_report"] == str(outdir / "semiexp_report.txt")
     assert manifest["outputs"]["influence"] == str(outdir / "semiexp_influence.csv")
     assert manifest["outputs"]["high_correlations"] == str(outdir / "semiexp_high_correlations.csv")
+    assert manifest["outputs"]["svd_diagnostics"] == str(outdir / "semiexp_svd_diagnostics.csv")
+    assert manifest["outputs"]["constraints"] == str(outdir / "semiexp_constraints.csv")
+    assert manifest["outputs"]["warnings"] == str(outdir / "semiexp_warnings.csv")
+    assert manifest["outputs"]["checkpoint"] == str(outdir / "semiexp_checkpoint.json")
     assert manifest["parameters"]["coordinate_generation"]["reduction"].startswith("primitive stretches")
     assert manifest["parameters"]["n_gic_parameters"] >= 1
     geometry_text = (outdir / "semiexp_geometry_parameters.csv").read_text(encoding="utf-8")

@@ -96,6 +96,11 @@ Example scale file: `scale_example.json`
 ```
 python -m survibfit.cli gic --xyz in.xyz --out gic.txt
 ```
+By default this command is canonical: it runs GICForge and writes the exact
+ReadGIC lines produced by the Fortran backend.  Use `--workdir DIR` to keep the
+GICForge working files.  The legacy pure-Python local builder is available only
+for diagnostics through `--python-local`; production workflows should not use it
+when Python/Fortran identity is required.
 
 ## Gaussian puckering scan input
 Generate a multi-link Gaussian input that defines ring puckering GICs directly
@@ -119,8 +124,10 @@ Use `--constraint-mode functional-targets` for direct phase stepping or
 `--constraint-mode scan-to-zero` for the linear fallback on paired puckering
 modes.
 
-Options: `--min-coeff` to drop tiny coefficients and `--no-normalize` to keep raw coefficients.
-Local symmetry options (same as `[u]`):
+Options such as `--min-coeff`, `--no-normalize`, `--symmetry-mode` and
+`--prune-mode` apply only with `--python-local`.  Canonical GICForge output uses
+the Fortran definitions unchanged.
+Local symmetry options for `--python-local` (same as `[u]`):
 `--symmetry-mode`, `--prune-mode`, `--zeff-tol`, `--geometry-match-tol`, `--pattern-report`,
 `--symmetrize-global`, `--keep-a1-only`, `--assign-symmetry-labels`, `--symmetry-quasi-tol`.
 `--symmetry-tol-h`, `--heavy-only-orient`.

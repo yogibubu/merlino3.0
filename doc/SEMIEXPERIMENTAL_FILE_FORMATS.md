@@ -10,8 +10,10 @@ contracts. The recommended production setup uses two input files:
    corrections, isotope substitutions and optional experimental uncertainties.
 
 Gaussian-style Cartesian `.com/.gjf` files remain accepted as geometry inputs
-for interoperability. Gaussian Z-matrices and MSR-style variable blocks are not
-valid Merlino4 SE geometry inputs.
+for interoperability. Legacy MSR monolithic inputs use the explicit
+compatibility extensions `.msr` and `.msr.inp`; existing files named
+`*_msr.inp` are accepted as a legacy alias. Generic `.inp` files are
+deliberately not auto-detected as MSR files.
 
 ## 1. Job File
 
@@ -41,6 +43,12 @@ max_step = 0.25
 damping = 1.0e-8
 step = 1.0e-4
 prune_condition = 0.0
+robust_loss = "none"
+robust_scale = 0.0
+leave_one_out = false
+# optional:
+# checkpoint = "semiexp_checkpoint.json"
+# restart = "semiexp_checkpoint.json"
 
 [geometry]
 units = "angstrom"
@@ -94,8 +102,12 @@ patterns = ["angle"]
   only the totally symmetric Cartesian directions.
 - `observable`: `moments`, `rotational_constants` or `auto`. The Merlino
   standard is `moments`.
-- `rotational_components`: `auto`, `ABC`, `AB`, `AC` or `BC`. This only matters
-  for direct rotational-constant fits.
+- `rotational_components`: `auto`, `ABC`, `AB`, `AC` or `BC`. Planar molecules
+  have only two independent rotational components, so `auto` chooses one pair
+  and explicit `ABC` is rejected. When `observable = "moments"`, the same
+  spectroscopic labels are mapped internally to `Ia/Ib`, `Ia/Ic` or `Ib/Ic`.
+  The automatic choice first minimizes the propagated instability of the
+  omitted planar component and then uses Jacobian conditioning as a tie-breaker.
 - `max_iter`: optional explicit iteration cap. If omitted, Merlino uses an
   automatic cap proportional to the number of effective fitted parameters.
 - `step`: finite working-coordinate step used only by fallback numerical
@@ -105,6 +117,19 @@ patterns = ["angle"]
 - `max_step`: maximum active-coordinate trust-region step norm.
 - `prune_condition`: deterministic weak-parameter pruning target. `0.0`
   disables pruning.
+- `robust_loss`: optional robust IRLS loss for experimental outlier
+  isotopologues. Allowed values are `none`, `huber`, `soft_l1` and `cauchy`.
+  The default `none` reproduces the ordinary weighted least-squares problem.
+- `robust_scale`: robust residual scale in weighted units. `0.0` selects an
+  automatic median-absolute-deviation scale. Robust weights are applied only to
+  experimental isotopologue rows; QM predicates keep their declared weights.
+- `leave_one_out`: when `true`, Merlino performs exact leave-one-isotopologue-
+  out refits after the final fit and writes `semiexp_leave_one_out.csv`.
+- `checkpoint`: optional explicit checkpoint path. If omitted, runs with an
+  output directory write `semiexp_checkpoint.json`.
+- `restart`: optional checkpoint JSON used to restart from saved Cartesian
+  coordinates. Coordinate definitions are rebuilt deterministically from the
+  restart geometry.
 
 `[geometry]`
 
@@ -175,7 +200,68 @@ ModRedundant data. Freeze records are converted to primitive-coordinate
 constraints, expanded over the detected symmetry orbit and projected onto the
 active GIC space. Gaussian route sections containing `zmat` are rejected.
 
-## 3. Isotopologue Observations
+## 3. Legacy MSR Compatibility Input
+
+Standard extensions: `.msr` and `.msr.inp`. Existing files named `*_msr.inp`
+are accepted as a legacy alias, but plain `.inp` is not.
+
+This is an import format, not the recommended native Merlino format. The file
+may contain either an MSR Z-matrix block followed by variable definitions, or a
+direct Cartesian block with records `Atom x y z`. In both cases the geometry is
+converted immediately to the canonical Merlino Cartesian representation.
+
+For direct Cartesian MSR imports, fixed primitive parameters are supplied after
+the Cartesian block with Gaussian-style ModRedundant freeze records. The block
+may be introduced by `constraints`, `modredundant`, `freeze`, or `frozen`, and
+may be terminated by `end`; the first isotope mass line also terminates it.
+Only freeze records are interpreted:
+
+```text
+C  0.000000  0.000000  0.000000
+H  0.000000  0.000000  1.089000
+H  1.026719  0.000000 -0.363000
+
+constraints
+B 1 2 F
+A 2 1 3 F
+end
+
+12.000000  \parent
+ 1.000000
+ 1.000000
+```
+
+Dummy atoms (`X`, `XX`, `-1`) are allowed only in the Z-matrix branch and are
+removed before GIC generation and SEfit. If a Z-matrix coordinate uses a
+variable marked with `#`, for example `#RCH`, that coordinate is imported as a
+frozen primitive constraint when all involved atoms are real. Coordinates
+involving dummy atoms are used only to build the Cartesian geometry and are not
+converted into chemical constraints.
+
+The Z-matrix reader accepts ordinary numeric values, Fortran `D` exponents, and
+variable definitions written either as `NAME = value` or `NAME value`. Atom
+labels such as `C1` or `H2` are normalized to chemical symbols, while
+references must always point to atoms already defined in the Z-matrix.
+
+The isotope mass blocks define the parent and isotopologues. Labels written as
+comments after a backslash, such as `\parent`, are optional; if absent, Merlino
+uses deterministic labels `parent`, `iso_002`, and so on. Isotope substitutions
+are inferred by comparing each mass block with the parent mass block, not from
+the label text. `bexp`, `dbvib`, optional `dbelec`/`dbele`, and `weights`
+sections are converted to the standard observation model. `dbvib` and
+electronic corrections are interpreted with the MSR additive convention.
+
+The same file can be used directly as a semiexperimental job:
+
+```bash
+python -m merlino semiexp --job nitrobenzene.msr.inp --outdir run_nitrobenzene
+```
+
+A complete Cartesian/ModRedundant MSR-compatible nitrobenzene example is
+provided in
+`doc/papers/semiexp_gic_fit/examples/nitrobenzene_cartesian_constraints.msr`.
+
+## 4. Isotopologue Observations
 
 Recommended extension: `.toml`.
 
@@ -249,7 +335,8 @@ Every semiexperimental run writes:
 
 - `semiexp_report.txt`: canonical text report in `SEFIT TEXT OUTPUT v1`
   format. Required sections are `[method]`, `[constraints]`,
-  `[fit_statistics]`, `[working_coordinates]`,
+  `[constraint_diagnostics]`, `[fit_statistics]`, `[warnings]`,
+  `[rank_diagnostics]`, `[working_coordinates]`,
   `[primitive_internal_coordinates]`, `[rotational_constants]` and
   `[fit_residuals]`.
 - `semiexp_report.html`: graphical self-contained report for GUI inspection.
@@ -270,6 +357,19 @@ Every semiexperimental run writes:
 - `semiexp_influence.csv`: residual, weighted residual, chi-square contribution
   and leverage by observable.
 - `semiexp_high_correlations.csv`: strongly correlated fitted-parameter pairs.
+- `semiexp_svd_diagnostics.csv`: singular values of the final weighted
+  Jacobian and the dominant working-coordinate combinations associated with
+  small singular values.
+- `semiexp_constraints.csv`: input fixed patterns, symmetry-expanded primitive
+  constraints, parameter classes and the active labels they match.
+- `semiexp_warnings.csv`: non-blocking diagnostic warnings for reduced rank,
+  small singular values, ill-conditioned planar component pairs, low robust
+  isotopologue weights and unusually large propagated primitive-coordinate
+  uncertainties.
+- `semiexp_checkpoint.json`: restartable solver state with Cartesian geometry,
+  damping/trust radius, labels, active labels and robust weights.
+- `semiexp_leave_one_out.csv`: exact leave-one-isotopologue-out refits, written
+  only when `leave_one_out = true`.
 - `semiexp_manifest.json`: reproducibility manifest with input/output checksums
   and run parameters.
 
