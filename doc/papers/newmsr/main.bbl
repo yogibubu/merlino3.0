@@ -8,7 +8,7 @@
 \providecommand*\mcitethebibliography{\thebibliography}
 \csname @ifundefined\endcsname{endmcitethebibliography}
   {\let\endmcitethebibliography\endthebibliography}{}
-\begin{mcitethebibliography}{23}
+\begin{mcitethebibliography}{24}
 \providecommand*\natexlab[1]{#1}
 \providecommand*\mciteSetBstSublistMode[1]{}
 \providecommand*\mciteSetBstMaxWidthForm[2]{}
@@ -217,6 +217,14 @@ Marenich,~A.~V.; Brothers,~E.~N.; Hratchian,~H.~P.; Frisch,~M.~J. Generalized
   Internal Coordinates for Creative Exploration of Interatomic Geometries.
   \emph{Journal of Chemical Theory and Computation} \textbf{2025}, \emph{21},
   10930--10944\relax
+\mciteBstWouldAddEndPuncttrue
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
+{\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax
+\EndOfBibitem
+\bibitem[Godfrey and Brown(1995)Godfrey, and
+  Brown]{GodfreyBrown1995ShapeGlycine}
+Godfrey,~P.~D.; Brown,~R.~D. Shape of Glycine. \emph{Journal of the American
+  Chemical Society} \textbf{1995}, \emph{117}, 2019--2023\relax
 \mciteBstWouldAddEndPuncttrue
 \mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}
 {\mcitedefaultendpunct}{\mcitedefaultseppunct}\relax

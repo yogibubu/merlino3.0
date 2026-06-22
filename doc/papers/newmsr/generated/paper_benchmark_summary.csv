@@ -1,6 +1,6 @@
 system,point_group,coordinate_model,rotational_pair,isotopologues,reported_constants,final_gics,totally_symmetric_gics,effective_parameters,rank,primitive_constraints,accepted_steps,rejected_steps,condition_number,rotational_rms_MHz,rotational_max_MHz,minimum_hessian_eigenvalue,stationary_point,run_dir
 glycolaldehyde,Cs,gic,ABC,10,30,18,12,12,12,0,3,0,347.81547482529066,0.5640242657972891,1.79605896683,4.37570047669,minimum,working/semiexp/glycolaldehyde/run_pcs4
-glycine_I,Cs,gic,ABC,5,15,24,15,11,11,4,4,0,4461.806186388724,0.09881270883638085,0.319639234674,0.0222971737983,minimum,working/semiexp/glycine_I_cs_table5_gic_fortran
+glycine_I,Cs,gic,ABC,5,15,24,15,11,11,4,7,25,10202.781071554418,0.027095461908054393,0.0565325500193,546406.359273,minimum,working/semiexp/glycine_I_cs_table5_gic_fortran
 glycine_II,C1,gic,ABC,10,30,24,24,19,19,5,16,30,10543.733841102394,0.24911628585532697,0.670672236074,61995.9401444,minimum,working/semiexp/glycine_II_dpcs3_table5_repo_gic_fortran
 cyclopentadiene,C2v,cartesian_symmetry,ABC,14,42,27,10,10,10,0,10,0,635.3972332491529,0.06354506414564987,0.228873132477,0.468374187586,minimum,working/semiexp/cyclopentadiene/run_msr_symm_cartesian_symmetry
 nitrobenzene,C2v,gic,AB,9,27,36,13,13,13,8,4,0,27464.444022609037,0.1479783904355257,0.260455141268,0.280469392263,flat_or_rank_deficient,working/semiexp/nitrobenzene/run_pair_auto

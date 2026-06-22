@@ -20,10 +20,12 @@ benchmark. The Cartesian atom order is:
 10. amino `H`
 
 The five-isotopologue data set contains the parent, `13C_carboxyl`,
-`13C_methylene`, `CD2`, and `15N` species. Rotational constants are
-reconstructed from the Gly-Ip parent values and isotope shifts reported by
-Kasalova et al.; the `dbvib` rows are the Gly-Ip zero-point corrections. The
-four constraints are the Gly-Ip Table 5 structural relations:
+`13C_methylene`, `CD2`, and `15N` species. Ground-state rotational constants
+and statistical uncertainties are the Table 1 values of Godfrey and Brown,
+J. Am. Chem. Soc. 117, 2019-2023 (1995). The `weights` block stores inverse
+variances, `1/sigma(B0)^2`; the `dbvib` rows are the Gly-Ip zero-point
+corrections of Kasalova et al. The four constraints are the Gly-Ip Table 5
+structural relations:
 
 ```text
 ROH(Frozen,Value=0.9660)=R(6,7)
@@ -49,15 +51,15 @@ python -m merlino semiexp \
 
 Reference result:
 
-- GIC convergence: `objective_tolerance` after 4 accepted steps and no
-  rejections, with a positive stationary-point check (`minimum`).
+- GIC convergence: `line_search_stalled` after 7 accepted steps and 25
+  rejected trial steps, with a positive stationary-point check (`minimum`).
 - Final/active GIC count: 24/15; four functional constraints leave 11
   independent fitted variables.
-- Condition number: about `4.46e3`.
-- Rotational RMS residual: `0.098813 MHz`; maximum absolute rotational
-  residual: `0.319639 MHz`.
-- Unit least-squares weights are used because the complete old-isotopologue
-  uncertainty table is not available in the local source bundle.
+- Condition number: about `1.02e4`.
+- Rotational RMS residual: `0.027095 MHz`; maximum absolute rotational
+  residual: `0.056533 MHz`.
+- Experimental least-squares weights are used directly from the Table 1
+  standard deviations of Godfrey and Brown.
 
 ## `glycine_II_dpcs3_table5_constraints.msr`
 

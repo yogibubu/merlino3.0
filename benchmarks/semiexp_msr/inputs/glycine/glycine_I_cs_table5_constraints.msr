@@ -1,18 +1,18 @@
-#m symmetry=isotopes coordinate=cartesian structure=re source=Lovas1995_Kasalova2007_GlyIp
+#m symmetry=isotopes coordinate=cartesian structure=re source=GodfreyBrown1995_Kasalova2007_GlyIp
 #d niso=5
 ! Glycine conformer I / Gly-Ip, Cs semiexperimental benchmark.
 ! Geometry: Cartesian Gly-Ip reference structure from the local JPCL agreement
 ! supporting geometry set, reordered as:
 ! 1 methylene C, 2 amino N, 3 amino H, 4 carboxyl C, 5 carbonyl O,
 ! 6 hydroxyl O, 7 hydroxyl H, 8-9 methylene H, 10 amino H.
-! Rotational constants are reconstructed from Kasalova et al. Table 3:
-! parent constants from the bracketed experimental parent values and isotope
-! shifts for 13C(3), 13C(1), C(1)-d2, and 15N. dbvib rows are the Gly-Ip
-! zero-point corrections Ae-A0, Be-B0, Ce-C0 from Table 8.
+! Rotational constants and standard deviations are the B0 values of
+! Godfrey and Brown, J. Am. Chem. Soc. 117, 2019-2023 (1995), Table 1.
+! The weights are inverse variances, 1/sigma(B0)^2, in MHz^-2.
+! The 13C(1) and 13C(2) labels of that paper correspond here to
+! C13_carboxyl and C13_methylene, respectively. dbvib rows are the Gly-Ip
+! zero-point corrections Ae-A0, Be-B0, Ce-C0 of Kasalova et al. Table 8.
 ! The four reduced-dimensionality constraints are the Gly-Ip constraints of
-! Kasalova et al. Table 5. Unit least-squares weights are used because the
-! complete old-isotopologue uncertainty table is not available in this local
-! benchmark source bundle.
+! Kasalova et al. Table 5.
 
 C    -0.768058   -0.744960    0.000000
 N    -2.003394    0.006849   -0.000000
@@ -88,11 +88,11 @@ end
 1.000000
 
 bexp
-10341.500000  3876.200000  2912.400000  \parent
-10340.900000  3869.200000  2908.400000  \C13_carboxyl
-10227.100000  3859.100000  2893.800000  \C13_methylene
- 9318.400000  3799.300000  2832.400000  \CD2
-10341.400000  3762.500000  2847.700000  \N15
+10341.521000  3876.178500  2912.350900  \parent
+10340.943000  3869.114200  2908.316600  \C13_carboxyl
+10227.084000  3859.051000  2893.596000  \C13_methylene
+ 9318.452000  3799.235300  2832.322200  \CD2
+10341.450000  3762.457000  2847.639000  \N15
 
 dbvib
 78.670000  31.300000  22.330000  \parent
@@ -100,3 +100,10 @@ dbvib
 76.730000  30.950000  21.920000  \C13_methylene
 69.840000  31.210000  21.480000  \CD2
 78.760000  30.130000  21.710000  \N15
+
+weights
+ 126.246686  694444.444444  1000000.000000  \parent
+1189.060642   30778.701139   147928.994083  \C13_carboxyl
+ 129.132231    2267.573696     2500.000000  \C13_methylene
+1890.359168  189035.916824   444444.444444  \CD2
+  69.444444     355.998576     1189.060642  \N15
