@@ -444,7 +444,7 @@ def test_gicforge_handles_square_planar_tetracoordinate_center(tmp_path):
     assert report["passed"], report
 
 
-def test_gicforge_python_port_reports_ring_gap_for_coronene(tmp_path):
+def test_gicforge_python_port_matches_fortran_for_coronene(tmp_path):
     try:
         executable = resolve_backend("gicforge")
     except Exception as exc:
@@ -460,11 +460,13 @@ def test_gicforge_python_port_reports_ring_gap_for_coronene(tmp_path):
         executable=executable,
     )
 
-    assert report["passed"] is False
+    assert report["passed"], report
     assert report["python_gic_count"] == report["fortran_gic_count"] == 102
-    assert report["python_kind_counts"] != report["fortran_kind_counts"]
-    assert report["fortran_kind_counts"]["angle"] == 30
-    assert report["fortran_kind_counts"]["dihedral"] == 30
+    assert report["python_kind_counts"] == report["fortran_kind_counts"]
+    assert report["python_kind_counts"]["angle"] == 30
+    assert report["python_kind_counts"]["dihedral"] == 30
+    assert report["same_ordered_primitives"] is True
+    assert report["b_max_abs_diff"] <= 1.0e-7
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

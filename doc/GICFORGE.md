@@ -145,11 +145,10 @@ for routine user-facing diagnostics.
 
 The current port is intentionally incremental. It already matches Fortran for
 primitive stretches, two-coordinate bends, linear bends, C2v three-coordinate
-angle SALCs, G16 improper orientation and type-local Gram-Schmidt pruning. The
-current expected diagnostic gap is fused-ring handling: coronene has the same
-total count in Python and Fortran, but Python still reports the missing
-`CyGNA/CyGND` port as a different angle/dihedral partition. This is used as a
-regression target while porting ring valence angles and ring torsions.
+angle SALCs, G16 improper orientation, fused-ring `CyGNA/CyGND` valence-angle
+and puckering coordinates, and type-local Gram-Schmidt pruning. Coronene is
+covered as a regression target for the fused-ring path: Python and Fortran must
+agree on final counts, ordered primitive signatures and the resulting B-matrix.
 
 The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
 `xyzin`, `provin`, `gauin`/`gauin.symm`, the GICForge executable, the GICForge
