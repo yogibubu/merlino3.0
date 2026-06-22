@@ -70,11 +70,25 @@ supplied geometry file. For Hessian transformation, `gic-gf` evaluates B with
 Cartesian coordinates in bohr, matching the canonical Hessian units
 Eh/bohr^2.
 
+When the Fortran keyword `BMAT` is active, GICForge writes a machine-readable
+`bmat.out` for the final post-pruning GIC set.  The Python `gic-bmatrix`
+utility can compare this file with its analytic evaluation through
+`--fortran-bmat`; the comparison is a production diagnostic for
+Python/Fortran B-matrix identity.  The comparison must use the same Cartesian
+frame as the Fortran B matrix; with the standard `ECKART` keyword this is the
+backend-oriented geometry printed in `gauin`, not necessarily the original XYZ
+orientation.  The direct Fortran `bmat.out` comparison applies to the same GIC
+schema that the Fortran file represents, typically the raw post-pruning
+`gauin` basis.  If the deterministic Python post-check writes `gauin.symm`, the
+symmetry-adapted B matrix is evaluated from that frozen schema on the Python
+side.
+
 The Python ReadGIC command in `survibfit` uses the same canonical definition:
 `python -m survibfit.cli gic --xyz in.xyz --out gic.txt` runs GICForge and
 writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
 pure-Python local coordinate builder is available only with `--python-local`
-for diagnostics and is not an alternative production GIC definition.
+for diagnostics, requires `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1`, and is not an
+alternative production GIC definition.
 
 This is a strict identity contract.  The Python layer must not create an
 independent production GIC basis from topology after GICForge has run.  Its
@@ -83,6 +97,12 @@ symmetrization, schema serialization and analytic evaluation of the frozen
 GIC/B-matrix model on later Cartesian geometries.  If Fortran `gauin` contains
 one coordinate, Python freezes one coordinate; if Fortran changes the
 non-redundant basis, downstream Python programs see that exact basis.
+
+The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
+`xyzin`, `provin`, `gauin`/`gauin.symm`, the GICForge executable, the GICForge
+manifest and, when available, the Git commit and dirty-worktree flag.  This
+metadata makes restarts auditable: a reused schema can be checked against the
+exact coordinate definition and backend that generated it.
 
 In semiexperimental refinements, `SEfit` calls the definition utility only at
 the beginning of a fresh fit.  All ordinary iterations reuse the same frozen

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 from typing import Callable
 
 import numpy as np
 
+from merlino_core import sha256_file
+from merlino_core.paths import repo_root
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
 from topology.elements import atomic_number, atomic_symbol
@@ -46,6 +49,7 @@ class GICDefinition:
     gaussian_input: str = ""
     source: str = "gicforge"
     generation_workdir: str = ""
+    provenance: dict[str, str] = field(default_factory=dict)
 
     def model(self) -> tuple[list[Primitive], np.ndarray, tuple[str, ...]]:
         """Return the legacy `(primitives, U, labels)` representation."""
@@ -68,6 +72,7 @@ class GICDefinition:
             "names": list(self.names),
             "irreps": list(self.irreps),
             "gaussian_input": self.gaussian_input,
+            "provenance": dict(sorted((str(k), str(v)) for k, v in self.provenance.items())),
         }
 
     @classmethod
@@ -94,7 +99,7 @@ class GICDefinition:
         symmetrized = data.get("symmetrized")
         if symmetrized is None:
             symmetrized = any(irrep != "UNK" for irrep in irreps)
-        return cls(
+        definition = cls(
             atom_symbols=atom_symbols,
             atomic_numbers=atomic_numbers,
             reference_coordinates_angstrom=tuple(
@@ -111,9 +116,13 @@ class GICDefinition:
             gaussian_input=str(data.get("gaussian_input", "")),
             source=str(data.get("source", "gicforge")),
             generation_workdir=str(data.get("generation_workdir", "")),
+            provenance={str(key): str(value) for key, value in dict(data.get("provenance") or {}).items()},
         )
+        validate_gic_definition(definition)
+        return definition
 
     def write(self, path: Path) -> Path:
+        validate_gic_definition(self)
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -134,6 +143,24 @@ class GICEvaluation:
     irreps: tuple[str, ...]
     point_group: str
     symmetrized: bool
+
+
+@dataclass(frozen=True)
+class GICBMatrixComparison:
+    passed: bool
+    max_abs_diff: float
+    max_rel_diff: float
+    python_shape: tuple[int, int]
+    fortran_shape: tuple[int, int]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "passed": self.passed,
+            "max_abs_diff": self.max_abs_diff,
+            "max_rel_diff": self.max_rel_diff,
+            "python_shape": list(self.python_shape),
+            "fortran_shape": list(self.fortran_shape),
+        }
 
 
 RunGICForge = Callable[[Path], GICForgeResult]
@@ -179,6 +206,7 @@ def define_gics_from_cartesian(
         symmetrized=was_symmetrized,
         symmetry_source="gicforge-postcheck" if was_symmetrized else "none",
         generation_workdir=run_dir,
+        provenance=_gic_definition_provenance(run_dir, result, gauin),
     )
     definition.write(run_dir / "gic_definition.json")
     return definition
@@ -193,6 +221,7 @@ def read_gic_definition_from_gauin(
     symmetrized: bool = True,
     symmetry_source: str = "gicforge-postcheck",
     generation_workdir: Path | str = "",
+    provenance: dict[str, str] | None = None,
 ) -> GICDefinition:
     """Read a frozen GIC definition from a Gaussian-style GIC block."""
     atoms = tuple(str(atom).strip() for atom in atom_symbols)
@@ -227,7 +256,7 @@ def read_gic_definition_from_gauin(
         columns.append(column)
     if not columns:
         raise GICDefinitionError(f"No linear GICForge coordinates found in {gauin}")
-    return GICDefinition(
+    definition = GICDefinition(
         atom_symbols=atoms,
         atomic_numbers=tuple(atomic_number(atom) for atom in atoms),
         reference_coordinates_angstrom=tuple(tuple(float(value) for value in row) for row in coords),
@@ -241,7 +270,10 @@ def read_gic_definition_from_gauin(
         symmetry_source=symmetry_source,
         gaussian_input=text,
         generation_workdir=str(generation_workdir),
+        provenance=dict(provenance or {}),
     )
+    validate_gic_definition(definition)
+    return definition
 
 
 def evaluate_gic_definition(
@@ -256,6 +288,7 @@ def evaluate_gic_definition(
     redundancy removal, or symmetry assignment; it only evaluates the frozen
     primitive combinations on the supplied Cartesian geometry.
     """
+    validate_gic_definition(definition)
     coords = _validated_coordinates(coordinates_angstrom, len(definition.atom_symbols))
     if atomic_numbers is not None and len(tuple(atomic_numbers)) != len(definition.atom_symbols):
         raise GICDefinitionError("B-matrix evaluation atomic-number count differs from GIC definition atom count")
@@ -272,6 +305,128 @@ def evaluate_gic_definition(
         irreps=definition.irreps,
         point_group=definition.point_group,
         symmetrized=definition.symmetrized,
+    )
+
+
+def validate_gic_definition(definition: GICDefinition) -> None:
+    """Validate a frozen GIC schema before reuse.
+
+    The checks are deliberately structural and deterministic.  They prevent
+    silent reuse of malformed or partially parsed GIC definitions.
+    """
+    natoms = len(definition.atom_symbols)
+    if natoms <= 0:
+        raise GICDefinitionError("GIC definition has no atoms")
+    if definition.atomic_numbers and len(definition.atomic_numbers) != natoms:
+        raise GICDefinitionError("GIC definition atom_symbols/atomic_numbers length mismatch")
+    coords = np.asarray(definition.reference_coordinates_angstrom, dtype=float)
+    if coords.shape != (natoms, 3):
+        raise GICDefinitionError(
+            f"GIC definition reference_coordinates_angstrom must have shape ({natoms}, 3), got {coords.shape}"
+        )
+    if not np.isfinite(coords).all():
+        raise GICDefinitionError("GIC definition reference coordinates contain non-finite values")
+    if not definition.primitives:
+        raise GICDefinitionError("GIC definition contains no primitives")
+    u_matrix = np.asarray(definition.u_matrix, dtype=float)
+    if u_matrix.ndim != 2:
+        raise GICDefinitionError("GIC definition u_matrix must be two-dimensional")
+    if u_matrix.shape[0] != len(definition.primitives):
+        raise GICDefinitionError("GIC definition primitive count does not match u_matrix rows")
+    if u_matrix.shape[1] <= 0:
+        raise GICDefinitionError("GIC definition contains no GIC columns")
+    if not np.isfinite(u_matrix).all():
+        raise GICDefinitionError("GIC definition u_matrix contains non-finite values")
+    zero_columns = np.where(np.linalg.norm(u_matrix, axis=0) <= 1.0e-14)[0]
+    if zero_columns.size:
+        first = int(zero_columns[0]) + 1
+        raise GICDefinitionError(f"GIC definition has a zero-norm GIC column at index {first}")
+    if len(definition.labels) != u_matrix.shape[1]:
+        raise GICDefinitionError("GIC definition label count does not match u_matrix columns")
+    if len(definition.names) != u_matrix.shape[1]:
+        raise GICDefinitionError("GIC definition name count does not match u_matrix columns")
+    if len(definition.irreps) != u_matrix.shape[1]:
+        raise GICDefinitionError("GIC definition irrep count does not match u_matrix columns")
+    if len(set(definition.labels)) != len(definition.labels):
+        raise GICDefinitionError("GIC definition labels are not unique")
+    if len(set(definition.names)) != len(definition.names):
+        raise GICDefinitionError("GIC definition names are not unique")
+    for index, primitive in enumerate(definition.primitives, start=1):
+        _validate_primitive(primitive, natoms, index)
+    if definition.symmetrized and any(not irrep.strip() or irrep == "UNK" for irrep in definition.irreps):
+        raise GICDefinitionError("Symmetrized GIC definition contains missing/UNK irreps")
+
+
+def read_gicforge_b_matrix(path: Path) -> np.ndarray:
+    """Read the machine-readable Fortran `bmat.out` triplet format.
+
+    The returned matrix is shaped `(n_gic, 3 * n_atoms)`, matching
+    `evaluate_gic_definition(...).b_matrix`.
+    """
+    target = Path(path)
+    lines = [
+        line.strip()
+        for line in target.read_text(encoding="utf-8", errors="replace").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not lines:
+        raise GICDefinitionError(f"Empty Fortran B-matrix file: {target}")
+    try:
+        n_gic, n_cart = (int(item) for item in lines[0].replace(",", " ").split()[:2])
+    except Exception as exc:
+        raise GICDefinitionError(f"Malformed Fortran B-matrix header in {target}") from exc
+    if n_gic <= 0 or n_cart <= 0:
+        raise GICDefinitionError(f"Invalid Fortran B-matrix shape {n_gic}x{n_cart} in {target}")
+    matrix = np.zeros((n_gic, n_cart), dtype=float)
+    seen: set[tuple[int, int]] = set()
+    for raw in lines[1:]:
+        parts = raw.replace(",", " ").split()
+        if len(parts) < 3:
+            raise GICDefinitionError(f"Malformed Fortran B-matrix row in {target}: {raw!r}")
+        row = int(parts[0]) - 1
+        col = int(parts[1]) - 1
+        if row < 0 or row >= n_gic or col < 0 or col >= n_cart:
+            raise GICDefinitionError(f"Fortran B-matrix index outside declared shape in {target}: {raw!r}")
+        key = (row, col)
+        if key in seen:
+            raise GICDefinitionError(f"Duplicate Fortran B-matrix element in {target}: {raw!r}")
+        seen.add(key)
+        matrix[row, col] = float(parts[2].replace("D", "E").replace("d", "e"))
+    expected = n_gic * n_cart
+    if len(seen) != expected:
+        raise GICDefinitionError(f"Fortran B-matrix has {len(seen)} elements, expected {expected}")
+    return matrix
+
+
+def compare_gic_b_matrix_to_fortran(
+    definition: GICDefinition,
+    coordinates_angstrom: np.ndarray,
+    fortran_bmat: Path,
+    *,
+    atol: float = 1.0e-8,
+    rtol: float = 1.0e-7,
+) -> GICBMatrixComparison:
+    """Compare Python analytic B evaluation with a Fortran `bmat.out` file."""
+    python_b = evaluate_gic_definition(definition, coordinates_angstrom).b_matrix
+    fortran_b = read_gicforge_b_matrix(fortran_bmat)
+    if python_b.shape != fortran_b.shape:
+        return GICBMatrixComparison(
+            passed=False,
+            max_abs_diff=float("inf"),
+            max_rel_diff=float("inf"),
+            python_shape=tuple(int(item) for item in python_b.shape),
+            fortran_shape=tuple(int(item) for item in fortran_b.shape),
+        )
+    diff = np.abs(python_b - fortran_b)
+    denom = np.maximum(np.abs(fortran_b), 1.0)
+    max_abs = float(np.max(diff)) if diff.size else 0.0
+    max_rel = float(np.max(diff / denom)) if diff.size else 0.0
+    return GICBMatrixComparison(
+        passed=bool(np.allclose(python_b, fortran_b, atol=atol, rtol=rtol)),
+        max_abs_diff=max_abs,
+        max_rel_diff=max_rel,
+        python_shape=tuple(int(item) for item in python_b.shape),
+        fortran_shape=tuple(int(item) for item in fortran_b.shape),
     )
 
 
@@ -397,6 +552,88 @@ def _primitive_from_dict(data: dict) -> Primitive:
         mode=int(data.get("mode", 0)),
         ref=tuple(int(atom) for atom in data.get("ref", ())),
     )
+
+
+def _validate_primitive(primitive: Primitive, natoms: int, index: int) -> None:
+    expected = {
+        "bond": 2,
+        "angle": 3,
+        "dihedral": 4,
+        "out_of_plane": 4,
+        "linear_bend": 3,
+    }.get(primitive.kind)
+    if expected is None:
+        raise GICDefinitionError(f"Primitive {index} has unsupported kind {primitive.kind!r}")
+    if len(primitive.atoms) != expected:
+        raise GICDefinitionError(f"Primitive {index} kind {primitive.kind!r} expects {expected} atoms")
+    if any(atom < 0 or atom >= natoms for atom in primitive.atoms):
+        raise GICDefinitionError(f"Primitive {index} contains atom index outside 0..{natoms - 1}")
+    if primitive.kind == "linear_bend" and primitive.mode not in {-1, -2}:
+        raise GICDefinitionError(f"Primitive {index} linear bend has invalid mode {primitive.mode}")
+
+
+def _gic_definition_provenance(run_dir: Path, result: GICForgeResult, gauin: Path) -> dict[str, str]:
+    executable = getattr(result, "executable", None)
+    manifest = getattr(result, "manifest", None)
+    provenance: dict[str, str] = {
+        "backend": "gicforge",
+        "gic_source_file": str(gauin),
+    }
+    if executable is not None:
+        provenance["backend_executable"] = str(executable)
+    for name in ("provin", "xyzin"):
+        path = run_dir / name
+        if path.exists():
+            provenance[f"{name}_sha256"] = sha256_file(path)
+    for name in ("gauin", "gauin.symm", "gicsym", "gic_symmetry_diagnostics.json", "bmat.out"):
+        path = run_dir / name
+        if path.exists():
+            provenance[f"{name}_sha256"] = sha256_file(path)
+    if executable is not None:
+        exe_path = Path(executable)
+        if exe_path.exists() and exe_path.is_file():
+            provenance["backend_executable_sha256"] = sha256_file(exe_path)
+    if manifest is not None:
+        manifest_path = Path(manifest)
+        if manifest_path.exists():
+            provenance["gicforge_manifest_sha256"] = sha256_file(manifest_path)
+    commit = _git_commit()
+    if commit:
+        provenance["git_commit"] = commit
+    dirty = _git_dirty()
+    if dirty is not None:
+        provenance["git_dirty"] = "true" if dirty else "false"
+    return provenance
+
+
+def _git_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except Exception:
+        return None
+    return completed.stdout.strip() or None
+
+
+def _git_dirty() -> bool | None:
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=repo_root(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except Exception:
+        return None
+    return bool(completed.stdout.strip())
 
 
 def _gaussian_input_from_definition(definition: GICDefinition) -> str:

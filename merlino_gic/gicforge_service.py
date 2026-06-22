@@ -6,6 +6,7 @@ import subprocess
 from typing import Iterable
 
 from merlino_core import build_run_manifest, sha256_file, write_manifest
+from merlino_core.paths import repo_root
 from merlino_fortran import resolve_backend
 from .gic_symmetry import write_gic_symmetry_files
 
@@ -130,6 +131,7 @@ def _write_gicforge_manifest(
     legacy_manifest = {
         "workflow": "gicforge",
         "executable": str(executable),
+        "executable_sha256": _optional_checksum(executable),
         "logfile": str(logfile),
         "symmetrize": symmetrize,
         "inputs": input_checksums,
@@ -145,9 +147,42 @@ def _write_gicforge_manifest(
         backend={
             "name": "gicforge",
             "executable": str(executable),
+            "executable_sha256": _optional_checksum(executable),
             "logfile": str(logfile),
             "symmetrize": symmetrize,
+            "git_commit": _git_commit(),
+            "git_dirty": _git_dirty(),
         },
     ).to_dict()
     manifest.update({"legacy": legacy_manifest})
     return write_manifest(run_dir / "gicforge_manifest.json", manifest)
+
+
+def _git_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except Exception:
+        return None
+    return completed.stdout.strip() or None
+
+
+def _git_dirty() -> bool | None:
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=repo_root(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except Exception:
+        return None
+    return bool(completed.stdout.strip())

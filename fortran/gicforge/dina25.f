@@ -540,7 +540,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
-     $  ValTO,C,BMat,Scr)
+     $  ValTO,C,DoBMat,BMat,Scr)
 C Gaussian Input
       if(DoG16.or.DoGDV) then
        OPEN(IPunch,FILE='gauin',STATUS='UNKNOWN')

@@ -18,7 +18,7 @@ C=======================================================================
      $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,
      $ IPrimD,IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,
      $ IFixD,IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,
-     $ ValTD,ValTO,C,BMat,Scr)
+     $ ValTD,ValTO,C,DoBMat,BMat,Scr)
       Implicit Real*8 (A-H,O-Z)
       Integer MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,NOupl,NDih
       Dimension NTermB(*),NTermA(*),NTermL(*),NTermD(*),NTermO(*)
@@ -34,7 +34,7 @@ C=======================================================================
       Dimension ValTB(*),ValTA(*),ValTL(*),ValTD(*),ValTO(*)
       Dimension C(3,*),BMat(3*NAtoms,*),Scr(*)
       Logical Keep(1000)
-      Logical DoB1
+      Logical DoB1,DoBMat
       Character*16 Label
 
       If(NAtoms.le.0) return
@@ -85,6 +85,33 @@ C=======================================================================
       Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,'' Linear='',I5,
      $ '' Torsion='',I5,'' Out-of-plane='',I5)') NLen,NAng,NLAng,NDih,
      $ NOupl
+      If(DoBMat) then
+       NTot=NLen+NAng+NLAng+NDih+NOupl
+       Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,
+     $ NOupl,NDih,IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,NTermB,NTermA,
+     $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat)
+       Call WriteGICBMat(NAtoms,NTot,BMat)
+       Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
+      EndIf
+      Return
+      End
+
+*Deck WriteGICBMat
+      Subroutine WriteGICBMat(NAtoms,NInt,BMat)
+      Implicit Real*8 (A-H,O-Z)
+      Dimension BMat(3*NAtoms,*)
+      NCart=3*NAtoms
+      Open(77,File='bmat.out',Status='Unknown')
+      Rewind(77)
+      Write(77,'(A)') '# merlino.gicforge.bmatrix.v1'
+      Write(77,'(A)') '# row col value; rows are final GICs'
+      Write(77,'(2I8)') NInt,NCart
+      Do 20 IInt=1,NInt
+       Do 10 ICart=1,NCart
+        Write(77,'(2I8,1X,D24.16)') IInt,ICart,BMat(ICart,IInt)
+   10  Continue
+   20 Continue
+      Close(77)
       Return
       End
 

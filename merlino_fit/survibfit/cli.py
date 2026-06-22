@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import os
 from pathlib import Path
 import tempfile
 
@@ -233,8 +234,12 @@ def _vib_main(args):
 
 def _gic_main(args):
     if args.cache_dir:
-        import os
         os.environ["MERLINO_FIT_CACHE_DIR"] = args.cache_dir
+    if args.python_local and not _python_local_gic_allowed():
+        raise SystemExit(
+            "--python-local is a non-production diagnostic path. "
+            "Set MERLINO_ALLOW_PYTHON_LOCAL_GIC=1 to use it explicitly."
+        )
     atoms, coords_ang, _ = read_xyz(Path(args.xyz))
     if not args.python_local:
         symmetrize = bool(args.symmetrize_global or args.keep_a1_only or args.assign_symmetry_labels)
@@ -318,6 +323,11 @@ def _canonical_gicforge_lines(text: str, irreps: tuple[str, ...], *, keep_a1_onl
             continue
         lines.append(raw.rstrip())
     return lines
+
+
+def _python_local_gic_allowed() -> bool:
+    value = os.environ.get("MERLINO_ALLOW_PYTHON_LOCAL_GIC", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _pucker_gaussian_main(args):

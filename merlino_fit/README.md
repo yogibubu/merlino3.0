@@ -99,7 +99,8 @@ python -m survibfit.cli gic --xyz in.xyz --out gic.txt
 By default this command is canonical: it runs GICForge and writes the exact
 ReadGIC lines produced by the Fortran backend.  Use `--workdir DIR` to keep the
 GICForge working files.  The legacy pure-Python local builder is available only
-for diagnostics through `--python-local`; production workflows should not use it
+for diagnostics through `--python-local`; it requires
+`MERLINO_ALLOW_PYTHON_LOCAL_GIC=1` and production workflows should not use it
 when Python/Fortran identity is required.
 
 ## Gaussian puckering scan input

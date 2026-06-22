@@ -13,6 +13,7 @@ from merlino_fortran.backends import BACKENDS, SOURCE_BACKENDS, resolve_backend,
 from merlino_gaussian import summarize_gaussian_log
 from merlino_gic import (
     GICDefinition,
+    compare_gic_b_matrix_to_fortran,
     define_gics_from_cartesian,
     evaluate_gic_definition,
     run_gicforge,
@@ -113,6 +114,8 @@ def build_parser() -> argparse.ArgumentParser:
     gic_bmat.add_argument("--out", type=Path, required=True, help="Output CSV B matrix")
     gic_bmat.add_argument("--values-out", type=Path, help="Optional CSV GIC values")
     gic_bmat.add_argument("--metadata-out", type=Path, help="Optional CSV GIC name/irrep metadata")
+    gic_bmat.add_argument("--fortran-bmat", type=Path, help="Optional GICForge bmat.out for Python/Fortran comparison")
+    gic_bmat.add_argument("--comparison-out", type=Path, help="Optional JSON report for --fortran-bmat comparison")
 
     summary = sub.add_parser("gaussian-summary", help="Summarize a Gaussian log/out file")
     summary.add_argument("log", type=Path)
@@ -439,6 +442,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"shape: {evaluation.b_matrix.shape[0]}x{evaluation.b_matrix.shape[1]}")
         print(f"point_group: {evaluation.point_group}")
         print(f"symmetrized: {evaluation.symmetrized}")
+        if args.fortran_bmat is not None:
+            comparison = compare_gic_b_matrix_to_fortran(
+                definition,
+                geometry.coordinates_angstrom,
+                args.fortran_bmat,
+            )
+            comparison_target = args.comparison_out or args.out.with_suffix(".comparison.json")
+            comparison_target.parent.mkdir(parents=True, exist_ok=True)
+            comparison_target.write_text(json.dumps(comparison.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            print(f"fortran_bmat_comparison: {comparison_target}")
+            print(f"fortran_bmat_match: {comparison.passed}")
+            print(f"fortran_bmat_max_abs_diff: {comparison.max_abs_diff:.8e}")
         if args.values_out is not None:
             args.values_out.parent.mkdir(parents=True, exist_ok=True)
             np.savetxt(args.values_out, evaluation.values.reshape(-1, 1), delimiter=",", fmt="%.16e")

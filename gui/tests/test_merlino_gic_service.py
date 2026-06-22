@@ -5,9 +5,20 @@ import hashlib
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from merlino_gic import GICDefinition, define_gics_from_cartesian, evaluate_gic_definition, run_gicforge
+from merlino_gic import (
+    GICDefinition,
+    GICDefinitionError,
+    compare_gic_b_matrix_to_fortran,
+    define_gics_from_cartesian,
+    evaluate_gic_definition,
+    read_gicforge_b_matrix,
+    run_gicforge,
+)
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
+from merlino_fit.survibfit.primitives import Primitive
+from merlino_fit.survibfit.cli import _python_local_gic_allowed
 
 
 def test_run_gicforge_collects_outputs_and_manifest(tmp_path):
@@ -165,12 +176,73 @@ def test_gic_definition_uses_backend_gauin_as_single_source(tmp_path):
     assert definition.symmetrized is False
     assert definition.point_group == "C1"
     assert definition.names == ("BackendOnly",)
+    assert definition.provenance["backend"] == "gicforge"
+    assert "xyzin_sha256" in definition.provenance
+    assert "provin_sha256" in definition.provenance
+    assert "gauin_sha256" in definition.provenance
+    assert "backend_executable_sha256" in definition.provenance
     assert len(definition.primitives) == 1
     assert definition.primitives[0].kind == "bond"
     assert definition.primitives[0].atoms == (0, 2)
     assert definition.u_matrix.shape == (1, 1)
     assert not (tmp_path / "define" / "gauin.symm").exists()
     assert np.isclose(evaluation.values[0], np.linalg.norm(coords[0] - coords[2]))
+
+
+def test_gic_definition_schema_validation_rejects_malformed_columns():
+    bad = GICDefinition(
+        atom_symbols=("H", "H"),
+        atomic_numbers=(1, 1),
+        reference_coordinates_angstrom=((0.0, 0.0, 0.0), (0.7, 0.0, 0.0)),
+        primitives=(Primitive("bond", (0, 1)),),
+        u_matrix=np.zeros((1, 1)),
+        labels=("GIC001 zero",),
+        names=("Zero",),
+        irreps=("UNK",),
+        symmetrized=False,
+    )
+
+    with pytest.raises(GICDefinitionError, match="zero-norm"):
+        bad.write(Path("/tmp/should_not_write_gic_definition.json"))
+
+
+def test_gicforge_b_matrix_triplets_match_python_evaluation(tmp_path):
+    coords = np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]], dtype=float)
+    definition = GICDefinition(
+        atom_symbols=("H", "H"),
+        atomic_numbers=(1, 1),
+        reference_coordinates_angstrom=tuple(tuple(row) for row in coords),
+        primitives=(Primitive("bond", (0, 1)),),
+        u_matrix=np.eye(1),
+        labels=("GIC001 R(1,2)",),
+        names=("BackendBond",),
+        irreps=("UNK",),
+        symmetrized=False,
+    )
+    python_b = evaluate_gic_definition(definition, coords).b_matrix
+    bmat = tmp_path / "bmat.out"
+    rows = ["# merlino.gicforge.bmatrix.v1", f"{python_b.shape[0]} {python_b.shape[1]}"]
+    for row in range(python_b.shape[0]):
+        for col in range(python_b.shape[1]):
+            rows.append(f"{row + 1:8d}{col + 1:8d} {python_b[row, col]: .16E}".replace("E", "D"))
+    bmat.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    parsed = read_gicforge_b_matrix(bmat)
+    comparison = compare_gic_b_matrix_to_fortran(definition, coords, bmat)
+
+    assert np.allclose(parsed, python_b)
+    assert comparison.passed is True
+    assert comparison.max_abs_diff == 0.0
+    assert comparison.python_shape == python_b.shape
+    assert comparison.fortran_shape == python_b.shape
+
+
+def test_python_local_gic_requires_explicit_environment(monkeypatch):
+    monkeypatch.delenv("MERLINO_ALLOW_PYTHON_LOCAL_GIC", raising=False)
+    assert _python_local_gic_allowed() is False
+
+    monkeypatch.setenv("MERLINO_ALLOW_PYTHON_LOCAL_GIC", "1")
+    assert _python_local_gic_allowed() is True
 
 
 def test_gic_symmetry_postcheck_is_byte_deterministic(tmp_path):

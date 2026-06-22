@@ -8,7 +8,9 @@ The production contract is now identity, not compatibility.  GICForge Fortran77
 is the canonical Cartesian-to-GIC definition engine.  The Python GIC command
 `python -m survibfit.cli gic` runs GICForge and writes the exact ReadGIC lines
 from the Fortran `gauin` file.  The legacy pure-Python local builder is retained
-only behind `--python-local` for diagnostics and low-level numerical tests.
+only behind `--python-local` for diagnostics and low-level numerical tests; it
+requires `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1` so it cannot be selected
+accidentally in production.
 
 ## Single Source Of Truth
 
@@ -27,6 +29,12 @@ The regression test
 contract with a deliberately non-topological backend `gauin`: the Python layer
 must reproduce exactly the one backend coordinate instead of rebuilding the
 expected molecular topology.
+
+`gic_definition.json` records SHA256 hashes of the backend inputs, selected
+GIC output, executable and manifest, plus Git commit metadata when available.
+With the Fortran `BMAT` keyword, GICForge also writes `bmat.out`; the Python
+utility reads that triplet file and compares it against the analytic frozen
+schema evaluation.
 
 ## Cases Checked
 

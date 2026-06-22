@@ -12,6 +12,8 @@ from merlino_core.cli import main as merlino_cli
 from merlino_core.cli import build_parser as merlino_parser
 from merlino_core.numerics import damped_normal_step, limit_step, objective, rank_condition
 from merlino_gaussian import summarize_gaussian_log
+from merlino_gic import GICDefinition, evaluate_gic_definition
+from merlino_fit.survibfit.primitives import Primitive
 from merlino_semiexp import RotationalConstants
 from merlino_gui import discover_manifests
 from scripts.compare_gic_merlino3 import compare_gic_outputs
@@ -105,6 +107,65 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
     assert gic_gf_args.command == "gic-gf"
     assert str(gic_gf_args.schema) == "gic_definition.json"
     assert gic_gf_args.scale == ["default=0.98"]
+
+
+def test_gic_bmatrix_cli_writes_fortran_comparison_report(tmp_path):
+    coords = np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]], dtype=float)
+    xyz = tmp_path / "h2.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "2",
+                "",
+                "H 0.000000 0.000000 0.000000",
+                "H 0.740000 0.000000 0.000000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    definition = GICDefinition(
+        atom_symbols=("H", "H"),
+        atomic_numbers=(1, 1),
+        reference_coordinates_angstrom=tuple(tuple(row) for row in coords),
+        primitives=(Primitive("bond", (0, 1)),),
+        u_matrix=np.eye(1),
+        labels=("GIC001 R(1,2)",),
+        names=("BackendBond",),
+        irreps=("UNK",),
+        symmetrized=False,
+    )
+    schema = definition.write(tmp_path / "gic_definition.json")
+    python_b = evaluate_gic_definition(definition, coords).b_matrix
+    bmat = tmp_path / "bmat.out"
+    lines = ["# merlino.gicforge.bmatrix.v1", f"{python_b.shape[0]} {python_b.shape[1]}"]
+    for row in range(python_b.shape[0]):
+        for col in range(python_b.shape[1]):
+            lines.append(f"{row + 1:8d}{col + 1:8d} {python_b[row, col]: .16E}")
+    bmat.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out = tmp_path / "b.csv"
+    comparison = tmp_path / "comparison.json"
+
+    assert merlino_cli(
+        [
+            "gic-bmatrix",
+            "--schema",
+            str(schema),
+            "--geometry",
+            str(xyz),
+            "--out",
+            str(out),
+            "--fortran-bmat",
+            str(bmat),
+            "--comparison-out",
+            str(comparison),
+        ]
+    ) == 0
+
+    report = json.loads(comparison.read_text(encoding="utf-8"))
+    assert out.exists()
+    assert report["passed"] is True
+    assert report["python_shape"] == [1, 6]
 
 
 def test_gaussian_log_summary_parser(tmp_path):
