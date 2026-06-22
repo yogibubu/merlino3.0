@@ -239,6 +239,8 @@ def _fortran_like_primitive_blocks(
                 )
             )
         elif len(neigh) > 1:
+            if len(neigh) == 2 and atom_ring[center] != 0:
+                continue
             if len(neigh) == 4 and not _has_linear_pair(center, neigh, coords, linear_threshold):
                 bends.extend(
                     _four_atom_angle_coordinates(
@@ -295,43 +297,36 @@ def _fortran_like_primitive_blocks(
     for bond in bonds:
         _coef, primitive = bond.terms[0]
         center, right = primitive.atoms
+        if tuple(sorted((center, right))) in bridge_bonds:
+            if ring_counts[center] < 3 and ring_counts[right] < 3:
+                butterfly = _butterfly_coordinate(
+                    center,
+                    right,
+                    neighbors=neighbors,
+                    atom_ring=atom_ring,
+                    selected_rings=selected_rings,
+                    coords=coords,
+                    linear_threshold=linear_threshold,
+                    index=len(torsions) + 1,
+                )
+                if butterfly is not None:
+                    torsions.append(butterfly)
+            continue
         if tuple(sorted((center, right))) in ring_bonds:
             continue
         if len(neighbors[center]) == 1 or len(neighbors[right]) == 1:
             continue
-        torsion = _priority_torsion_coordinate(
+        torsion = _torsion_coordinate(
             center,
             right,
             neighbors=neighbors,
-            atomic_numbers=atomic_numbers,
-            effective_atomic_numbers=effective_atomic_numbers,
-            atom_ring=atom_ring,
+            ring_counts=ring_counts,
             coords=coords,
             linear_threshold=linear_threshold,
             index=len(torsions) + 1,
         )
         if torsion is not None:
             torsions.append(torsion)
-
-    for bond in bonds:
-        _coef, primitive = bond.terms[0]
-        center, right = primitive.atoms
-        if tuple(sorted((center, right))) not in bridge_bonds:
-            continue
-        if ring_counts[center] >= 3 or ring_counts[right] >= 3:
-            continue
-        butterfly = _butterfly_coordinate(
-            center,
-            right,
-            neighbors=neighbors,
-            atom_ring=atom_ring,
-            selected_rings=selected_rings,
-            coords=coords,
-            linear_threshold=linear_threshold,
-            index=len(torsions) + 1,
-        )
-        if butterfly is not None:
-            torsions.append(butterfly)
 
     for ring in selected_rings:
         if _all_atoms_in_three_selected_rings(ring, selected_rings):
@@ -624,14 +619,12 @@ def _atoms_share_selected_ring(first: int, second: int, rings: list[tuple[int, .
     return False
 
 
-def _priority_torsion_coordinate(
+def _torsion_coordinate(
     center: int,
     right: int,
     *,
     neighbors: list[list[int]],
-    atomic_numbers: tuple[int, ...],
-    effective_atomic_numbers: tuple[float, ...],
-    atom_ring: list[int],
+    ring_counts: list[int],
     coords: np.ndarray,
     linear_threshold: float,
     index: int,
@@ -647,39 +640,17 @@ def _priority_torsion_coordinate(
                 continue
             if angle(center, right, far, coords) > linear_threshold:
                 continue
+            if ring_counts[left] >= 2 or ring_counts[far] >= 2:
+                continue
             candidates.append((left, far))
     if not candidates:
         return None
-
-    selected_left, selected_far = max(
-        candidates,
-        key=lambda pair: (
-            round(effective_atomic_numbers[pair[0]], 12),
-            round(effective_atomic_numbers[pair[1]], 12),
-            len(neighbors[pair[0]]),
-            len(neighbors[pair[1]]),
-            -pair[0],
-            -pair[1],
-        ),
-    )
-    orbit = [
-        (left, far)
-        for left, far in candidates
-        if atom_ring[left] == atom_ring[selected_left]
-        and atomic_numbers[left] == atomic_numbers[selected_left]
-        and len(neighbors[left]) == len(neighbors[selected_left])
-        and atom_ring[far] == atom_ring[selected_far]
-        and atomic_numbers[far] == atomic_numbers[selected_far]
-        and len(neighbors[far]) == len(neighbors[selected_far])
-    ]
-    if not orbit:
-        orbit = [(selected_left, selected_far)]
-    coefficient = 1.0 / np.sqrt(float(len(orbit)))
+    coefficient = 1.0 / np.sqrt(float(len(candidates)))
     return GICForgePythonCoordinate(
         name=f"Tors{index:04d}",
         block="Tors",
         type_index=-1,
-        terms=tuple((coefficient, Primitive("dihedral", (left, center, right, far))) for left, far in orbit),
+        terms=tuple((coefficient, Primitive("dihedral", (left, center, right, far))) for left, far in candidates),
     )
 
 

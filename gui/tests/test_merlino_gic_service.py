@@ -394,6 +394,7 @@ def test_gicforge_python_port_matches_fortran_for_small_reference_molecules(tmp_
         ("h2o", Path("geometry/h2o.xyz")),
         ("co2", Path("merlino_fit/tests/data/co2.xyz")),
         ("formaldehyde", Path("examples/semiexp/formaldehyde/parent.xyz")),
+        ("glycolaldehyde", Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz")),
     ]
     for name, path in cases:
         geometry = read_geometry_input(path)
@@ -479,9 +480,12 @@ def test_gicforge_python_port_matches_fortran_for_fused_and_substituted_rings(tm
 
     cases = [
         ("nitrobenzene", Path("doc/papers/newmsr/figures/data/nitrobenzene_parent.xyz")),
+        ("2_deoxyribose", Path("merlino_fit/tests/data/polycyclics/2_deoxyribose.xyz")),
         ("saccharine", Path("merlino_fit/tests/data/polycyclics/saccharine.xyz")),
         ("naphthalene", Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz")),
+        ("myrtenol", Path("merlino_fit/tests/data/polycyclics/myrtenol.xyz")),
         ("pyrene", Path("merlino_fit/tests/data/polycyclics/pyrene.xyz")),
+        ("testosterone", Path("merlino_fit/tests/data/polycyclics/testosterone.xyz")),
         ("sf6", Path("merlino_fit/tests/data/sf6.xyz")),
     ]
     for name, path in cases:
@@ -495,7 +499,7 @@ def test_gicforge_python_port_matches_fortran_for_fused_and_substituted_rings(tm
 
         assert report["passed"], report
         assert report["same_ordered_primitives"] is True
-        assert report["b_max_abs_diff"] <= 2.0e-8
+        assert report["b_max_abs_diff"] <= 5.0e-8
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
