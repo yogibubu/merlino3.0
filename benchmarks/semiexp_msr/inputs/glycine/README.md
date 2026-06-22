@@ -51,8 +51,8 @@ python -m merlino semiexp \
 
 Reference result:
 
-- GIC convergence: `line_search_stalled` after 7 accepted steps and 25
-  rejected trial steps, with a positive stationary-point check (`minimum`).
+- GIC convergence: `step_tolerance` after 6 accepted steps and 5 rejected
+  trial steps, with a positive stationary-point check (`minimum`).
 - Final/active GIC count: 24/15; four functional constraints leave 11
   independent fitted variables.
 - Condition number: about `1.02e4`.

@@ -924,24 +924,14 @@ The optimization is performed using a weighted Levenberg--Marquardt procedure,
 
 where $\mathbf{J}$ is the Jacobian matrix of the observables with respect to
 the independent variables $\mathbf{p}$ and $\lambda$ is the damping parameter.
-Equation~\eqref{eq:lm-step} is not solved in the implementation by forming the normal
-equations. The actual step is obtained from the column-scaled augmented system
-\[
-\begin{bmatrix}
-\mathbf{W}^{1/2}\mathbf{J}\mathbf{S}\\
-\lambda^{1/2}\mathbf{I}
-\end{bmatrix}
-\Delta\mathbf{u}
-=
-\begin{bmatrix}
-\mathbf{W}^{1/2}\mathbf{r}\\
-\mathbf{0}
-\end{bmatrix},
-\qquad
-\Delta\mathbf{p}=\mathbf{S}\Delta\mathbf{u},
-\]
-using rank-revealing singular-value-decomposition (SVD) and QR-factorization
-linear algebra.\cite{GolubReinsch1970} The
+Equation~\eqref{eq:lm-step} is not solved in the implementation by forming
+normal equations. The Python driver solves the corresponding column-scaled
+trust-region subproblem in singular-value-decomposition (SVD) coordinates:
+the rank-revealing Gauss--Newton step is used when it lies inside the current
+trust radius, whereas an active-radius step is obtained by determining the
+Levenberg shift from the More--Hebden secular equation. QR solution of the
+augmented Levenberg--Marquardt system and Cauchy steps are retained as
+fallbacks.\cite{GolubReinsch1970} The
 diagonal scaling matrix $\mathbf{S}$ is updated from the current weighted
 Jacobian column norms, on top of the chemical coordinate-family scaling. This
 prevents weakly observed variables or mixed units from controlling the
@@ -965,10 +955,9 @@ would change this GIC signature are rejected and the trust radius is reduced.
 The Cartesian--GIC projector is refreshed analytically when needed and
 otherwise updated by a secant correction, avoiding unnecessary coordinate
 rebuilds without accepting topology-changing steps.
-The same numerical kernel is mirrored in the Fortran77 backend: dynamic column
+The independent Fortran77 numerical-kernel layer provides dynamic column
 scaling, rank-revealing QR solution of the augmented Levenberg--Marquardt
-system, and grouped robust weights are available without importing legacy
-Gaussian code.
+system, and grouped robust weights without importing legacy Gaussian code.
 
 Convergence requires both the parameter corrections and the objective-function
 reduction to fall below predefined thresholds. Trial steps that increase the
@@ -1441,7 +1430,7 @@ imposed directly in Gaussian-style syntax: the O--H distance, the C--O--H
 angle, the H--N--H scissor angle, and the NH$_2$ wagging out-of-plane
 coordinate. GICForge assigns C$_s$ symmetry, generates 24 final GICs, and
 selects 15 $A'$ coordinates. Projection of the four constraints leaves 11
-independent fitted variables. The weighted fit reaches a minimum with seven
+independent fitted variables. The weighted fit reaches a minimum with six
 accepted steps, condition number $1.02\times10^4$, complete rotational RMS
 residual 0.0271 MHz, maximum residual 0.0565 MHz, and a positive
 optimized-space Hessian. The complete rotational comparison and primitive
