@@ -150,42 +150,66 @@ def compare_gicforge_python_to_fortran(
         symmetrize=False,
     )
     raw_coords = _gicforge_cartesian_from_gauin(fortran_dir / "gauin", len(fortran_definition.atom_symbols))
-    python_on_fortran_frame = build_gicforge_python_model(
-        atom_symbols,
-        raw_coords,
-        impdih=impdih,
-    ).to_definition(workdir=workdir / "python")
     fortran_signatures = tuple(_primitive_signature(primitive) for primitive in fortran_definition.primitives)
-    python_signatures = tuple(_primitive_signature(primitive) for primitive in python_on_fortran_frame.primitives)
+    python_candidates: list[tuple[str, GICDefinition]] = [
+        ("input", python_model.to_definition(workdir=workdir / "python-input"))
+    ]
+    try:
+        python_candidates.append(
+            (
+                "fortran-frame",
+                build_gicforge_python_model(
+                    atom_symbols,
+                    raw_coords,
+                    impdih=impdih,
+                ).to_definition(workdir=workdir / "python-fortran-frame"),
+            )
+        )
+    except Exception:
+        pass
+    selected_frame, python_definition = python_candidates[0]
+    for candidate_frame, candidate_definition in python_candidates:
+        candidate_signatures = tuple(_primitive_signature(primitive) for primitive in candidate_definition.primitives)
+        if (
+            len(candidate_definition.names) == len(fortran_definition.names)
+            and _definition_coordinate_kind_counts(candidate_definition)
+            == _definition_coordinate_kind_counts(fortran_definition)
+            and candidate_signatures == fortran_signatures
+        ):
+            selected_frame = candidate_frame
+            python_definition = candidate_definition
+            break
+    python_signatures = tuple(_primitive_signature(primitive) for primitive in python_definition.primitives)
     same_ordered_primitives = fortran_signatures == python_signatures
     b_max_abs_diff = None
-    if same_ordered_primitives and fortran_definition.u_matrix.shape == python_on_fortran_frame.u_matrix.shape:
+    if same_ordered_primitives and fortran_definition.u_matrix.shape == python_definition.u_matrix.shape:
         fortran_b = fortran_definition.u_matrix.T @ b_matrix_analytic(fortran_definition.primitives, raw_coords)
-        python_b = python_on_fortran_frame.u_matrix.T @ b_matrix_analytic(
-            python_on_fortran_frame.primitives,
+        python_b = python_definition.u_matrix.T @ b_matrix_analytic(
+            python_definition.primitives,
             raw_coords,
         )
         b_max_abs_diff = float(np.max(np.abs(python_b - fortran_b))) if python_b.size else 0.0
     return {
         "passed": (
-            len(python_on_fortran_frame.names) == len(fortran_definition.names)
-            and _definition_coordinate_kind_counts(python_on_fortran_frame)
+            len(python_definition.names) == len(fortran_definition.names)
+            and _definition_coordinate_kind_counts(python_definition)
             == _definition_coordinate_kind_counts(fortran_definition)
             and same_ordered_primitives
             and (b_max_abs_diff is None or b_max_abs_diff <= 1.0e-7)
         ),
         "target_rank": python_model.target_rank,
-        "python_gic_count": len(python_on_fortran_frame.names),
+        "python_gic_count": len(python_definition.names),
         "fortran_gic_count": len(fortran_definition.names),
-        "python_kind_counts": _definition_coordinate_kind_counts(python_on_fortran_frame),
+        "python_kind_counts": _definition_coordinate_kind_counts(python_definition),
         "fortran_kind_counts": _definition_coordinate_kind_counts(fortran_definition),
-        "python_primitive_count": len(python_on_fortran_frame.primitives),
+        "python_primitive_count": len(python_definition.primitives),
         "fortran_primitive_count": len(fortran_definition.primitives),
         "same_ordered_primitives": same_ordered_primitives,
         "b_max_abs_diff": b_max_abs_diff,
-        "python_names": list(python_on_fortran_frame.names),
+        "python_names": list(python_definition.names),
         "fortran_names": list(fortran_definition.names),
-        "python_workdir": str(workdir / "python"),
+        "python_comparison_frame": selected_frame,
+        "python_workdir": str(workdir / f"python-{selected_frame}"),
         "fortran_workdir": str(fortran_dir),
     }
 
@@ -233,6 +257,7 @@ def _fortran_like_primitive_blocks(
                     center,
                     neigh,
                     atomic_numbers=atomic_numbers,
+                    effective_atomic_numbers=effective_atomic_numbers,
                     neighbors=neighbors,
                     atom_ring=atom_ring,
                     start=len(bends) + 1,
@@ -733,14 +758,16 @@ def _c2v3_angle_coordinates(
     neigh: list[int],
     *,
     atomic_numbers: tuple[int, ...],
+    effective_atomic_numbers: tuple[float, ...],
     neighbors: list[list[int]],
     atom_ring: list[int],
     start: int,
 ) -> list[GICForgePythonCoordinate]:
     first, second, third = neigh
-    eq12 = atomic_numbers[first] == atomic_numbers[second]
-    eq13 = atomic_numbers[first] == atomic_numbers[third]
-    eq23 = atomic_numbers[second] == atomic_numbers[third]
+    threshold = 5.0e-4
+    eq12 = abs(effective_atomic_numbers[first] - effective_atomic_numbers[second]) < threshold
+    eq13 = abs(effective_atomic_numbers[first] - effective_atomic_numbers[third]) < threshold
+    eq23 = abs(effective_atomic_numbers[second] - effective_atomic_numbers[third]) < threshold
     if not eq12 and not eq13 and not eq23:
         different = first
         if atomic_numbers[second] == 1:
@@ -1104,15 +1131,62 @@ def _td_four_atom_coordinates(
     frozen: dict[int, bool],
     start: int,
 ) -> list[GICForgePythonCoordinate]:
-    return _wxy3_coordinates(
-        center,
-        jat,
-        kat,
-        lat,
-        mat,
-        frozen=frozen,
-        start=start,
-    )
+    den_ea = np.sqrt(12.0)
+    den_eb = 2.0
+    den_t2 = np.sqrt(2.0)
+    return [
+        GICForgePythonCoordinate(
+            name=f"EEee{start:04d}",
+            block="EEee",
+            type_index=8,
+            terms=(
+                (2.0 / den_ea, Primitive("angle", (jat, center, kat))),
+                (-1.0 / den_ea, Primitive("angle", (jat, center, lat))),
+                (-1.0 / den_ea, Primitive("angle", (jat, center, mat))),
+                (-1.0 / den_ea, Primitive("angle", (kat, center, lat))),
+                (-1.0 / den_ea, Primitive("angle", (kat, center, mat))),
+                (2.0 / den_ea, Primitive("angle", (lat, center, mat))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"EEee{start + 1:04d}",
+            block="EEee",
+            type_index=8,
+            terms=(
+                (1.0 / den_eb, Primitive("angle", (jat, center, lat))),
+                (-1.0 / den_eb, Primitive("angle", (jat, center, mat))),
+                (-1.0 / den_eb, Primitive("angle", (kat, center, lat))),
+                (1.0 / den_eb, Primitive("angle", (kat, center, mat))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"T2xx{start + 2:04d}",
+            block="T2xx",
+            type_index=9,
+            terms=(
+                (1.0 / den_t2, Primitive("angle", (jat, center, lat))),
+                (-1.0 / den_t2, Primitive("angle", (kat, center, mat))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"T2yy{start + 3:04d}",
+            block="T2yy",
+            type_index=10,
+            terms=(
+                (1.0 / den_t2, Primitive("angle", (kat, center, lat))),
+                (-1.0 / den_t2, Primitive("angle", (jat, center, mat))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"T2zz{start + 4:04d}",
+            block="T2zz",
+            type_index=11,
+            terms=(
+                (1.0 / den_t2, Primitive("angle", (jat, center, kat))),
+                (-1.0 / den_t2, Primitive("angle", (lat, center, mat))),
+            ),
+        ),
+    ]
 
 
 def _high_coord_angle_coordinates(

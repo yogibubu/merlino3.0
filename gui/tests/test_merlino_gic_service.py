@@ -392,9 +392,12 @@ def test_gicforge_python_port_matches_fortran_for_small_reference_molecules(tmp_
 
     cases = [
         ("h2o", Path("geometry/h2o.xyz")),
+        ("ch4", Path("merlino_fit/tests/data/ch4.xyz")),
         ("co2", Path("merlino_fit/tests/data/co2.xyz")),
         ("formaldehyde", Path("examples/semiexp/formaldehyde/parent.xyz")),
         ("glycolaldehyde", Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz")),
+        ("glycine_I", Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz")),
+        ("glycine_II", Path("doc/papers/newmsr/figures/data/glycine_II_parent.xyz")),
     ]
     for name, path in cases:
         geometry = read_geometry_input(path)
@@ -481,8 +484,10 @@ def test_gicforge_python_port_matches_fortran_for_fused_and_substituted_rings(tm
     cases = [
         ("nitrobenzene", Path("doc/papers/newmsr/figures/data/nitrobenzene_parent.xyz")),
         ("2_deoxyribose", Path("merlino_fit/tests/data/polycyclics/2_deoxyribose.xyz")),
+        ("anthracene", Path("merlino_fit/tests/data/polycyclics/anthracene.xyz")),
         ("saccharine", Path("merlino_fit/tests/data/polycyclics/saccharine.xyz")),
         ("naphthalene", Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz")),
+        ("naphthalene_c10", Path("merlino_fit/tests/data/naphthalene_c10.xyz")),
         ("myrtenol", Path("merlino_fit/tests/data/polycyclics/myrtenol.xyz")),
         ("pyrene", Path("merlino_fit/tests/data/polycyclics/pyrene.xyz")),
         ("testosterone", Path("merlino_fit/tests/data/polycyclics/testosterone.xyz")),
