@@ -328,9 +328,12 @@ def test_gicforge_provout_final_summary_includes_ring_dihedral_coordinates(tmp_p
     final_summary = provout[provout.index("Final GIC summary") :]
 
     assert contract.passed is True
+    assert "Endocyclic Valence Angles" in provout
+    assert "Endocyclic Dihedral Angles" in provout
     assert "RDef000" in final_summary
     assert "RPck000" in final_summary
     assert "QPck000" in final_summary
+    assert provout.index("Endocyclic Valence Angles") < provout.index("Endocyclic Dihedral Angles")
     assert final_summary.index("RPck000") < final_summary.index("QPck000")
 
 

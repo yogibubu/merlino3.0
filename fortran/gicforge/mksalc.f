@@ -333,9 +333,6 @@ C Build Dihedral GNICs
         If(IBut.eq.2) go to 30
         If(JAT.eq.IBrL(1,jk).and.KAt.eq.IBrL(2,jk))IBut=2
         If(JAT.eq.IBrL(2,jk).and.KAt.eq.IBrL(1,jk))IBut=2
-        If(IBut.eq.2) write(IOut,'('' Butterfly GNIC Around Bond'',
-     $    I5,''  -'',I5,'' Joining Rings'',2I3)') IBrL(1,jk),IBrL(2,jk),
-     $    IBrL(3,jk),IBrL(4,jk)
    30  Continue
        If(IBut.eq.0.and.IAtCyc(JAt).ne.0.and.IAtCyc(KAt).ne.0) go to 10
        NBJ=NBond(JAt)

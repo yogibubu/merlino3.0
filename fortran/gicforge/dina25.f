@@ -370,6 +370,7 @@ C      NAng=0
      $  CoefA,C,EAN,TreshL)
 C Make ring coordinates for valence angles
       If(NCyc.gt.0) then
+       Write(IOut,'('' Endocyclic Valence Angles'')')
        IPrtCA=0
        NAng00=NAng
        do 20 icyc=1,NCyc
@@ -422,12 +423,53 @@ C Make dihedral GNICs
      $  EAN,TreshL,DoNorm)
 C Make ring coordinates for dihedra angles
       If(NCyc.gt.0) then
+       Write(IOut,'(/,'' Endocyclic Dihedral Angles'')')
        NDihCh=NDih
        IPrtCD=0
        do 30 ICyc=1,NCyc
+        NDih0=NDih
         call CyGND(IOut,IPrtCD,MxAtCy,MxAtP,MxTrm,NAtC,NDih,ICyc,ICAt,
      $    NTermD,IAtomD,ITVD,CoefD)
+        If(NAtC(ICyc).eq.3) then
+         write(IOut,'(1X,I2,A,3I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        ElseIf(NAtC(ICyc).eq.4) then
+         write(IOut,'(1X,I2,A,4I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        ElseIf(NAtC(ICyc).eq.5) then
+         write(IOut,'(1X,I2,A,5I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        ElseIf(NAtC(ICyc).eq.6) then
+         write(IOut,'(1X,I2,A,6I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        ElseIf(NAtC(ICyc).eq.7) then
+         write(IOut,'(1X,I2,A,7I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        ElseIf(NAtC(ICyc).eq.8) then
+         write(IOut,'(1X,I2,A,8I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NDih-NDih0,' Dihedral angles'
+        EndIf
    30  continue
+       If(NBrL.gt.0) then
+        Write(IOut,'('' '')')
+        Do 35 IBrid=1,NBrL
+         write(IOut,'('' Butterfly GNIC Around Bond'',
+     $    I5,''  -'',I5,'' Joining Rings'',2I3)')
+     $    IBrL(1,IBrid),IBrL(2,IBrid),IBrL(3,IBrid),IBrL(4,IBrid)
+   35   Continue
+       EndIf
       endif
 C Make Out-of-Plane GNICs
       NOupl=0
