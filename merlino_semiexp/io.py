@@ -189,7 +189,7 @@ def _observation_from_mapping(item: dict) -> IsotopologueObservation:
     return IsotopologueObservation(
         label=str(item["label"]).strip(),
         constants=constants,
-        substitutions=_substitutions_from_mapping(item.get("substitutions", {})),
+        substitutions=_observation_substitutions(item),
         correction=_vibrational_from_mapping(item.get("vibrational_correction", item.get("correction", {}))),
         electronic_correction=_electronic_from_mapping(item.get("electronic_correction", {})),
         weights=_weights_from_sigma_mapping(item.get("sigma_MHz", item.get("sigma", {}))),
@@ -234,6 +234,27 @@ def _weights_from_sigma_mapping(item: dict) -> RotationalConstants | None:
     if any(sigma <= 0.0 for sigma in sigmas):
         raise ValueError("Semiexp sigma values must be positive")
     return RotationalConstants(*(1.0 / (sigma * sigma) for sigma in sigmas))
+
+
+def _observation_substitutions(item: dict) -> dict[int, int]:
+    if "substitutions" in item:
+        return _substitutions_from_mapping(item.get("substitutions", {}))
+    definition = item.get("definition", item.get("isotopologue_definition", {}))
+    if definition is None:
+        return {}
+    if isinstance(definition, str):
+        text = definition.strip()
+        if not text or text.lower() == "parent":
+            return {}
+        return _substitutions_from_mapping(text)
+    if isinstance(definition, dict):
+        if "substitutions" in definition:
+            return _substitutions_from_mapping(definition.get("substitutions", {}))
+        if "atom" in definition and "mass" in definition:
+            return {int(definition["atom"]): _mass_number(definition["mass"])}
+        if not definition:
+            return {}
+    return _substitutions_from_mapping(definition)
 
 
 def _substitutions_from_mapping(value) -> dict[int, int]:

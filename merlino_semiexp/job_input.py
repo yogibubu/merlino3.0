@@ -11,10 +11,12 @@ from .contracts import (
     DEFAULT_SEMIEXP_ROBUST_LOSS,
     DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS,
     HYDROGEN_PARAMETER_CONSTRAINT,
+    IsotopologueObservation,
     ParameterClassConstraint,
     QMParameterPredicate,
 )
 from .geometry_input import SemiexperimentalGeometryInput, _modredundant_fixed_patterns
+from .io import observations_from_mapping
 
 
 SEMIEXP_JOB_SCHEMA = "merlino.semiexp.job.v1"
@@ -26,6 +28,7 @@ class SemiexperimentalJobInput:
     title: str
     geometry: SemiexperimentalGeometryInput
     observations: Path | None = None
+    observations_inline: tuple[IsotopologueObservation, ...] = ()
     backend: str = "python"
     observable: str = DEFAULT_SEMIEXP_OBSERVABLE
     rotational_components: str = DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS
@@ -70,6 +73,7 @@ def read_semiexperimental_job(path: Path) -> SemiexperimentalJobInput:
     files = _mapping(data.get("files", {}), "files")
     observations = files.get("observations")
     observations_path = _resolve_relative(target, Path(str(observations))) if observations else None
+    observations_inline = observations_from_mapping(data) if data.get("isotopologues") else ()
     fit = _mapping(data.get("fit", {}), "fit")
     constraints = _mapping(data.get("constraints", {}), "constraints")
     fixed_parameters = _fixed_parameters_from_mapping(constraints)
@@ -78,6 +82,7 @@ def read_semiexperimental_job(path: Path) -> SemiexperimentalJobInput:
         title=title,
         geometry=geometry,
         observations=observations_path,
+        observations_inline=observations_inline,
         backend=str(fit.get("backend", "python")),
         observable=str(fit.get("observable", DEFAULT_SEMIEXP_OBSERVABLE)),
         rotational_components=str(fit.get("rotational_components", DEFAULT_SEMIEXP_ROTATIONAL_COMPONENTS)),

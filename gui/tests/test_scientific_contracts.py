@@ -595,6 +595,67 @@ patterns = ["R(1,2)", "R(1,3)"]
     assert job.parameter_classes[0].name == "OH"
 
 
+def test_semiexperimental_job_can_embed_isotopologues_inline(tmp_path):
+    job_path = tmp_path / "water_inline.mse.toml"
+    job_path.write_text(
+        f"""
+schema = "{SEMIEXP_JOB_SCHEMA}"
+title = "water inline SE fit"
+
+[fit]
+observable = "moments"
+
+[geometry]
+units = "angstrom"
+atoms = [
+  ["O", 0.000000, 0.000000, 0.000000],
+  ["H", 0.000000, 0.000000, 0.957200],
+  ["H", 0.926600, 0.000000, -0.239600],
+]
+
+[[isotopologues]]
+label = "parent"
+[isotopologues.definition]
+substitutions = ""
+[isotopologues.constants]
+A_MHz = 1000.0
+B_MHz = 800.0
+C_MHz = 600.0
+[isotopologues.vibrational_correction]
+delta_A_MHz = 1.0
+delta_B_MHz = 2.0
+delta_C_MHz = 3.0
+source = "test-vib"
+convention = "subtract"
+[isotopologues.electronic_correction]
+delta_A_MHz = 0.1
+delta_B_MHz = 0.2
+delta_C_MHz = 0.3
+source = "test-elec"
+convention = "subtract"
+
+[[isotopologues]]
+label = "D2"
+[isotopologues.definition]
+substitutions = [{{ atom = 2, mass = "D" }}]
+[isotopologues.constants]
+A_MHz = 900.0
+B_MHz = 700.0
+C_MHz = 500.0
+""",
+        encoding="utf-8",
+    )
+
+    job = read_semiexperimental_job(job_path)
+
+    assert job.observations is None
+    assert len(job.observations_inline) == 2
+    assert job.observations_inline[0].label == "parent"
+    assert job.observations_inline[0].substitutions == {}
+    assert job.observations_inline[0].corrected.as_tuple() == pytest.approx((998.9, 797.8, 596.7))
+    assert job.observations_inline[1].substitutions == {2: 2}
+
+
 def test_semiexperimental_reads_legacy_msr_input_without_required_labels(tmp_path):
     msr_path = tmp_path / "minimal.msr.inp"
     msr_path.write_text(

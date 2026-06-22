@@ -473,18 +473,23 @@ def main(argv: list[str] | None = None) -> int:
         legacy_msr_job = bool(args.job and is_msr_legacy_file(args.job))
         job = None if legacy_msr_job or not args.job else read_semiexperimental_job(args.job)
         geometry_path = args.xyz or (job.path if job is not None else None)
-        observations_path = args.observations or (job.observations if job is not None else None)
+        observations_inline = job.observations_inline if job is not None else ()
+        observations_path = (
+            args.observations
+            or (None if observations_inline else (job.observations if job is not None else None))
+        )
         if legacy_msr_job:
             geometry_path = args.xyz or args.job
             observations_path = args.observations or args.job
+            observations_inline = ()
         if geometry_path is None:
             raise ValueError("semiexp needs --geometry or --job")
-        if observations_path is None:
-            raise ValueError("semiexp needs --observations or a [files].observations entry in --job")
+        if observations_path is None and not observations_inline:
+            raise ValueError("semiexp needs --observations, inline [[isotopologues]], or a [files].observations entry in --job")
         fixed = _merge_unique(job.fixed_parameters if job else (), _parse_fixed_parameters(args.fixed))
         if args.fix_hydrogens:
             fixed = _merge_unique(fixed, (HYDROGEN_PARAMETER_CONSTRAINT,))
-        observations = read_observations(observations_path)
+        observations = read_observations(observations_path) if observations_path is not None else observations_inline
         observable = _job_default(args.observable, DEFAULT_SEMIEXP_OBSERVABLE, job.observable if job else None)
         coordinate_model = _job_default(args.coordinate_model, "gic", job.coordinate_model if job else None)
         rotational_components = _job_default(

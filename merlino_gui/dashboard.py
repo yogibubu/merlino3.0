@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shlex
+import tomllib
 
 from PySide6.QtCore import QProcess, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QTextCursor
@@ -36,6 +37,7 @@ from merlino_semiexp import (
     QMParameterPredicate,
     SEMIEXP_JOB_SCHEMA,
     SemiexperimentalFitRequest,
+    observations_from_mapping,
     preview_semiexperimental_conditioning,
     preview_semiexperimental_gics,
     read_geometry_input,
@@ -676,6 +678,14 @@ class DashboardWindow(QMainWindow):
         return panel
 
     def semiexp_command_args(self) -> list[str]:
+        if self._semiexp_use_inline_job_command():
+            return [
+                "semiexp",
+                "--job",
+                str(self.workdir / "semiexp_job.mse.toml"),
+                "--outdir",
+                self.semiexp_outdir.text().strip(),
+            ]
         args = [
             "semiexp",
             "--xyz",
@@ -720,18 +730,24 @@ class DashboardWindow(QMainWindow):
         if not hasattr(self, "semiexp_command"):
             return
         args = self.semiexp_command_args()
-        complete = all(args[idx] for idx in (2, 4, 6))
+        complete = self._semiexp_args_complete(args)
         command = "python -m merlino " + " ".join(shlex.quote(item) for item in args)
         if not complete:
-            command += "\n\nSelect parent geometry, isotopologue observations and output directory before running."
+            command += "\n\nSelect parent geometry, isotopologue data and output directory before running."
         self.semiexp_command.setPlainText(command)
         self.semiexp_run_button.setEnabled(complete)
 
     def run_semiexp_fit(self) -> None:
         args = self.semiexp_command_args()
-        if not all(args[idx] for idx in (2, 4, 6)):
+        if not self._semiexp_args_complete(args):
             self._update_semiexp_preview()
             return
+        if self._semiexp_use_inline_job_command():
+            job = self.save_semiexp_job_toml()
+            if job is None:
+                self._update_semiexp_preview()
+                return
+            args = ["semiexp", "--job", str(job), "--outdir", self.semiexp_outdir.text().strip()]
         self._semiexp_process = QProcess(self)
         self._semiexp_process.setWorkingDirectory(str(self.workdir))
         self._semiexp_process.setProgram("python")
@@ -741,6 +757,16 @@ class DashboardWindow(QMainWindow):
         self._semiexp_process.finished.connect(self._semiexp_finished)
         self._append_semiexp_text("\nrunning...\n")
         self._semiexp_process.start()
+
+    def _semiexp_use_inline_job_command(self) -> bool:
+        return bool(not self.semiexp_observations.text().strip() and self._semiexp_table_has_observations())
+
+    def _semiexp_args_complete(self, args: list[str]) -> bool:
+        if "--job" in args:
+            job_index = args.index("--job") + 1
+            out_index = args.index("--outdir") + 1 if "--outdir" in args else -1
+            return bool(job_index < len(args) and args[job_index] and out_index < len(args) and args[out_index])
+        return all(len(args) > idx and args[idx] for idx in (2, 4, 6))
 
     def _semiexp_finished(self, code: int, status) -> None:
         self._append_semiexp_text(f"\nfinished: {code}\n")
@@ -769,12 +795,14 @@ class DashboardWindow(QMainWindow):
     def save_semiexp_job_toml(self, checked: bool = False) -> Path | None:
         geometry_path = self.semiexp_xyz.text().strip()
         observations_path = self.semiexp_observations.text().strip()
-        if not geometry_path or not observations_path:
-            self._append_semiexp_text("\nselect parent geometry and observations before saving a job\n")
+        has_inline_observations = self._semiexp_table_has_observations()
+        if not geometry_path or not (observations_path or has_inline_observations):
+            self._append_semiexp_text("\nselect parent geometry and isotopologue data before saving a job\n")
             return None
         geometry = read_geometry_input(Path(geometry_path))
         target = self.workdir / "semiexp_job.mse.toml"
-        target.write_text(self._semiexp_job_toml(geometry, Path(observations_path)), encoding="utf-8")
+        external_observations = None if has_inline_observations else Path(observations_path)
+        target.write_text(self._semiexp_job_toml(geometry, external_observations), encoding="utf-8")
         self._append_semiexp_text(f"\nwrote job: {target}\n")
         return target
 
@@ -787,6 +815,8 @@ class DashboardWindow(QMainWindow):
         obs_path = self.semiexp_observations.text().strip()
         if obs_path and Path(obs_path).exists():
             observations = read_observations(Path(obs_path))
+        elif self._semiexp_table_has_observations():
+            observations = self._semiexp_table_observations()
         preview = preview_semiexperimental_gics(Path(xyz), observations)
         self._fill_semiexp_preview_table(preview)
         self._append_semiexp_text("\n" + preview.text + "\n")
@@ -817,6 +847,8 @@ class DashboardWindow(QMainWindow):
         obs_path = self.semiexp_observations.text().strip()
         if obs_path and Path(obs_path).exists():
             observations = read_observations(Path(obs_path))
+        elif self._semiexp_table_has_observations():
+            observations = self._semiexp_table_observations()
         preview = preview_semiexperimental_gics(Path(xyz), observations)
         self._fill_semiexp_preview_table(preview)
         text = ";".join(f"{item.name}:{item.mode}:{'|'.join(item.patterns)}" for item in preview.suggested_classes)
@@ -897,16 +929,24 @@ class DashboardWindow(QMainWindow):
         self.semiexp_command.moveCursor(QTextCursor.MoveOperation.End)
         self.semiexp_command.insertPlainText(text)
 
-    def _semiexp_table_toml(self) -> str:
+    def _semiexp_table_toml(self, *, definition_table: bool = False) -> str:
         lines: list[str] = []
         for row in range(self.semiexp_iso_table.rowCount()):
             values = [_table_text(self.semiexp_iso_table, row, col) for col in range(self.semiexp_iso_table.columnCount())]
-            if not values[0].strip():
+            if not self._semiexp_row_has_observation(values):
                 continue
             lines.extend([
                 "[[isotopologues]]",
                 f'label = "{_toml_string(values[0])}"',
-                f'substitutions = "{_toml_string(values[1])}"',
+            ])
+            if definition_table:
+                lines.extend([
+                    "[isotopologues.definition]",
+                    f'substitutions = "{_toml_string(values[1])}"',
+                ])
+            else:
+                lines.append(f'substitutions = "{_toml_string(values[1])}"')
+            lines.extend([
                 "[isotopologues.constants]",
                 f"A_MHz = {_float_text(values[2])}",
                 f"B_MHz = {_float_text(values[3])}",
@@ -934,17 +974,20 @@ class DashboardWindow(QMainWindow):
             lines.append("")
         return "\n".join(lines)
 
-    def _semiexp_job_toml(self, geometry, observations_path: Path) -> str:
+    def _semiexp_job_toml(self, geometry, observations_path: Path | None) -> str:
         fixed = tuple(_split_semiexp_fixed_items(self.semiexp_fixed.text()))
         expression_constraints = tuple(_split_semiexp_fixed_items(self.semiexp_gic_constraints.text()))
         fixed = tuple(dict.fromkeys((*geometry.fixed_parameters, *fixed)))
         lines = [
             f'schema = "{SEMIEXP_JOB_SCHEMA}"',
             f'title = "{_toml_string(geometry.comment or "Merlino semiexperimental fit")}"',
-            "",
-            "[files]",
-            f'observations = "{_toml_string(str(observations_path))}"',
         ]
+        if observations_path is not None:
+            lines.extend([
+                "",
+                "[files]",
+                f'observations = "{_toml_string(str(observations_path))}"',
+            ])
         lines.extend([
             "",
             "[fit]",
@@ -1007,6 +1050,9 @@ class DashboardWindow(QMainWindow):
                     "patterns = [" + ", ".join(f'"{_toml_string(pattern)}"' for pattern in patterns) + "]",
                 ]
             )
+        inline_observations = self._semiexp_table_toml(definition_table=True)
+        if inline_observations.strip():
+            lines.extend(["", inline_observations.rstrip()])
         return "\n".join(lines) + "\n"
 
     def _fill_semiexp_preview_table(self, preview) -> None:
@@ -1027,11 +1073,14 @@ class DashboardWindow(QMainWindow):
     def _semiexp_request_from_ui(self) -> SemiexperimentalFitRequest | None:
         xyz = self.semiexp_xyz.text().strip()
         obs_path = self.semiexp_observations.text().strip()
-        if not xyz or not obs_path:
-            self._append_semiexp_text("\nselect parent geometry and observations before this operation\n")
+        if not xyz:
+            self._append_semiexp_text("\nselect parent geometry before this operation\n")
             return None
-        if not Path(obs_path).exists():
+        if obs_path and not Path(obs_path).exists():
             self._append_semiexp_text(f"\nobservations file not found: {obs_path}\n")
+            return None
+        if not obs_path and not self._semiexp_table_has_observations():
+            self._append_semiexp_text("\nselect an observations file or fill the isotopologue table before this operation\n")
             return None
         classes = []
         for item in _split_semiexp_items(self.semiexp_classes.text()):
@@ -1046,7 +1095,7 @@ class DashboardWindow(QMainWindow):
             fixed.append(HYDROGEN_PARAMETER_CONSTRAINT)
         return SemiexperimentalFitRequest(
             Path(xyz),
-            read_observations(Path(obs_path)),
+            read_observations(Path(obs_path)) if obs_path else self._semiexp_table_observations(),
             fixed_parameters=tuple(dict.fromkeys(fixed)),
             qm_predicates=tuple(_parse_semiexp_qm_predicates(self.semiexp_qm.text())),
             observable=self.semiexp_observable.currentText(),
@@ -1057,6 +1106,20 @@ class DashboardWindow(QMainWindow):
             robust_scale=self.semiexp_robust_scale.value(),
             leave_one_out=self.semiexp_leave_one_out.isChecked(),
         )
+
+    def _semiexp_table_has_observations(self) -> bool:
+        for row in range(self.semiexp_iso_table.rowCount()):
+            values = [_table_text(self.semiexp_iso_table, row, col) for col in range(self.semiexp_iso_table.columnCount())]
+            if self._semiexp_row_has_observation(values):
+                return True
+        return False
+
+    def _semiexp_row_has_observation(self, values: list[str]) -> bool:
+        return bool(values[0].strip() and values[2].strip() and values[3].strip() and values[4].strip())
+
+    def _semiexp_table_observations(self):
+        data = tomllib.loads(self._semiexp_table_toml(definition_table=True))
+        return observations_from_mapping(data)
 
 
 def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None, workdir: Path | None = None) -> str:

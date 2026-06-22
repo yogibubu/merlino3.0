@@ -1123,11 +1123,13 @@ current step requires it. The command-line interface and the graphical
 interface call these same services and expose the choice between GIC and
 symmetry-adapted Cartesian active spaces.
 
-The standard input model contains Cartesian parent geometry, optional
-Gaussian-style primitive freeze records, and a separate isotopologue file with
-substitutions, ground-state rotational constants, vibrational and electronic
-corrections, uncertainties, and correction conventions. Legacy MSR-style input
-is accepted for reproducibility, including frozen variables marked by
+The standard input model is a versioned self-contained job file containing
+Cartesian parent geometry, optional Gaussian-style primitive freeze records,
+and isotopologue tables with definitions, ground-state rotational constants,
+vibrational and electronic corrections, uncertainties, and correction
+conventions. A separate reusable isotopologue file can still be referenced when
+convenient. Legacy MSR-style input is accepted for reproducibility, including
+frozen variables marked by
 \texttt{\#}, but it is converted immediately into the same Cartesian,
 primitive-constraint, and isotopologue representation. Z-matrices are therefore
 compatibility inputs, not working coordinates.

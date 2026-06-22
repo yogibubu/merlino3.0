@@ -222,6 +222,9 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     assert "fix_hydrogen_parameters = true" in job_text
     assert "gic_constraints = [" in job_text
     assert "QFIX=[GIC001+2*GIC002] Value=0.0" in job_text
+    assert "[[isotopologues]]" in job_text
+    assert "[isotopologues.definition]" in job_text
+    assert "[files]" not in job_text
     preset = window.save_semiexp_preset()
     assert preset.exists()
     window.semiexp_fixed.clear()
@@ -283,6 +286,44 @@ def test_semiexp_dashboard_preview_validate_and_conditioning(tmp_path, qtbot):
     assert window.semiexp_preview_table.rowCount() > 0
     assert "input validation: OK" in text
     assert "condition number" in text
+
+
+@pytest.mark.usefixtures("qtbot")
+def test_semiexp_dashboard_can_use_inline_isotopologue_job(tmp_path, qtbot):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    window = DashboardWindow(tmp_path)
+    qtbot.addWidget(window)
+    window.select_workflow("semiexp_geometry")
+    window.semiexp_xyz.setText(str(xyz))
+    window.semiexp_observations.clear()
+    window.semiexp_outdir.setText(str(tmp_path / "run"))
+    window.semiexp_iso_table.item(0, 2).setText("822180.189172425")
+    window.semiexp_iso_table.item(0, 3).setText("437776.592728178")
+    window.semiexp_iso_table.item(0, 4).setText("285669.514220614")
+
+    args = window.semiexp_command_args()
+    job = window.save_semiexp_job_toml()
+
+    assert args[:3] == ["semiexp", "--job", str(tmp_path / "semiexp_job.mse.toml")]
+    assert "--observations" not in args
+    assert job is not None
+    text = job.read_text(encoding="utf-8")
+    assert "[[isotopologues]]" in text
+    assert "[isotopologues.definition]" in text
+    assert "[files]" not in text
 
 
 @pytest.mark.usefixtures("qtbot")

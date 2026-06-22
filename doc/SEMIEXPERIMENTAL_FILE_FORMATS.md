@@ -1,13 +1,13 @@
 # Merlino Semiexperimental File Formats
 
 This document defines the Merlino4 semiexperimental equilibrium-geometry file
-contracts. The recommended production setup uses two input files:
+contracts. The recommended production setup is a self-contained job file:
 
 1. A job file, `*.mse.toml`, containing calculation keywords, Cartesian parent
-   geometry and optional fixed-parameter definitions.
-2. An isotopologue observations file, `*.toml`, `*.json` or `*.csv`, containing
-   ground-state rotational constants, vibrational corrections, electronic
-   corrections, isotope substitutions and optional experimental uncertainties.
+   geometry, optional fixed-parameter definitions, and an inline
+   `[[isotopologues]]` table with the experimental rotational data.
+2. Optionally, a separate reusable isotopologue observations file, `*.toml`,
+   `*.json` or `*.csv`, may be referenced from `[files].observations`.
 
 Gaussian-style Cartesian `.com/.gjf` files remain accepted as geometry inputs
 for interoperability. Legacy MSR monolithic inputs use the explicit
@@ -30,9 +30,6 @@ Complete minimal example:
 ```toml
 schema = "merlino.semiexp.job.v1"
 title = "cyclopentadiene SE fit"
-
-[files]
-observations = "cyclopentadiene_isotopologues.toml"
 
 [fit]
 backend = "python"
@@ -86,6 +83,36 @@ patterns = ["R(1,6)", "R(2,7)"]
 name = "XYH_angles"
 mode = "fixed"
 patterns = ["A("]
+
+[[isotopologues]]
+label = "parent"
+[isotopologues.definition]
+substitutions = ""
+[isotopologues.constants]
+A_MHz = 1000.000
+B_MHz = 800.000
+C_MHz = 600.000
+[isotopologues.vibrational_correction]
+delta_A_MHz = 1.0
+delta_B_MHz = 2.0
+delta_C_MHz = 3.0
+source = "B3LYP/cc-pVTZ"
+convention = "subtract"
+[isotopologues.electronic_correction]
+delta_A_MHz = 0.0
+delta_B_MHz = 0.0
+delta_C_MHz = 0.0
+source = "none"
+convention = "subtract"
+
+[[isotopologues]]
+label = "13C1"
+[isotopologues.definition]
+substitutions = [{ atom = 1, mass = 13 }]
+[isotopologues.constants]
+A_MHz = 990.000
+B_MHz = 790.000
+C_MHz = 590.000
 ```
 
 ### Job Tables
@@ -93,7 +120,10 @@ patterns = ["A("]
 `[files]`
 
 - `observations`: path to the isotopologue observations file. Relative paths
-  are resolved from the job-file directory.
+  are resolved from the job-file directory. This entry is optional when the
+  job contains inline `[[isotopologues]]` tables. If both are present and no
+  command-line `--observations` override is supplied, the inline tables define
+  the job-local data set.
 
 `[fit]`
 
@@ -299,7 +329,9 @@ provided in
 
 ## 4. Isotopologue Observations
 
-Recommended extension: `.toml`.
+Recommended location: inline in the `.mse.toml` job file. A separate `.toml`
+file with the same `[[isotopologues]]` tables remains supported for reusable
+data sets.
 
 ```toml
 [[isotopologues]]
@@ -340,6 +372,21 @@ B_MHz = 790.000
 C_MHz = 590.000
 ```
 
+Inside a job file the more explicit form is preferred:
+
+```toml
+[[isotopologues]]
+label = "13C1"
+
+[isotopologues.definition]
+substitutions = [{ atom = 1, mass = 13 }]
+
+[isotopologues.constants]
+A_MHz = 990.000
+B_MHz = 790.000
+C_MHz = 590.000
+```
+
 Rules:
 
 - `A_MHz`, `B_MHz`, `C_MHz` are experimental ground-state constants.
@@ -349,6 +396,9 @@ Rules:
 - `convention = "additive"` means:
   `Be = B0 + Delta_vib + Delta_elec`.
 - `substitutions` uses one-based atom indices from the parent geometry.
+- `[isotopologues.definition].substitutions` is equivalent to top-level
+  `substitutions` and is preferred in self-contained job files because it
+  separates the isotopologue definition from the spectroscopic data.
 - `D` and `T` are accepted aliases for masses 2 and 3.
 - `sigma_MHz` values are optional. If present, all three components must be
   present and positive.

@@ -136,13 +136,16 @@ ordinary internal coordinates from the fitted Cartesian covariance.
 
 ## Input
 
-The canonical Merlino input is a two-file setup:
+The canonical Merlino input is now a self-contained job file:
 
 - `*.mse.toml`: job file with keywords, Cartesian parent geometry and optional
-  fixed-parameter definitions;
-- `*.toml`, `*.json` or `*.csv`: isotopologue observations with rotational
-  constants, vibrational corrections, electronic corrections and optional
-  uncertainties.
+  fixed-parameter definitions, plus inline `[[isotopologues]]` tables with
+  definitions, rotational constants, vibrational corrections, electronic
+  corrections and optional uncertainties.
+
+Separate `*.toml`, `*.json` or `*.csv` isotopologue observation files remain
+accepted for reusable data sets and can be referenced through
+`[files].observations` or supplied with `--observations`.
 
 The complete file-format contract is documented in
 `doc/SEMIEXPERIMENTAL_FILE_FORMATS.md`.

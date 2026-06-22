@@ -17,6 +17,7 @@ from .contracts import (
 from .io import (
     corrected_constants_rows,
     format_substitutions,
+    observations_from_mapping,
     parse_substitutions,
     read_observations,
     read_observations_csv,
@@ -127,6 +128,7 @@ __all__ = [
     "corrected_constants_rows",
     "fit_semiexperimental_geometry",
     "format_substitutions",
+    "observations_from_mapping",
     "combined_constraint_b_matrix",
     "finite_difference_constraint_b_matrix",
     "gic_expression_constraint_targets",
