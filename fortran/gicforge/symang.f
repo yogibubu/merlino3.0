@@ -10,6 +10,8 @@
       ToDeg=1.80d+2/pi
 C     NGicA=0
 C Build Valence Angles 
+      write(IOut,'(/,'' Exocyclic Valence Angles'')')
+      write(IOut,'('' Center  Symmetry  Valence Angles'')')
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
        if(NBJ.eq.1) go to 30
@@ -153,13 +155,11 @@ C IDiff= atom not involved in cycles if I1 is involved in a cycle
         return
        Else
         NAng=1
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,11X,2I4,14X,I4,14X,I2)')
-     $    IAt,KAt,LAt,KAt,LAt,JAt,NAng
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        EndIf
       Else
        NAng=2
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,29X,3I4,10X,I2)')
-     $    IAt,KAt,LAt,JAt,KAt,LAt,NAng
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
 C SD (Symmetric Deformation) Symmetry Coordinate
        ICoord=ICoord+1
        NTerma(ICoord)=3
@@ -384,47 +384,37 @@ C
       If(FrozJ.and.FrozK) then
        NAng=4
        If(NEq.eq.2) then
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng 
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,11X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,JAt,KAt,LAt,MAt,NAng 
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
       ElseIf(FrozL.and.FrozM) then
        NAng=4
        If(NEq.eq.2) then
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,LAt,MAt,LAt,MAt,JAt,KAt,NAng    
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,11X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,LAt,MAt,JAt,KAt,NAng
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
       ElseIf(FrozJ.and.FrozL) then
        NAng=4
        If(NEq.eq.2) then
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,LAt,MAt,JAt,LAt,KAt,MAt,NAng
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,11X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,JAt,LAt,KAt,MAt,NAng
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
       ElseIf(FrozJ.and.FrozM) then
        NAng=4
        If(NEq.eq.2) then
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,LAt,MAt,JAt,MAt,KAt,LAt,NAng
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,11X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,JAt,MAt,KAt,LAt,NAng
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
       Else
        NAng=5
        If(NEq.eq.2) then
-        write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,4I4,32X,I2)')
-     $    IAt,JAt,KAt,LAt,MAt,LAt,MAt,JAt,KAt,NAng    
+        write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,29X,4I4,6X,I2)')
-     $    IAt,JAt,KAt,LAt,MAt,JAt,KAt,NAng
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
       EndIf
 C Rocking symmetry coordinate
@@ -606,8 +596,7 @@ C Local
 C
       If(NPivT.eq.0) then
        NAng=5
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,25X,4I4,6X,I2)')
-     $   IAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       Elseif(NPivT.eq.1) then
        If(.not.FrozJ) then
         write(IOut,'('' Wrong Free Atom'',I5,''  With Frozen'',3I5,
@@ -615,20 +604,17 @@ C
         Stop
        EndIf
        NAng=5
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,11X,I4,10X,3I4,10X,I2)')
-     $   IAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       Elseif(NPivT.eq.2) then
        NAng=3
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,3X,2I4,10X,2I4,10X,I2)')
-     $   IAt,KAt,LAt,MAt,KAt,LAt,MAt,JAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       Elseif(NPivT.eq.3) then 
        If(FrozJ) then
         write(IOut,'('' Wrong Frozen Atom'',I5,'' Around'',I5)')JAt,IAt
         Stop
        EndIf
        NAng=2
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,7X,3I4,10X,I4,14X,I2)')
-     $   IAt,KAt,LAt,MAt,KAt,LAt,MAt,JAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       Else
        NAng=0
        write(IOut,'('' No Free Angles Around Center'',I5)')IAt
@@ -1286,8 +1272,7 @@ C bending WXY2-WXY3
         Stop
        EndIf
        NAng=2
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,7X,3I4,10X,I4,14X,I2)')
-     $   IAt,KAt,LAt,MAt,KAt,LAt,MAt,JAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
        Return
       EndIf
 C bending Y2XY3
@@ -1300,8 +1285,7 @@ C bending Y2XY3
       IAtomA(3,1,ICoord)=MAt
       if(NPivT.eq.2) then
        NAng=3
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,3X,2I4,10X,2I4,10X,I2)')
-     $   IAt,KAt,LAt,MAt,KAt,LAt,MAt,JAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
        return
       endif
 C At most One frozen atom
@@ -1328,11 +1312,9 @@ C bending Y1XY3
      $    '' Atoms Around'',I5)') JAt,KAt,LAt,MAt,IAt
         Stop
        EndIf
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,11X,I4,10X,3I4,10X,I2)')
-     $   IAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       ElseIf(NPivT.eq.0) then
-       write(IOut,'(I4,6X,''C3v '',1X,3I4,25X,4I4,6X,I2)')
-     $   IAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C3v',NAng
       endif
       return
       end
@@ -1452,8 +1434,7 @@ C bending Y2IN1-Y2IN2
         write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,2I4,10X,2I4,
      $    14X,I2)') IAt,JAt,KAt,LAt,MAt,INot1,INot2,IYes1,IYes2,NAng
        Else
-        write(IOut,'(I4,6X,''Cs  '',1X,2I4,11X,2I4,10X,2I4,
-     $    14X,I2)') IAt,JAt,KAt,INot1,INot2,IYes1,IYes2,NAng
+        write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
        EndIf
        Return
       EndIf
@@ -1467,11 +1448,9 @@ C N1IN2 bending
       IAtomA(3,1,ICoord)=INot2
       NAng=5
       If(NEq.eq.2) then
-       write(IOut,'(I4,6X,''C2v '',1X,2I4,'' +'',2I4,1X,4I4,32X,I2)')
-     $   IAt,JAt,KAt,LAt,MAt,JAt,KAt,LAt,MAt,NAng
+       write(IOut,'(I4,6X,A3,8X,I2)') IAt,'C2v',NAng
       Else
-       write(IOut,'(I4,6X,''Cs  '',1X,2I4,29X,4I4,6X,I2)')
-     $   IAt,JAt,KAt,LAt,MAt,JAt,KAt,NAng
+       write(IOut,'(I4,6X,A2,9X,I2)') IAt,'Cs',NAng
       EndIf
       Return
       End

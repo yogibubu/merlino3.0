@@ -1106,6 +1106,36 @@ C Clean values close to n*pi
       Integer IOut,NVar,ITPV(*),NTerm(*)
       Dimension IAtom(4,15,*)
       Dimension ValTot(*)
+      Character S1*4,S2*4
+      Integer IVar,IPair,JVar,IV,JV,IV1,JV1,L1,L2
+      IPair=0
+      IVar=1
+   10 If(IVar.gt.NVar) Return
+      If(ITPV(IVar).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      If(IVar.eq.NVar) Return
+      If(ITPV(IVar+1).ne.1) Then
+       IVar=IVar+1
+       Go To 10
+      EndIf
+      JVar=IVar+1
+      IPair=IPair+1
+      Call IntoCh(IVar,S1,L1)
+      Call IntoCh(JVar,S2,L2)
+      IV=IAtom(1,1,IVar)
+      JV=IAtom(2,1,IVar)
+      IV1=IAtom(1,1,JVar)
+      JV1=IAtom(2,1,JVar)
+      Write(IOut,'('' RPck'',A4,''(Value='',F12.6,'') = D('',I3,
+     $  3('','',I3),'')'')') S1,ValTot(IVar),IAtom(1,1,IVar),
+     $  IAtom(2,1,IVar),IAtom(3,1,IVar),IAtom(4,1,IVar)
+      Write(IOut,'('' RPck'',A4,''(Value='',F12.6,'') = D('',I3,
+     $  3('','',I3),'')'')') S2,ValTot(JVar),IAtom(1,1,JVar),
+     $  IAtom(2,1,JVar),IAtom(3,1,JVar),IAtom(4,1,JVar)
+      IVar=IVar+2
+      Go To 10
       End
 *Deck PickPckAtoms
       Subroutine PickPckAtoms(IAtom,NTerm,IVar,I1,I2,I3,I4)

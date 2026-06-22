@@ -377,23 +377,35 @@ C Make ring coordinates for valence angles
         call CyGNA(IOut,IPrtCA,MxAtCy,MxAtP,MxTrm,NBond,NAtC,NAng,ICyc,
      $    ICAt,NTermA,IAtomA,ITVA,CoefA)
         If(NAtC(ICyc).eq.3) then
-         write(IOut,'(''   3-Membered Ring ('',3I4,'' ) '',39X,I2)') 
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0 
+         write(IOut,'(1X,I2,A,3I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         ElseIf(NAtC(ICyc).eq.4) then
-         write(IOut,'(''   4-Membered Ring ('',4I4,'' ) '',35X,I2)') 
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0
+         write(IOut,'(1X,I2,A,4I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         ElseIf(NAtC(ICyc).eq.5) then
-         write(IOut,'(''   5-Membered Ring ('',5I4,'' ) '',31X,I2)') 
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0
+         write(IOut,'(1X,I2,A,5I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         ElseIf(NAtC(ICyc).eq.6) then
-         write(IOut,'(''   6-Membered Ring ('',6I4,'' ) '',27X,I2)') 
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0
+         write(IOut,'(1X,I2,A,6I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         ElseIf(NAtC(ICyc).eq.7) then
-         write(IOut,'(''   7-Membered Ring ('',7I4,'' ) '',23X,I2)') 
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0
+         write(IOut,'(1X,I2,A,7I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         ElseIf(NAtC(ICyc).eq.8) then
-         write(IOut,'(''   8-Membered Ring ('',8I4,'' ) '',19X,I2)')
-     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),NAng-NAng0
+         write(IOut,'(1X,I2,A,8I4,A,I2,A)')
+     $     NAtC(ICyc),'-Membered Ring (',
+     $     (ICAt(ii,ICyc),ii=1,NAtC(ICyc)),'): ',
+     $     NAng-NAng0,' Valence angles'
         EndIf
    20  continue
       EndIf
