@@ -5,10 +5,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from merlino_core import ensure_project_state, repo_root, sha256_file, write_manifest
 from merlino_fortran import backend_executable, resolve_backend, resolve_source_backend
+from merlino_semiexp.fit import (
+    _covariance,
+    _dynamic_parameter_scales,
+    _least_squares_hessian,
+    _svd_trust_region_lm_step,
+)
 
 
 def test_repo_root_finds_merlino4_root():
@@ -152,6 +159,89 @@ def test_semiexp_fortran_core_runtime(tmp_path):
         text=True,
     )
     subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+
+
+def test_semiexp_fortran_trust_region_matches_python_kernel(tmp_path):
+    if shutil.which("gfortran") is None:
+        pytest.skip("gfortran is not available")
+    root = repo_root(Path(__file__))
+    driver = tmp_path / "test_semiexp_trust.f"
+    driver.write_text(
+        """      Program TestSemiexpTrust
+      Integer Info,OnBnd,Rank
+      Double Precision J(3,2),Res(3),W(3),DQ(2),Cov(2,2),Hess(2,2)
+      Double Precision Shift
+      J(1,1)=10.0D0
+      J(1,2)=0.0D0
+      J(2,1)=0.0D0
+      J(2,2)=2.0D0
+      J(3,1)=1.0D0
+      J(3,2)=-1.0D0
+      Res(1)=100.0D0
+      Res(2)=4.0D0
+      Res(3)=5.0D0
+      W(1)=1.0D0
+      W(2)=0.25D0
+      W(3)=2.0D0
+      Call M4SETrustNormalEq(3,2,J,Res,W,1.0D-8,0.5D0,DQ,Cov,
+     $     Hess,Shift,OnBnd,Rank,Info)
+      Write(*,'(9(ES24.16,1X),3I6)') DQ(1),DQ(2),Shift,
+     $     Cov(1,1),Cov(1,2),Cov(2,1),Cov(2,2),Hess(1,1),
+     $     Hess(1,2),OnBnd,Rank,Info
+      End
+""",
+        encoding="utf-8",
+    )
+    exe = tmp_path / "test_semiexp_trust"
+    subprocess.run(
+        [
+            "gfortran",
+            "-std=legacy",
+            "-ffixed-form",
+            str(driver),
+            str(root / "fortran" / "semiexp" / "semiexp_core.f"),
+            "-o",
+            str(exe),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    completed = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+    tokens = completed.stdout.split()
+    fields = np.asarray([float(item) for item in tokens[:9]], dtype=float)
+    ints = [int(item) for item in tokens[9:12]]
+
+    jac = np.array([[10.0, 0.0], [0.0, 2.0], [1.0, -1.0]], dtype=float)
+    residual = np.array([100.0, 4.0, 5.0], dtype=float)
+    weights = np.array([1.0, 0.25, 2.0], dtype=float)
+    sqrt_w = np.sqrt(weights)
+    weighted_jac = jac * sqrt_w[:, None]
+    weighted_residual = residual * sqrt_w
+    scales = _dynamic_parameter_scales(weighted_jac, np.ones(2, dtype=float))
+    trust_step = _svd_trust_region_lm_step(
+        weighted_jac * scales[None, :],
+        weighted_residual,
+        damping=1.0e-8,
+        trust_radius=0.5,
+    )
+    expected_dq = scales * trust_step.step
+    expected_cov = _covariance(weighted_jac, weighted_residual)
+    expected_hess = _least_squares_hessian(weighted_jac)
+    singular = np.linalg.svd(weighted_jac * scales[None, :], compute_uv=False)
+    tol = max(weighted_jac.shape) * np.finfo(float).eps * max(float(singular[0]), 1.0) * 100.0
+
+    np.testing.assert_allclose(fields[0:2], expected_dq, rtol=2.0e-9, atol=2.0e-9)
+    assert fields[2] == pytest.approx(trust_step.shift, rel=2.0e-8, abs=2.0e-8)
+    np.testing.assert_allclose(
+        np.array([[fields[3], fields[4]], [fields[5], fields[6]]]),
+        expected_cov,
+        rtol=1.0e-9,
+        atol=1.0e-9,
+    )
+    assert fields[7] == pytest.approx(expected_hess[0, 0], rel=1.0e-12)
+    assert fields[8] == pytest.approx(expected_hess[0, 1], rel=1.0e-12)
+    assert ints == [1, int(np.sum(singular > tol)), 0]
 
 
 def test_vpt2_vci_fortran_controlled_basis_runtime(tmp_path):

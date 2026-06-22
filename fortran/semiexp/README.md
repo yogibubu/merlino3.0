@@ -13,10 +13,18 @@ Provided routines:
 - `M4SEAngleB`: analytic Wilson B row for valence angles.
 - `M4SERotConst`: principal moments and rotational constants from Cartesian
   coordinates and isotope masses.
-- `M4SENormalEq`: weighted least-squares normal equations, covariance and
-  Gauss-Newton Hessian.
-- `M4SEClassNormalEq`: the same normal-equation kernel after compressing
-  shared parameter classes and blocking fixed classes.
+- `M4SETrustNormalEq`: weighted SVD-equivalent More-Hebden trust-region
+  Levenberg-Marquardt step, covariance and Gauss-Newton Hessian. The SVD
+  subproblem is solved in Fortran77 by diagonalizing the scaled symmetric Gram
+  matrix, giving the same mathematical step as the Python SVD kernel.
+- `M4SENormalEq`: backward-compatible wrapper with inactive trust radius,
+  matching the Python rank-revealing LM step without an active radius.
+- `M4SEClassTrustNormalEq`: trust-region kernel after compressing shared
+  parameter classes and blocking fixed classes.
+- `M4SEClassNormalEq`: backward-compatible class wrapper with inactive trust
+  radius.
+- `M4SERobustGroupWeights`: grouped robust weights matching the Python
+  isotopologue-block robust loss convention.
 
 Compile check:
 

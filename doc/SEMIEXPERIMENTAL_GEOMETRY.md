@@ -399,13 +399,13 @@ The default GIC fit model is:
    coordinates from analytic Cartesian derivatives of principal moments or
    rotational constants. The finite-difference path is retained only as a
    parallel fallback for future non-analytic observables.
-10. Solve weighted trust-region LM equations with a rank-revealing SVD step
-    and QR/lstsq fallback on the augmented LM system. Columns are dynamically
-    equilibrated on top of the homogeneous coordinate-block scaling. Optional
-    IRLS robust losses are evaluated per isotopologue, then the same robust
-    weight is applied to all selected components of that isotopologue; QM
-    predicates keep their declared weights. Cauchy fallback is used only when
-    the computed step is non-finite or not descending.
+10. Solve weighted trust-region LM equations with a rank-revealing
+    SVD/More-Hebden step. Columns are dynamically equilibrated on top of the
+    homogeneous coordinate-block scaling. Optional IRLS robust losses are
+    evaluated per isotopologue, then the same robust weight is applied to all
+    selected components of that isotopologue; QM predicates keep their declared
+    weights. The Fortran77 kernel solves the same subproblem through the
+    symmetric eigendecomposition of the scaled Gram matrix.
 11. For the GIC model, back-transform GIC steps to Cartesian displacements
     using the analytic B matrix. Line-search trials reuse the current GICForge
     coordinate model. Every accepted GIC step is validated by rerunning
@@ -718,9 +718,9 @@ The same files can be selected from the GUI semiexperimental workflow.
 
 The semiexperimental production workflow is Python-orchestrated. The Fortran77
 semiexp source is a validated numerical-kernel layer for analytic B rows,
-rotational constants and least-squares normal equations, including compressed
-parameter classes. It is deliberately not a second metadata/input/reporting
-implementation.
+rotational constants and the same SVD/More-Hebden trust-region least-squares
+subproblem used by Python, including compressed parameter classes. It is
+deliberately not a second metadata/input/reporting implementation.
 
 GIC regression against the frozen Merlino3 baseline is handled by:
 

@@ -86,9 +86,25 @@ C     active classes; all parameters in the same class receive one step.
       Integer NObs,NPar,NClass,ClassMap(NPar),Info
       Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp
       Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar)
+      Double Precision Shift
+      Integer OnBnd,Rank
+      Call M4SEClassTrustNormalEq(NObs,NPar,NClass,ClassMap,J,Res,W,
+     $     Damp,0.0D0,DQ,Cov,Hess,Shift,OnBnd,Rank,Info)
+      Return
+      End
+
+      Subroutine M4SEClassTrustNormalEq(NObs,NPar,NClass,ClassMap,J,
+     $        Res,W,Damp,Trust,DQ,Cov,Hess,Shift,OnBnd,Rank,Info)
+C     Parameter-class wrapper around the trust-region LM kernel.
+      Integer NObs,NPar,NClass,ClassMap(NPar),OnBnd,Rank,Info
+      Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp,Trust
+      Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar),Shift
       Double Precision JR(500,100),DQR(100),CovR(100,100),HessR(100,100)
       Integer I,K,L,C1,C2
       Info=0
+      Shift=0.0D0
+      OnBnd=0
+      Rank=0
       If(NObs.gt.500.or.NPar.gt.100.or.NClass.gt.100) Then
          Info=2
          Return
@@ -116,8 +132,8 @@ C     active classes; all parameters in the same class receive one step.
             Return
          End If
 70    Continue
-      Call M4SENormalEq(NObs,NClass,JR,Res,W,Damp,DQR,CovR,HessR,
-     $                  Info)
+      Call M4SETrustNormalEq(NObs,NClass,JR,Res,W,Damp,Trust,DQR,
+     $        CovR,HessR,Shift,OnBnd,Rank,Info)
       If(Info.ne.0) Return
       Do 100 I=1,NPar
          C1=ClassMap(I)
@@ -247,17 +263,29 @@ C     The constant matches h/(8*pi*pi*c*I) expressed for I in amu A**2.
 
       Subroutine M4SENormalEq(NObs,NPar,J,Res,W,Damp,DQ,Cov,Hess,
      $                        Info)
-C     Weighted least-squares step for semiexperimental fits.
-C     The step is computed from a column-scaled augmented LM system by
-C     rank-revealing modified Gram-Schmidt QR, avoiding normal-equation
-C     squaring in the displacement itself.  Hessian/covariance are still
-C     reported in the original parameter basis for compatibility.
+C     Backward-compatible entry point.  Trust=0 gives the same unconstrained
+C     rank-revealing LM step used by the Python solver when no trust radius is
+C     active.
       Integer NObs,NPar,Info
       Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp
       Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar)
-      Double Precision A(100,100),Scale,Sigma2,ColScale(100)
-      Double Precision WEff(500)
-      Integer I,JCol,K,L,Dof,Rank
+      Double Precision Shift
+      Integer OnBnd,Rank
+      Call M4SETrustNormalEq(NObs,NPar,J,Res,W,Damp,0.0D0,DQ,Cov,
+     $     Hess,Shift,OnBnd,Rank,Info)
+      Return
+      End
+
+      Subroutine M4SETrustNormalEq(NObs,NPar,J,Res,W,Damp,Trust,DQ,
+     $        Cov,Hess,Shift,OnBnd,Rank,Info)
+C     Weighted SVD-equivalent More-Hebden trust-region LM kernel.
+C     The SVD of sqrt(W)*J*S is obtained by diagonalizing its symmetric
+C     Gram matrix.  The returned DQ is in the original parameter basis.
+      Integer NObs,NPar,OnBnd,Rank,Info
+      Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp,Trust
+      Double Precision DQ(NPar),Cov(NPar,NPar),Hess(NPar,NPar),Shift
+      Double Precision A(100,100),Scale,ColScale(100),WEff(500)
+      Integer I,JCol,K
       Info=0
       If(NObs.gt.500.or.NPar.gt.100) Then
          Info=2
@@ -275,8 +303,8 @@ C     reported in the original parameter basis for compatibility.
 10       Continue
 20    Continue
       Call M4SEColumnScale(NObs,NPar,J,WEff,ColScale)
-      Call M4SEQRLmStep(NObs,NPar,J,Res,WEff,Damp,ColScale,DQ,
-     $                  Rank,Info)
+      Call M4SESpectralLmStep(NObs,NPar,J,Res,WEff,Damp,Trust,
+     $     ColScale,DQ,Shift,OnBnd,Rank,Info)
       If(Info.ne.0) Return
       Do 50 K=1,NObs
          Scale=WEff(K)
@@ -292,23 +320,8 @@ C     reported in the original parameter basis for compatibility.
             Cov(I,JCol)=A(I,JCol)
 60       Continue
 70    Continue
-      Call M4SEInvert(NPar,Cov,Info)
-      If(Info.ne.0) Then
-         Info=0
-         Return
-      End If
-      Sigma2=0.0D0
-      Do 80 K=1,NObs
-         Sigma2=Sigma2+WEff(K)*Res(K)*Res(K)
-80    Continue
-      Dof=NObs-Rank
-      If(Dof.lt.1) Dof=1
-      Sigma2=Sigma2/DBLE(Dof)
-      Do 100 I=1,NPar
-         Do 90 JCol=1,NPar
-            Cov(I,JCol)=Sigma2*Cov(I,JCol)
-90       Continue
-100   Continue
+      Call M4SEPseudoCov(NObs,NPar,A,Res,WEff,Rank,Cov,Info)
+      If(Info.ne.0) Info=0
       Return
       End
 
@@ -347,6 +360,233 @@ C     weighted norm, with deterministic clipping.
             Scale(I)=1.0D0
          End If
 30    Continue
+      Return
+      End
+
+      Subroutine M4SESpectralLmStep(NObs,NPar,J,Res,W,Damp,Trust,
+     $        Scale,DQ,Shift,OnBnd,Rank,Info)
+C     SVD-equivalent LM step for min 0.5||sqrt(W)(Res-J*DQ)||**2.
+C     Trust is applied in the scaled coordinate y, matching Python
+C     _svd_trust_region_lm_step before DQ=Scale*y.
+      Integer NObs,NPar,OnBnd,Rank,Info
+      Double Precision J(NObs,NPar),Res(NObs),W(NObs),Damp,Trust
+      Double Precision Scale(NPar),DQ(NPar),Shift
+      Double Precision A(100,100),Eig(100),V(100,100),G(100)
+      Double Precision Y(100),YHi(100),MuLow,MuHigh,MuMid
+      Double Precision NormY,NormHi,Delta,S0,Tol,WK,RootW
+      Double Precision DMin,DMax,TRMin,Diff
+      Double Precision M4SENorm
+      Integer I,JCol,K,Iter
+      Info=0
+      Rank=0
+      OnBnd=0
+      Shift=DMAX1(Damp,0.0D0)
+      DMin=1.0D-14
+      DMax=1.0D12
+      TRMin=1.0D-10
+      If(NObs.gt.500.or.NPar.gt.100) Then
+         Info=2
+         Return
+      End If
+      Do 20 I=1,NPar
+         G(I)=0.0D0
+         DQ(I)=0.0D0
+         Do 10 JCol=1,NPar
+            A(I,JCol)=0.0D0
+10       Continue
+20    Continue
+      Do 50 K=1,NObs
+         WK=W(K)
+         If(WK.lt.0.0D0) WK=0.0D0
+         RootW=DSQRT(WK)
+         Do 40 I=1,NPar
+            G(I)=G(I)+WK*J(K,I)*Scale(I)*Res(K)
+            Do 30 JCol=1,NPar
+               A(I,JCol)=A(I,JCol)+WK*J(K,I)*Scale(I)*
+     $              J(K,JCol)*Scale(JCol)
+30          Continue
+40       Continue
+50    Continue
+      Call M4SEJacobiSym(NPar,A,Eig,V,Info)
+      If(Info.ne.0) Return
+      Call M4SEMaxSing(NObs,NPar,NPar,Eig,S0,Tol,Rank)
+      If(Trust.le.0.0D0) Then
+         Call M4SEStepFromShift(NPar,Eig,V,G,Tol,Shift,Y)
+         Do 60 I=1,NPar
+            DQ(I)=Scale(I)*Y(I)
+60       Continue
+         Return
+      End If
+      Delta=DMAX1(Trust,TRMin)
+      Call M4SEStepFromShift(NPar,Eig,V,G,Tol,0.0D0,Y)
+      NormY=M4SENorm(NPar,Y)
+      If(NormY.le.Delta) Then
+         Shift=0.0D0
+         OnBnd=0
+         Do 70 I=1,NPar
+            DQ(I)=Scale(I)*Y(I)
+70       Continue
+         Return
+      End If
+      MuLow=0.0D0
+      MuHigh=DMAX1(Damp,S0*S0*1.0D-12,DMin)
+80    Continue
+      Call M4SEStepFromShift(NPar,Eig,V,G,Tol,MuHigh,YHi)
+      NormHi=M4SENorm(NPar,YHi)
+      If(NormHi.gt.Delta.and.MuHigh.lt.DMax) Then
+         MuLow=MuHigh
+         MuHigh=DMIN1(MuHigh*4.0D0,DMax)
+         Goto 80
+      End If
+      If(NormHi.gt.Delta) Then
+         Call M4SELimitStep(NPar,YHi,Delta,Y)
+         Shift=MuHigh
+         OnBnd=1
+         Do 90 I=1,NPar
+            DQ(I)=Scale(I)*Y(I)
+90       Continue
+         Return
+      End If
+      Do 120 Iter=1,80
+         MuMid=0.5D0*(MuLow+MuHigh)
+         Call M4SEStepFromShift(NPar,Eig,V,G,Tol,MuMid,Y)
+         NormY=M4SENorm(NPar,Y)
+         Diff=DABS(NormY-Delta)
+         If(Diff.le.DMAX1(1.0D-10*Delta,1.0D-12)) Goto 130
+         If(NormY.gt.Delta) Then
+            MuLow=MuMid
+         Else
+            MuHigh=MuMid
+         End If
+120   Continue
+130   Continue
+      If(M4SENorm(NPar,Y).gt.Delta*(1.0D0+1.0D-8)) Then
+         Call M4SELimitStep(NPar,Y,Delta,YHi)
+         Do 140 I=1,NPar
+            Y(I)=YHi(I)
+140      Continue
+      End If
+      Shift=MuMid
+      OnBnd=1
+      Do 150 I=1,NPar
+         DQ(I)=Scale(I)*Y(I)
+150   Continue
+      Return
+      End
+
+      Subroutine M4SEStepFromShift(N,Eig,V,G,Tol,Mu,Y)
+      Integer N,I,J
+      Double Precision Eig(N),V(100,100),G(N),Tol,Mu,Y(N)
+      Double Precision Proj,Den,Sing
+      Do 20 I=1,N
+         Y(I)=0.0D0
+20    Continue
+      Do 50 J=1,N
+         Sing=0.0D0
+         If(Eig(J).gt.0.0D0) Sing=DSQRT(Eig(J))
+         If(Sing.gt.Tol) Then
+            Proj=0.0D0
+            Do 30 I=1,N
+               Proj=Proj+V(I,J)*G(I)
+30          Continue
+            Den=Eig(J)+DMAX1(Mu,0.0D0)
+            If(Den.gt.0.0D0) Then
+               Do 40 I=1,N
+                  Y(I)=Y(I)+V(I,J)*Proj/Den
+40             Continue
+            End If
+         End If
+50    Continue
+      Return
+      End
+
+      Double Precision Function M4SENorm(N,X)
+      Integer N,I
+      Double Precision X(N),Sum
+      Sum=0.0D0
+      Do 10 I=1,N
+         Sum=Sum+X(I)*X(I)
+10    Continue
+      M4SENorm=DSQRT(Sum)
+      Return
+      End
+
+      Subroutine M4SELimitStep(N,X,Delta,Y)
+      Integer N,I
+      Double Precision X(N),Y(N),Delta,Norm,Fac
+      Double Precision M4SENorm
+      Norm=M4SENorm(N,X)
+      If(Delta.gt.0.0D0.and.Norm.gt.Delta) Then
+         Fac=Delta/Norm
+      Else
+         Fac=1.0D0
+      End If
+      Do 10 I=1,N
+         Y(I)=Fac*X(I)
+10    Continue
+      Return
+      End
+
+      Subroutine M4SEMaxSing(NObs,NPar,N,Eig,S0,Tol,Rank)
+      Integer NObs,NPar,N,Rank,I
+      Double Precision Eig(N),S0,Tol,Sing,MaxS,EPS
+      EPS=2.220446049250313D-16
+      MaxS=0.0D0
+      Do 10 I=1,N
+         If(Eig(I).gt.0.0D0) Then
+            Sing=DSQRT(Eig(I))
+            If(Sing.gt.MaxS) MaxS=Sing
+         End If
+10    Continue
+      S0=DMAX1(MaxS,1.0D0)
+      Tol=DBLE(MAX0(NObs,NPar))*EPS*S0*100.0D0
+      Rank=0
+      Do 20 I=1,N
+         Sing=0.0D0
+         If(Eig(I).gt.0.0D0) Sing=DSQRT(Eig(I))
+         If(Sing.gt.Tol) Rank=Rank+1
+20    Continue
+      Return
+      End
+
+      Subroutine M4SEPseudoCov(NObs,NPar,A,Res,W,Rank,Cov,Info)
+C     SVD-equivalent covariance sigma2 * pinv(J' W J).
+      Integer NObs,NPar,Rank,Info
+      Double Precision A(100,100),Res(NObs),W(NObs),Cov(NPar,NPar)
+      Double Precision Eig(100),V(100,100),Work(100,100)
+      Double Precision S0,Tol,Sing,Sigma2,WK,Inv,Dof
+      Integer I,J,K,L
+      Info=0
+      Do 20 I=1,NPar
+         Do 10 J=1,NPar
+            Work(I,J)=A(I,J)
+            Cov(I,J)=0.0D0
+10       Continue
+20    Continue
+      Call M4SEJacobiSym(NPar,Work,Eig,V,Info)
+      If(Info.ne.0) Return
+      Call M4SEMaxSing(NObs,NPar,NPar,Eig,S0,Tol,Rank)
+      Sigma2=0.0D0
+      Do 30 K=1,NObs
+         WK=W(K)
+         If(WK.lt.0.0D0) WK=0.0D0
+         Sigma2=Sigma2+WK*Res(K)*Res(K)
+30    Continue
+      Dof=DBLE(NObs-Rank)
+      If(Dof.lt.1.0D0) Dof=1.0D0
+      Sigma2=Sigma2/Dof
+      Do 70 L=1,NPar
+         Sing=0.0D0
+         If(Eig(L).gt.0.0D0) Sing=DSQRT(Eig(L))
+         If(Sing.gt.Tol.and.Eig(L).gt.0.0D0) Then
+            Inv=1.0D0/Eig(L)
+            Do 50 I=1,NPar
+               Do 40 J=1,NPar
+                  Cov(I,J)=Cov(I,J)+Sigma2*V(I,L)*V(J,L)*Inv
+40             Continue
+50          Continue
+         End If
+70    Continue
       Return
       End
 
@@ -621,6 +861,86 @@ C     2 soft_l1, 3 Cauchy.  WOut contains final statistical*robust weights.
             A(I,J)=Aug(I,N+J)
 90       Continue
 100   Continue
+      Return
+      End
+
+      Subroutine M4SEJacobiSym(N,A,D,V,Info)
+C     Symmetric Jacobi eigensolver for N <= 100.  Eigenvectors are columns
+C     of V.  This is used only for SEfit parameter-space matrices.
+      Integer N,Info
+      Double Precision A(100,100),D(100),V(100,100)
+      Double Precision App,Aqq,Apq,Tau,T,C,S,Aip,Aiq,Vip,Viq
+      Double Precision Off,DiagMax,Tol
+      Integer I,J,Iter,P,Q,MaxIter
+      Info=0
+      If(N.lt.1.or.N.gt.100) Then
+         Info=2
+         Return
+      End If
+      Do 20 I=1,N
+         Do 10 J=1,N
+            V(I,J)=0.0D0
+10       Continue
+         V(I,I)=1.0D0
+20    Continue
+      MaxIter=50*N*N
+      Do 120 Iter=1,MaxIter
+         P=1
+         Q=1
+         Off=0.0D0
+         DiagMax=0.0D0
+         Do 40 I=1,N
+            If(DABS(A(I,I)).gt.DiagMax) DiagMax=DABS(A(I,I))
+            Do 30 J=I+1,N
+               If(DABS(A(I,J)).gt.Off) Then
+                  Off=DABS(A(I,J))
+                  P=I
+                  Q=J
+               End If
+30          Continue
+40       Continue
+         Tol=1.0D-14*DMAX1(DiagMax,1.0D0)
+         If(Off.le.Tol) Goto 140
+         App=A(P,P)
+         Aqq=A(Q,Q)
+         Apq=A(P,Q)
+         If(DABS(Apq).le.0.0D0) Goto 120
+         Tau=(Aqq-App)/(2.0D0*Apq)
+         If(Tau.ge.0.0D0) Then
+            T=1.0D0/(Tau+DSQRT(1.0D0+Tau*Tau))
+         Else
+            T=-1.0D0/(-Tau+DSQRT(1.0D0+Tau*Tau))
+         End If
+         C=1.0D0/DSQRT(1.0D0+T*T)
+         S=T*C
+         Do 60 I=1,N
+            If(I.ne.P.and.I.ne.Q) Then
+               Aip=A(I,P)
+               Aiq=A(I,Q)
+               A(I,P)=C*Aip-S*Aiq
+               A(P,I)=A(I,P)
+               A(I,Q)=S*Aip+C*Aiq
+               A(Q,I)=A(I,Q)
+            End If
+60       Continue
+         A(P,P)=C*C*App-2.0D0*S*C*Apq+S*S*Aqq
+         A(Q,Q)=S*S*App+2.0D0*S*C*Apq+C*C*Aqq
+         A(P,Q)=0.0D0
+         A(Q,P)=0.0D0
+         Do 80 I=1,N
+            Vip=V(I,P)
+            Viq=V(I,Q)
+            V(I,P)=C*Vip-S*Viq
+            V(I,Q)=S*Vip+C*Viq
+80       Continue
+120   Continue
+      Info=1
+      Return
+140   Continue
+      Do 150 I=1,N
+         D(I)=A(I,I)
+         If(D(I).lt.0.0D0.and.DABS(D(I)).lt.Tol) D(I)=0.0D0
+150   Continue
       Return
       End
 

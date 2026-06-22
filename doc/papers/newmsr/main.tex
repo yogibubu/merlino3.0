@@ -955,9 +955,12 @@ would change this GIC signature are rejected and the trust radius is reduced.
 The Cartesian--GIC projector is refreshed analytically when needed and
 otherwise updated by a secant correction, avoiding unnecessary coordinate
 rebuilds without accepting topology-changing steps.
-The independent Fortran77 numerical-kernel layer provides dynamic column
-scaling, rank-revealing QR solution of the augmented Levenberg--Marquardt
-system, and grouped robust weights without importing legacy Gaussian code.
+The independent Fortran77 numerical-kernel layer implements the same
+column-scaled More--Hebden trust-region subproblem. In fixed-form Fortran77
+the SVD-equivalent step is obtained from the symmetric eigendecomposition of
+the scaled Gram matrix, with the same rank threshold, damping convention,
+active-radius bisection and grouped robust weights as the Python driver,
+without importing legacy Gaussian code.
 
 Convergence requires both the parameter corrections and the objective-function
 reduction to fall below predefined thresholds. Trial steps that increase the
