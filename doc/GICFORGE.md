@@ -111,12 +111,13 @@ writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
 pure-Python local coordinate builder is available only with `--python-local`
 for diagnostics and requires `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1`.
 
-There is one controlled production fallback: if the Fortran pre-pruning GIC
-count is below the vibrational rank (`3N-6`, or `3N-5` for linear molecules),
-Merlino does not accept the incomplete GICForge set.  It falls back to the
-Python-local SVD generator and accepts that fallback only when the pruned
-Python basis has exactly the required vibrational rank.  Otherwise GIC
-definition fails explicitly.
+If the ordinary Fortran pre-pruning GIC count is below the vibrational rank
+(`3N-6`, or `3N-5` for linear molecules), GICForge expands its candidate set
+inside Fortran to the primitive redundant coordinates and then applies the same
+type-local rank pruning.  The primitive expansion is capped by the number of
+available primitives, so the number of pre-pruning attempts never exceeds the
+primitive coordinate count.  If even the primitive candidate set is below the
+vibrational rank, GICForge stops instead of letting Python repair the basis.
 
 This is a strict identity contract.  The Python layer must not create an
 independent production GIC basis from topology after a rank-complete GICForge

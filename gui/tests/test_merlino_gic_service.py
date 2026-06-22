@@ -11,7 +11,6 @@ from merlino_core.cli import build_parser as merlino_parser
 from merlino_gic import (
     GICDefinition,
     GICDefinitionError,
-    GICForgeResult,
     compare_gic_b_matrix_to_fortran,
     define_gics_from_cartesian,
     evaluate_gic_definition,
@@ -211,78 +210,6 @@ def test_gic_definition_uses_backend_gauin_as_single_source(tmp_path):
     assert definition.u_matrix.shape == (1, 1)
     assert not (tmp_path / "define" / "gauin.symm").exists()
     assert np.isclose(evaluation.values[0], np.linalg.norm(coords[0] - coords[2]))
-
-
-def test_gicforge_definition_falls_back_to_python_when_fortran_is_below_rank(tmp_path):
-    atoms = ("O", "H", "H")
-    coords = np.array(
-        [
-            [0.000000, 0.000000, 0.000000],
-            [0.757000, 0.000000, 0.586000],
-            [-0.757000, 0.000000, 0.586000],
-        ],
-        dtype=float,
-    )
-
-    def fake_runner(workdir: Path) -> GICForgeResult:
-        provout = workdir / "provout"
-        provout.write_text(
-            " Type-local residual GIC redundancy pruning\n"
-            "   Current GIC count=    2 target vibrational rank=    3\n",
-            encoding="utf-8",
-        )
-        logfile = workdir / "gicforge.log"
-        logfile.write_text("", encoding="utf-8")
-        manifest = workdir / "gicforge_manifest.json"
-        manifest.write_text("{}", encoding="utf-8")
-        return GICForgeResult(
-            workdir=workdir,
-            executable=Path("fake-gicforge"),
-            logfile=logfile,
-            files={"provout": provout},
-            manifest=manifest,
-        )
-
-    definition = define_gics_from_cartesian(atoms, coords, workdir=tmp_path / "define", runner=fake_runner)
-
-    assert definition.source == "python-local"
-    assert definition.u_matrix.shape[1] == 3
-    assert definition.provenance["fallback_reason"] == "gicforge_pre_pruning_below_vibrational_rank"
-
-
-def test_gicforge_python_fallback_stops_when_python_rank_is_wrong(tmp_path, monkeypatch):
-    atoms = ("O", "H", "H")
-    coords = np.array(
-        [
-            [0.000000, 0.000000, 0.000000],
-            [0.757000, 0.000000, 0.586000],
-            [-0.757000, 0.000000, 0.586000],
-        ],
-        dtype=float,
-    )
-
-    def fake_runner(workdir: Path) -> GICForgeResult:
-        provout = workdir / "provout"
-        provout.write_text("   Current GIC count=    2 target vibrational rank=    3\n", encoding="utf-8")
-        logfile = workdir / "gicforge.log"
-        logfile.write_text("", encoding="utf-8")
-        manifest = workdir / "gicforge_manifest.json"
-        manifest.write_text("{}", encoding="utf-8")
-        return GICForgeResult(
-            workdir=workdir,
-            executable=Path("fake-gicforge"),
-            logfile=logfile,
-            files={"provout": provout},
-            manifest=manifest,
-        )
-
-    def wrong_rank(*_args, **_kwargs):
-        return np.zeros((3, 2), dtype=float), [("Bad0001", 0.0, "R(1,2)"), ("Bad0002", 0.0, "R(1,3)")]
-
-    monkeypatch.setattr("merlino_fit.survibfit.transforms.build_u_with_names", wrong_rank)
-
-    with pytest.raises(GICDefinitionError, match="did not produce the required vibrational rank"):
-        define_gics_from_cartesian(atoms, coords, workdir=tmp_path / "define", runner=fake_runner)
 
 
 def test_gic_definition_schema_validation_rejects_malformed_columns():

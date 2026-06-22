@@ -13,14 +13,15 @@ C  Method: modified Gram-Schmidt over the B rows of one block.  A coordinate is
 C  retained if its B row increases the numerical rank of its own type block.
 C=======================================================================
 
-      Subroutine PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NLen,
+      Subroutine PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,
+     $ NLen,
      $ NAng,NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,
      $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,
      $ IPrimD,IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,
      $ IFixD,IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,
      $ ValTD,ValTO,C,DoBMat,BMat,Scr,ImpDih)
       Implicit Real*8 (A-H,O-Z)
-      Integer MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,NOupl,NDih
+      Integer MxAtP,MxTrm,NAtoms,NTarget,NLen,NAng,NLAng,NOupl,NDih
       Dimension NTermB(*),NTermA(*),NTermL(*),NTermD(*),NTermO(*)
       Dimension IAtomB(MxAtP,MxTrm,*),IAtomA(MxAtP,MxTrm,*)
       Dimension IAtomL(MxAtP,MxTrm,*),IAtomD(MxAtP,MxTrm,*)
@@ -40,7 +41,7 @@ C=======================================================================
       If(NAtoms.le.0) return
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.le.0) return
-      NVib=3*NAtoms-6
+      NVib=NTarget
 
       DoB1=.False.
       Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,

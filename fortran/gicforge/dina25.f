@@ -482,6 +482,26 @@ C Make Out-of-Plane GNICs
      $  NCyc,NBond,NOuPl,IBond,NTermO,IAtomO,IAn,IAtCyc,CoefO,C,ImpDih)
 C
       NTot=NLen+NAng+NLAng+NDih+NOUPl
+      NTarget=3*NAtoms-NTRot
+      If(NTot.lt.NTarget) then
+       Write(IOut,'(/,'' GNIC candidate count below vibrational rank;'',
+     $ '' expanding to primitive candidates before pruning.'')')
+       Write(IOut,'(''   Current GNIC candidates='',I5,
+     $ '' target='',I5,'' primitive candidates='',I5)')
+     $ NTot,NTarget,NTotR
+       Call UsePrimitiveGICs(IOut,MxAtP,MxTrm,NLenR,NAngR,NLAngR,
+     $ NDihR,NOuplR,NLen,NAng,NLAng,NDih,NOupl,IAtmBR,IAtmAR,
+     $ IAtmLR,IAtmDR,IAtmOR,NTermB,NTermA,NTermL,NTermD,NTermO,
+     $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,ITVB,ITVA,ITVLA,ITVD,
+     $ ITVO,IFixB,IFixA,IFixL,IFixD,IFixO,CoefB,CoefA,CoefL,
+     $ CoefD,CoefO)
+       NTot=NLen+NAng+NLAng+NDih+NOupl
+       If(NTot.lt.NTarget) then
+        Write(IOut,'('' ERROR: primitive GIC candidates='',I5,
+     $ '' below target vibrational rank='',I5)') NTot,NTarget
+        Stop
+       EndIf
+      EndIf
 CENZO Print Information on Torsions
       Indd=0
       do IPuf=1,NLenR
@@ -494,14 +514,14 @@ CENZO Print Information on Torsions
 CENZO 
 C Print results
       Write(IOut,'(/,I5,'' Atoms and'',I5,'' Internal Coordinates'')')
-     $  NAtoms,3*NAtoms-NTRot 
+     $  NAtoms,NTarget
       Write(IOut,
      $ '(/,14X, '' Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
       Write(IOut,'('' Redundant  '',6I8)') NLenR,NAngR,NLAngR,NDihR,
      $  NOuPlR,NTotR
       Write(IOut,'('' Non Redund.'',6I8,/)') NLen,NAng,NLAng,NDih,
      $  NOuPl,NTot
-      NRed=NTot-3*NAtoms+NTRot
+      NRed=NTot-NTarget
       If(NRed.eq.0) then
        write(IOut,'('' All local redundancies have been '',
      $  ''Eliminated'',/)')
@@ -593,7 +613,8 @@ C     unchanged here; residual redundancies are still pruned by type below.
       call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
-      call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NLen,NAng,
+      call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
+     $  NAng,
      $  NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,IAtomB,
      $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
@@ -1037,6 +1058,104 @@ C     If(ITot.gt.0) FndDer=.true.
       If(IDeriv(3).eq.1) Write(IOut,'(''Freq=Cubic '')',advance='no')
       If(IDeriv(4).eq.1) Write(IOut,'(''Freq=Anharm '')',advance='no')
       write(IOut,'(''Output=Pickett'')')
+      Return
+      End
+*Deck UsePrimitiveGICs
+      Subroutine UsePrimitiveGICs(IOut,MxAtP,MxTrm,NLenR,NAngR,
+     $ NLangR,NDihR,NOuplR,NLen,NAng,NLang,NDih,NOupl,IAtmBR,
+     $ IAtmAR,IAtmLR,IAtmDR,IAtmOR,NTermB,NTermA,NTermL,NTermD,
+     $ NTermO,IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,ITVB,ITVA,ITVLA,
+     $ ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,IFixO,CoefB,CoefA,CoefL,
+     $ CoefD,CoefO)
+      Implicit Real*8 (A-H,O-Z)
+      Integer MxAtP,MxTrm,NLenR,NAngR,NLangR,NDihR,NOuplR
+      Dimension IAtmBR(MxAtP,MxTrm,*),IAtmAR(MxAtP,MxTrm,*)
+      Dimension IAtmLR(MxAtP,MxTrm,*),IAtmDR(MxAtP,MxTrm,*)
+      Dimension IAtmOR(MxAtP,MxTrm,*)
+      Dimension NTermB(*),NTermA(*),NTermL(*),NTermD(*),NTermO(*)
+      Dimension IAtomB(MxAtP,MxTrm,*),IAtomA(MxAtP,MxTrm,*)
+      Dimension IAtomL(MxAtP,MxTrm,*),IAtomD(MxAtP,MxTrm,*)
+      Dimension IAtomO(MxAtP,MxTrm,*)
+      Dimension ITVB(*),ITVA(*),ITVLA(*),ITVD(*),ITVO(*)
+      Dimension IFixB(*),IFixA(*),IFixL(*),IFixD(*),IFixO(*)
+      Dimension CoefB(MxTrm,*),CoefA(MxTrm,*),CoefL(MxTrm,*)
+      Dimension CoefD(MxTrm,*),CoefO(MxTrm,*)
+
+      NLen=NLenR
+      NAng=NAngR
+      NLang=NLangR
+      NDih=NDihR
+      NOupl=NOuplR
+
+      Do 10 I=1,NLen
+       NTermB(I)=1
+       ITVB(I)=0
+       IFixB(I)=0
+       Do 11 K=1,MxTrm
+        CoefB(K,I)=0.0D0
+   11  Continue
+       CoefB(1,I)=1.0D0
+       Do 12 J=1,2
+        IAtomB(J,1,I)=IAtmBR(J,1,I)
+   12  Continue
+   10 Continue
+
+      Do 20 I=1,NAng
+       NTermA(I)=1
+       ITVA(I)=0
+       IFixA(I)=0
+       Do 21 K=1,MxTrm
+        CoefA(K,I)=0.0D0
+   21  Continue
+       CoefA(1,I)=1.0D0
+       Do 22 J=1,3
+        IAtomA(J,1,I)=IAtmAR(J,1,I)
+   22  Continue
+   20 Continue
+
+      Do 30 I=1,NLang
+       NTermL(I)=1
+       ITVLA(I)=0
+       IFixL(I)=0
+       Do 31 K=1,MxTrm
+        CoefL(K,I)=0.0D0
+   31  Continue
+       CoefL(1,I)=1.0D0
+       Do 32 J=1,4
+        IAtomL(J,1,I)=IAtmLR(J,1,I)
+   32  Continue
+   30 Continue
+
+      Do 40 I=1,NDih
+       NTermD(I)=1
+       ITVD(I)=0
+       IFixD(I)=0
+       Do 41 K=1,MxTrm
+        CoefD(K,I)=0.0D0
+   41  Continue
+       CoefD(1,I)=1.0D0
+       Do 42 J=1,4
+        IAtomD(J,1,I)=IAtmDR(J,1,I)
+   42  Continue
+   40 Continue
+
+      Do 50 I=1,NOupl
+       NTermO(I)=1
+       ITVO(I)=0
+       IFixO(I)=0
+       Do 51 K=1,MxTrm
+        CoefO(K,I)=0.0D0
+   51  Continue
+       CoefO(1,I)=1.0D0
+       Do 52 J=1,4
+        IAtomO(J,1,I)=IAtmOR(J,1,I)
+   52  Continue
+   50 Continue
+
+      Write(IOut,'(''   Primitive fallback active counts:'')')
+      Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,
+     $ '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
+     $ NLen,NAng,NLang,NDih,NOupl
       Return
       End
 *Deck PMOMG
