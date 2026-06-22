@@ -1,7 +1,63 @@
 # Glycine MSR Inputs
 
-This directory contains the MSR-compatible glycine II convergence test assembled
-from the glycine microwave and structure papers available locally.
+This directory contains MSR-compatible glycine I and II convergence tests
+assembled from the glycine microwave and structure papers available locally.
+
+## `glycine_I_cs_table5_constraints.msr`
+
+This is the compact `Cs` counterpart to the glycine II functional-constraint
+benchmark. The Cartesian atom order is:
+
+1. methylene `C`
+2. amino `N`
+3. amino `H`
+4. carboxyl `C`
+5. carbonyl `O`
+6. hydroxyl `O`
+7. hydroxyl `H`
+8. methylene `H`
+9. methylene `H`
+10. amino `H`
+
+The five-isotopologue data set contains the parent, `13C_carboxyl`,
+`13C_methylene`, `CD2`, and `15N` species. Rotational constants are
+reconstructed from the Gly-Ip parent values and isotope shifts reported by
+Kasalova et al.; the `dbvib` rows are the Gly-Ip zero-point corrections. The
+four constraints are the Gly-Ip Table 5 structural relations:
+
+```text
+ROH(Frozen,Value=0.9660)=R(6,7)
+ACOH(Frozen,Value=106.04)=A(4,6,7)
+HNH(Frozen,Value=104.98)=A(3,2,10)
+NH2WAG(Frozen,Value=57.67)=U(1,2,3,10)
+```
+
+Run:
+
+```bash
+python -m merlino semiexp \
+  --job benchmarks/semiexp_msr/inputs/glycine/glycine_I_cs_table5_constraints.msr \
+  --outdir working/semiexp/glycine_I_cs_table5_gic_fortran \
+  --backend fortran77 \
+  --coordinate-model gic \
+  --observable moments \
+  --rotational-components auto \
+  --max-iter 120 \
+  --damping 1.0e-6 \
+  --max-step 0.05
+```
+
+Reference result:
+
+- GIC convergence: `objective_tolerance` after 4 accepted steps and no
+  rejections, with a positive stationary-point check (`minimum`).
+- Final/active GIC count: 24/15; four functional constraints leave 11
+  independent fitted variables.
+- Condition number: about `4.46e3`.
+- Rotational RMS residual: `0.098813 MHz`; maximum absolute rotational
+  residual: `0.319639 MHz`.
+- Unit least-squares weights are used because the complete old-isotopologue
+  uncertainty table is not available in the local source bundle.
 
 ## `glycine_II_dpcs3_table5_constraints.msr`
 

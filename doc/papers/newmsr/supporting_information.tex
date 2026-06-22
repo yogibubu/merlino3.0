@@ -14,6 +14,76 @@ Non-Redundant and Symmetry-Adapted Coordinates for Black-Box Molecular Structure
 \begin{document}
 \maketitle
 
+\section*{Glycine I C$_s$ Constraint Benchmark}
+
+Table~\ref{tab:si-glycine-I-rotconstants} reports the Gly-I constrained
+benchmark. The fit uses moments of inertia as observables and all three
+rotational components because the C$_s$ structure is not a planar rotor in the
+inertial sense: the two methylene and two amino hydrogens lie outside the
+heavy-atom plane. The corrected constants are $B_e=B_0+\Delta
+B_\mathrm{vib}$ with the Gly-Ip zero-point corrections of Kasalov{\'a} et al.
+
+\begin{longtable}{llrrr}
+\caption{Complete rotational-constant comparison for glycine I. Corrected experimental constants, calculated constants, and differences are in MHz.}\label{tab:si-glycine-I-rotconstants}\\
+\toprule
+Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
+\midrule
+\endfirsthead
+\toprule
+Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
+\midrule
+\endhead
+parent & A & 10420.1700 & 10420.0311 & +0.1389 \\
+parent & B & 3907.5000 & 3907.5027 & -0.0027 \\
+parent & C & 2934.7300 & 2934.7284 & +0.0016 \\
+C13\_carboxyl & A & 10418.7000 & 10418.6418 & +0.0582 \\
+C13\_carboxyl & B & 3900.1500 & 3900.1419 & +0.0081 \\
+C13\_carboxyl & C & 2930.4600 & 2930.4646 & -0.0046 \\
+C13\_methylene & A & 10303.8300 & 10304.1496 & -0.3196 \\
+C13\_methylene & B & 3890.0500 & 3890.0956 & -0.0456 \\
+C13\_methylene & C & 2915.7200 & 2915.6944 & +0.0256 \\
+CD2 & A & 9388.2400 & 9388.2400 & +0.0000 \\
+CD2 & B & 3830.5100 & 3830.5100 & -0.0000 \\
+CD2 & C & 2853.8800 & 2853.8800 & -0.0000 \\
+N15 & A & 10420.1600 & 10420.0302 & +0.1298 \\
+N15 & B & 3792.6300 & 3792.5918 & +0.0382 \\
+N15 & C & 2869.4100 & 2869.4319 & -0.0219 \\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{llrr}
+\caption{Selected primitive structural parameters for the glycine I C$_s$ benchmark. Bond lengths are in \AA; angles and dihedrals are in degrees.}\label{tab:si-glycine-I-geometry}\\
+\toprule
+Parameter & Description & Value & Std. error \\
+\midrule
+\endfirsthead
+\toprule
+Parameter & Description & Value & Std. error \\
+\midrule
+\endhead
+R(1,2) & C--N & 1.44000 & 0.00127 \\
+R(1,4) & C--C & 1.50522 & 0.00558 \\
+R(1,8) & C--H & 1.09184 & 0.00075 \\
+R(1,9) & C--H & 1.09184 & 0.00075 \\
+R(2,3) & N--H & 1.00727 & 0.00082 \\
+R(2,10) & N--H & 1.00727 & 0.00082 \\
+R(4,5) & C--O & 1.21098 & 0.01302 \\
+R(4,6) & C--O & 1.35376 & 0.00855 \\
+R(6,7) & O--H & 0.96600 & 0.00000 \\
+A(2,1,4) & N--C--C & 115.678 & 0.346 \\
+A(8,1,9) & H--C--H & 105.777 & 0.101 \\
+A(3,2,10) & H--N--H & 104.980 & 0.000 \\
+A(1,4,5) & C--C--O & 124.889 & 0.487 \\
+A(1,4,6) & C--C--O & 112.165 & 0.851 \\
+A(5,4,6) & O--C--O & 122.946 & 0.412 \\
+A(4,6,7) & C--O--H & 106.040 & 0.000 \\
+D(2,1,4,5) & N--C--C--O & 180.000 & 0.000 \\
+D(1,4,6,7) & C--C--O--H & 0.000 & 0.000 \\
+D(8,1,4,5) & H--C--C--O & -56.725 & 0.135 \\
+D(9,1,4,5) & H--C--C--O & 56.725 & 0.135 \\
+\bottomrule
+\end{longtable}
+
 \section*{Glycine II Functional-Constraint Benchmark}
 
 Table~\ref{tab:si-glycine-rotconstants} reports the Gly-II DPCS3-constrained
@@ -332,7 +402,7 @@ convergence diagnostics.
 Paths are relative to the Merlino repository unless an absolute legacy input
 path is shown. The same runs can be launched from the graphical user interface
 (GUI) by selecting the
-Python backend, the indicated coordinate model, and the same input files.}\label{tab:si-reproducibility}\\
+indicated backend, coordinate model, and input files.}\label{tab:si-reproducibility}\\
 \toprule
 Case & Input and constraints & Coordinate choice \\
 \midrule
@@ -343,6 +413,9 @@ Case & Input and constraints & Coordinate choice \\
 \endhead
 Glycolaldehyde &
 \path{working/semiexp/glycolaldehyde/glycolaldehyde_reference.mse.toml}; no fixed primitive constraints. &
+GIC, ABC \\
+Glycine I &
+\path{benchmarks/semiexp_msr/inputs/glycine/glycine_I_cs_table5_constraints.msr}; C$_s$ Cartesian geometry, Gly-Ip vibrational corrections, and four Gaussian-style functional constraints with \texttt{Value=} targets. &
 GIC, ABC \\
 Glycine II &
 \path{benchmarks/semiexp_msr/inputs/glycine/glycine_II_dpcs3_table5_constraints.msr}; non-Cs DPCS3 Cartesian geometry, Gly-IIn vibrational corrections, and five Gaussian-style functional constraints with \texttt{Value=} targets. &
@@ -380,6 +453,14 @@ python -m merlino semiexp \
   --coordinate-model cartesian_symmetry
 
 GLY=benchmarks/semiexp_msr/inputs/glycine
+python -m merlino semiexp \
+  --job "$GLY/glycine_I_cs_table5_constraints.msr" \
+  --outdir working/semiexp/glycine_I_cs_table5_gic_fortran \
+  --backend fortran77 \
+  --coordinate-model gic \
+  --observable moments \
+  --rotational-components auto
+
 python -m merlino semiexp \
   --job "$GLY/glycine_II_dpcs3_table5_constraints.msr" \
   --outdir working/semiexp/glycine_II_dpcs3_table5_repo_gic_fortran \

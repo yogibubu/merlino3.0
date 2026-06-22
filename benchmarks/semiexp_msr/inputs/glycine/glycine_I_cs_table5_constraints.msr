@@ -1,0 +1,102 @@
+#m symmetry=isotopes coordinate=cartesian structure=re source=Lovas1995_Kasalova2007_GlyIp
+#d niso=5
+! Glycine conformer I / Gly-Ip, Cs semiexperimental benchmark.
+! Geometry: Cartesian Gly-Ip reference structure from the local JPCL agreement
+! supporting geometry set, reordered as:
+! 1 methylene C, 2 amino N, 3 amino H, 4 carboxyl C, 5 carbonyl O,
+! 6 hydroxyl O, 7 hydroxyl H, 8-9 methylene H, 10 amino H.
+! Rotational constants are reconstructed from Kasalova et al. Table 3:
+! parent constants from the bracketed experimental parent values and isotope
+! shifts for 13C(3), 13C(1), C(1)-d2, and 15N. dbvib rows are the Gly-Ip
+! zero-point corrections Ae-A0, Be-B0, Ce-C0 from Table 8.
+! The four reduced-dimensionality constraints are the Gly-Ip constraints of
+! Kasalova et al. Table 5. Unit least-squares weights are used because the
+! complete old-isotopologue uncertainty table is not available in this local
+! benchmark source bundle.
+
+C    -0.768058   -0.744960    0.000000
+N    -2.003394    0.006849   -0.000000
+H    -2.035495    0.617509   -0.807580
+C     0.500998    0.087190   -0.000000
+O     0.552240    1.291109   -0.000000
+O     1.601457   -0.698022    0.000000
+H     2.366332   -0.106134    0.000000
+H    -0.730192   -1.402411   -0.872200
+H    -0.730192   -1.402411    0.872200
+H    -2.035495    0.617509    0.807580
+
+constraints
+ROH(Frozen,Value=0.9660)=R(6,7)
+ACOH(Frozen,Value=106.04)=A(4,6,7)
+HNH(Frozen,Value=104.98)=A(3,2,10)
+NH2WAG(Frozen,Value=57.67)=U(1,2,3,10)
+end
+
+12.000000  \parent
+14.000000
+1.000000
+12.000000
+16.000000
+16.000000
+1.000000
+1.000000
+1.000000
+1.000000
+
+12.000000  \C13_carboxyl
+14.000000
+1.000000
+13.000000
+16.000000
+16.000000
+1.000000
+1.000000
+1.000000
+1.000000
+
+13.000000  \C13_methylene
+14.000000
+1.000000
+12.000000
+16.000000
+16.000000
+1.000000
+1.000000
+1.000000
+1.000000
+
+12.000000  \CD2
+14.000000
+1.000000
+12.000000
+16.000000
+16.000000
+1.000000
+2.000000
+2.000000
+1.000000
+
+12.000000  \N15
+15.000000
+1.000000
+12.000000
+16.000000
+16.000000
+1.000000
+1.000000
+1.000000
+1.000000
+
+bexp
+10341.500000  3876.200000  2912.400000  \parent
+10340.900000  3869.200000  2908.400000  \C13_carboxyl
+10227.100000  3859.100000  2893.800000  \C13_methylene
+ 9318.400000  3799.300000  2832.400000  \CD2
+10341.400000  3762.500000  2847.700000  \N15
+
+dbvib
+78.670000  31.300000  22.330000  \parent
+77.800000  30.950000  22.060000  \C13_carboxyl
+76.730000  30.950000  21.920000  \C13_methylene
+69.840000  31.210000  21.480000  \CD2
+78.760000  30.130000  21.710000  \N15

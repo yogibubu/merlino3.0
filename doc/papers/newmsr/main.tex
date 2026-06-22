@@ -57,10 +57,11 @@ corrections, predicate observations, parameter classes, reduced-dimensionality
 hydrogen models, statistical diagnostics, and human-readable reports within a
 single Cartesian/topology-based refinement workflow.
 
-Glycolaldehyde is used as a standard acyclic reference. Glycine II tests
-functional constraints inherited from high-level structural information,
-whereas cyclopentadiene, nitrobenzene, azulene, and norcamphor probe cyclic,
-planar aromatic, polycyclic, and bridged cases. Across these benchmarks the
+Glycolaldehyde is used as a standard acyclic reference. Glycine I and II test
+constrained refinements with, respectively, a C$_s$ symmetry model and a
+fully non-symmetric functional-constraint model, whereas cyclopentadiene,
+nitrobenzene, azulene, and norcamphor probe cyclic, planar aromatic,
+polycyclic, and bridged cases. Across these benchmarks the
 generalized-internal-coordinate and symmetry-Cartesian refinements give the
 same numerical ranks, effective dimensionalities, and rotational residuals,
 while final structural parameters and uncertainties remain chemically
@@ -144,11 +145,11 @@ The rotational semiexperimental problem is used here as a demanding test of a
 broader question: which coordinates provide the most robust route from
 experimental observables to molecular structures? Glycolaldehyde represents a
 standard case where conventional Z-matrix methods are already adequate.
-Glycine II, cyclopentadiene, nitrobenzene, azulene, and norcamphor are
+Glycine I and II, cyclopentadiene, nitrobenzene, azulene, and norcamphor are
 deliberately less forgiving benchmarks because they require incomplete
-isotopic information, functional structural constraints, ring closures,
-planar-component selection, fused or bridged topology, and nontrivial
-constraints. The results
+isotopic information, simple and coupled functional structural constraints,
+ring closures, planar-component selection, fused or bridged topology, and
+nontrivial constraints. The results
 show that automatic GICs and symmetry-adapted Cartesians lead to the same
 effective spaces and residuals, while final bond lengths, angles, dihedrals,
 and their uncertainties are reported uniformly from the optimized Cartesian
@@ -1219,10 +1220,11 @@ Diagnostics & Established least-squares diagnostics & Diagnostics provided by th
 The validation set was chosen to separate standard and non-standard coordinate
 problems. Glycolaldehyde is a small acyclic molecule for which a traditional
 Z-matrix is straightforward; it verifies that the automatic procedure does not
-lose efficiency in a simple case. Glycine II tests a reduced-dimensionality
-nonplanar refinement in which experimental isotopic information is insufficient
-without chemically defined functional constraints. Cyclopentadiene,
-nitrobenzene, azulene, and norcamphor are more demanding because rings,
+lose efficiency in a simple case. Glycine I and II test reduced-dimensionality
+refinements at two levels of complexity: Gly-I retains C$_s$ symmetry and uses
+four simple structural constraints, whereas Gly-II is treated without symmetry
+and uses coupled functional constraints. Cyclopentadiene, nitrobenzene,
+azulene, and norcamphor are more demanding because rings,
 planar rotational redundancy, fused topology, bridged connectivity, and
 missing deuterium substitutions force conventional workflows to choose derived
 coordinates, fixed hydrogen models, or manually coupled parameters.
@@ -1254,16 +1256,21 @@ constraints.
 \hfill
 \begin{minipage}{0.31\textwidth}
 \centering
-\includegraphics[width=\linewidth]{figures/glycine_II_numbering.pdf}
+\includegraphics[width=\linewidth]{figures/glycine_I_numbering.pdf}
 \end{minipage}
 \hfill
 \begin{minipage}{0.31\textwidth}
 \centering
-\includegraphics[width=\linewidth]{figures/cyclopentadiene_numbering.pdf}
+\includegraphics[width=\linewidth]{figures/glycine_II_numbering.pdf}
 \end{minipage}
 
 \vspace{0.6em}
 
+\begin{minipage}{0.31\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/cyclopentadiene_numbering.pdf}
+\end{minipage}
+\hfill
 \begin{minipage}{0.31\textwidth}
 \centering
 \includegraphics[width=\linewidth]{figures/nitrobenzene_numbering.pdf}
@@ -1273,12 +1280,14 @@ constraints.
 \centering
 \includegraphics[width=\linewidth]{figures/azulene_numbering.pdf}
 \end{minipage}
-\hfill
+
+\vspace{0.6em}
+
 \begin{minipage}{0.31\textwidth}
 \centering
 \includegraphics[width=\linewidth]{figures/norcamphor_numbering.pdf}
 \end{minipage}
-\caption{Atom numbering used for the glycolaldehyde, glycine II, cyclopentadiene, nitrobenzene, azulene, and norcamphor semiexperimental refinements. The labels are derived from the Cartesian input order and are used consistently in the GIC definitions, primitive-coordinate constraints, and structural tables.}
+\caption{Atom numbering used for the glycolaldehyde, glycine I, glycine II, cyclopentadiene, nitrobenzene, azulene, and norcamphor semiexperimental refinements. The labels are derived from the Cartesian input order and are used consistently in the GIC definitions, primitive-coordinate constraints, and structural tables.}
 \label{fig:numbering}
 \end{figure*}
 
@@ -1320,10 +1329,11 @@ primitives.
 
 Table~\ref{tab:coordinate-content} summarizes the GIC coordinate content. For
 glycolaldehyde the coordinate problem is standard: the active $A'$ variables
-are stretches and bends. Glycine II and norcamphor are complementary C$_1$
-cases: all GICs are formally totally symmetric, so dimensionality reduction
-comes from exact chemical constraints rather than symmetry. For nitrobenzene
-and azulene, planar aromatic symmetry leaves stretching and in-plane bending
+are stretches and bends. Glycine I is a C$_s$ constrained case, whereas
+glycine II and norcamphor are complementary C$_1$ cases: all GICs are
+formally totally symmetric, so dimensionality reduction comes from exact
+chemical constraints rather than symmetry. For nitrobenzene and azulene,
+planar aromatic symmetry leaves stretching and in-plane bending
 coordinates in the totally symmetric active space, whereas torsional and
 out-of-plane ring coordinates are retained in the complete coordinate report
 but excluded from the equilibrium refinement.
@@ -1337,6 +1347,7 @@ but excluded from the equilibrium refinement.
 System & Total & Stretching & Bending & Torsion/ring & Active totally symmetric character \\
 \midrule
 Glycolaldehyde & 18 & 7 (6) & 8 (6) & 3 (0) & 6 stretches + 6 bends \\
+Glycine I & 24 & 9 (7) & 10 (7) & 5 (1) & C$_s$ model; 4 functional constraints project 15 $A'$ variables to 11 \\
 Glycine II & 24 & 9 (9) & 10 (10) & 5 (5) & all GICs in C$_1$; 5 functional constraints project to 19 variables \\
 Cyclopentadiene & 27 & 11 (6) & 10 (4) & 6 (0) & 6 stretches + 4 bends \\
 Nitrobenzene & 36 & 14 (8) & 11 (5) & 11 (0) & 8 stretches + 5 bends \\
@@ -1349,7 +1360,10 @@ Norcamphor & 48 & 18 (18) & 25 (25) & 5 (5) & all GICs in C$_1$; 30 primitive H 
 Primitive constraints reduce the active spaces only after the totally
 symmetric coordinates have been selected. In azulene, selected MSR-inspired
 C--H distances and valence angles reduce the 17 totally symmetric GICs to ten
-effective variables. In glycine II, five Gaussian-style functional constraints
+effective variables. In glycine I, four tabulated constraints freeze the
+O--H distance, C--O--H angle, H--N--H angle, and NH$_2$ wagging coordinate,
+reducing the 15-dimensional $A'$ space to 11 variables. In glycine II, five
+Gaussian-style functional constraints
 couple C--H and N--H differences, methylene rocking/twisting combinations, and
 the average H--N--C--C torsion, reducing the 24-dimensional C$_1$ active
 space to 19 variables. In norcamphor, the absence of deuterium substitutions is
@@ -1415,9 +1429,23 @@ Stationary point & minimum \\
 \end{tabular}
 \end{table}
 
-\subsection{Glycine II Functional-Constraint Benchmark}
+\subsection{Glycine I and II Functional-Constraint Benchmarks}
 
-Glycine conformer II is a reduced-dimensionality benchmark because the
+Glycine conformer I provides a compact constrained C$_s$ benchmark. The fit
+uses the parent, $^{13}$C(carboxyl), $^{13}$C(methylene), CD$_2$, and
+$^{15}$N isotopologues, together with the Gly-Ip zero-point corrections of
+Kasalov{\'a} et al.\cite{Kasalova2007Glycine} Four Table~5 structural
+relations are imposed directly in Gaussian-style syntax: the O--H distance,
+the C--O--H angle, the H--N--H scissor angle, and the NH$_2$ wagging
+out-of-plane coordinate. GICForge assigns C$_s$ symmetry, generates 24 final
+GICs, and selects 15 $A'$ coordinates. Projection of the four constraints
+leaves 11 independent fitted variables. The fit converges in four accepted
+steps with no rejections, condition number $4.46\times10^3$, complete
+rotational RMS residual 0.0988 MHz, maximum residual 0.3196 MHz, and a
+positive optimized-space Hessian. The complete rotational comparison and
+primitive structural parameters are reported in the Supporting Information.
+
+Glycine conformer II is a more demanding reduced-dimensionality benchmark because the
 available isotopic information does not by itself determine a stable
 semiexperimental structure. Kasalov{\'a} et al. showed that high-level
 all-electron cc-pVTZ CCSD(T) structural information and vibrational
@@ -1870,7 +1898,7 @@ and parameter classes are specified in the same primitive-coordinate layer in
 both cases.
 
 The benchmarks show that this separation is especially useful when a compact
-acyclic Z-matrix is no longer natural: constrained glycine II, cyclic
+acyclic Z-matrix is no longer natural: constrained glycine I/II, cyclic
 cyclopentadiene and nitrobenzene, fused azulene, and bridged norcamphor all
 retain well-defined ranks, symmetry, and propagated structural uncertainties.
 Planar molecules are handled with two independent rotational components and
@@ -1887,7 +1915,7 @@ reduced-dimensionality treatments of incomplete isotopic data.
 
 \section*{Supporting Information Available}
 
-Complete glycine II, cyclopentadiene, nitrobenzene, and azulene
+Complete glycine I, glycine II, cyclopentadiene, nitrobenzene, and azulene
 rotational-constant comparisons, including corrected experimental constants,
 calculated constants, and differences. The nitrobenzene Kraitchman diagnostic
 is also provided. Additional diagnostic tables for glycolaldehyde and norcamphor, including

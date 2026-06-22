@@ -13,11 +13,20 @@ from typing import Any
 PAPER_BENCHMARK_SCHEMA = "merlino.semiexp.paper_regression.v1"
 DEFAULT_SNAPSHOT = Path("benchmarks/semiexp_msr/golden/semiexp_paper_regression.json")
 DEFAULT_OUTPUT_DIR = Path("benchmarks/semiexp_msr/generated")
-CASE_ORDER = ("glycolaldehyde", "glycine_II", "cyclopentadiene", "nitrobenzene", "azulene", "norcamphor")
+CASE_ORDER = (
+    "glycolaldehyde",
+    "glycine_I",
+    "glycine_II",
+    "cyclopentadiene",
+    "nitrobenzene",
+    "azulene",
+    "norcamphor",
+)
 PAIR_ORDER = ("AB", "AC", "BC")
 
 SYSTEM_LABELS = {
     "glycolaldehyde": "Glycolaldehyde",
+    "glycine_I": "Glycine I",
     "glycine_II": "Glycine II",
     "cyclopentadiene": "Cyclopentadiene",
     "nitrobenzene": "Nitrobenzene",
@@ -261,7 +270,7 @@ def _write_summary_csv(snapshot: dict[str, Any], path: Path) -> None:
         "run_dir",
     )
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
         for name in CASE_ORDER:
             row = {"system": name}
@@ -281,7 +290,7 @@ def _write_planar_csv(snapshot: dict[str, Any], path: Path) -> None:
         "run_dir",
     )
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
         for system, diagnostics in snapshot.get("planar_pair_diagnostics", {}).items():
             selected = diagnostics.get("selected", "")
@@ -536,7 +545,7 @@ def _components_to_pair(components: tuple[str, ...]) -> str:
 def _constraint_label(system: str, count: int) -> str:
     if count == 0:
         return "none"
-    if system == "glycine_II":
+    if system in {"glycine_I", "glycine_II"}:
         return f"{count} function"
     if system == "norcamphor":
         return f"{count} H primitive"

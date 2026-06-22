@@ -168,6 +168,11 @@ def main() -> None:
         OUT / "glycolaldehyde_numbering.pdf",
     )
     draw_structure(
+        "Glycine I",
+        DATA / "glycine_I_parent.xyz",
+        OUT / "glycine_I_numbering.pdf",
+    )
+    draw_structure(
         "Glycine II",
         DATA / "glycine_II_parent.xyz",
         OUT / "glycine_II_numbering.pdf",

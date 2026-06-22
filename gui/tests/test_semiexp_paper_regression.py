@@ -49,6 +49,7 @@ def test_paper_regression_snapshot_has_all_benchmarks():
     assert snapshot["schema"] == "merlino.semiexp.paper_regression.v1"
     assert tuple(snapshot["cases"]) == (
         "glycolaldehyde",
+        "glycine_I",
         "glycine_II",
         "cyclopentadiene",
         "nitrobenzene",
