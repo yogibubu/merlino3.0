@@ -1106,55 +1106,6 @@ C Clean values close to n*pi
       Integer IOut,NVar,ITPV(*),NTerm(*)
       Dimension IAtom(4,15,*)
       Dimension ValTot(*)
-      Character S1*4,S2*4,SP*4
-      Pi=4.0d0*DAtan(1.0d0)
-      ToDeg=1.80d2/Pi
-      IPair=0
-      IVar=1
-   10 If(IVar.gt.NVar) Return
-      If(ITPV(IVar).ne.1) Then
-       IVar=IVar+1
-       Go To 10
-      EndIf
-      If(IVar.eq.NVar) Return
-      If(ITPV(IVar+1).ne.1) Then
-       IVar=IVar+1
-       Go To 10
-      EndIf
-      JVar=IVar+1
-      IPair=IPair+1
-      Call IntoCh(IVar,S1,L1)
-      Call IntoCh(JVar,S2,L2)
-      Call IntoCh(IPair,SP,LP)
-      Call PickPckAtoms(IAtom,NTerm,IVar,I1a,I2a,I3a,I4a)
-      Call PickPckAtoms(IAtom,NTerm,JVar,J1a,J2a,J3a,J4a)
-      QPck=DSqrt(ValTot(IVar)*ValTot(IVar)+
-     $           ValTot(JVar)*ValTot(JVar))
-      PhiP=DAtan2(ValTot(JVar),ValTot(IVar))
-      If(I1a.eq.0.and.I2a.eq.0.and.I3a.eq.0.and.I4a.eq.0.and.
-     $   J1a.eq.0.and.J2a.eq.0.and.J3a.eq.0.and.J4a.eq.0) then
-       Write(IOut,1001) SP,S1,S2,QPck,PhiP,PhiP*ToDeg
-      ElseIf(J1a.eq.0.and.J2a.eq.0.and.J3a.eq.0.and.J4a.eq.0) then
-       Write(IOut,1002) SP,S1,S2,I1a,I2a,I3a,I4a,QPck,PhiP,PhiP*ToDeg
-      ElseIf(I1a.eq.0.and.I2a.eq.0.and.I3a.eq.0.and.I4a.eq.0) then
-       Write(IOut,1003) SP,S1,S2,J1a,J2a,J3a,J4a,QPck,PhiP,PhiP*ToDeg
-      Else
-       Write(IOut,1000) SP,S1,S2,I1a,I2a,I3a,I4a,J1a,J2a,J3a,J4a,
-     $   QPck,PhiP,PhiP*ToDeg
-      EndIf
-      IVar=IVar+2
-      Go To 10
- 1000 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
-     $ '  atoms (',I3,',',I3,',',I3,',',I3,') and (',I3,',',I3,',',
-     $ I3,',',I3,') Q=',F12.6,' rad Phi=',F12.6,' rad =',F12.6,' deg')
- 1001 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
-     $ '  Q=',F12.6,' rad Phi=',F12.6,' rad =',F12.6,' deg')
- 1002 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
-     $ '  atoms (',I3,',',I3,',',I3,',',I3,') Q=',F12.6,' rad Phi=',
-     $ F12.6,' rad =',F12.6,' deg')
- 1003 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
-     $ '  atoms (',I3,',',I3,',',I3,',',I3,') Q=',F12.6,' rad Phi=',
-     $ F12.6,' rad =',F12.6,' deg')
       End
 *Deck PickPckAtoms
       Subroutine PickPckAtoms(IAtom,NTerm,IVar,I1,I2,I3,I4)
