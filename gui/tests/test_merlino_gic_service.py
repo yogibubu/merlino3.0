@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from merlino_core.cli import build_parser as merlino_parser
 from merlino_gic import (
     GICDefinition,
     GICDefinitionError,
@@ -21,6 +22,25 @@ from merlino_fortran import resolve_backend
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.cli import _python_local_gic_allowed
+
+
+def test_gic_contract_cli_parser_accepts_contract_arguments():
+    args = merlino_parser().parse_args(
+        [
+            "gic-contract",
+            "--geometry",
+            "water.xyz",
+            "--workdir",
+            "contract",
+            "--json-out",
+            "contract.json",
+        ]
+    )
+
+    assert args.command == "gic-contract"
+    assert str(args.geometry) == "water.xyz"
+    assert str(args.workdir) == "contract"
+    assert str(args.json_out) == "contract.json"
 
 
 def test_run_gicforge_collects_outputs_and_manifest(tmp_path):

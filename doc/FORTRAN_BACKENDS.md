@@ -42,6 +42,20 @@ The active build intentionally does not compile old Z-matrix, FITPOT/VCI/DVR,
 MSR/isotope or rate utilities. Those historical programs are not duplicated in
 Merlino4.
 
+### Python/Fortran Contract
+
+The reusable backend contract is:
+
+```bash
+python -m merlino gic-contract --geometry water.xyz --workdir gic_contract
+```
+
+The contract runs GICForge twice.  The raw run compares Fortran `bmat.out`
+against Python analytic B rows evaluated in the same oriented Cartesian frame
+written by GICForge.  The symmetrized run checks the frozen schema, point group
+and irreducible-representation labels.  This separates the numerical B-matrix
+contract from the post-GICForge symmetry-adaptation contract.
+
 ## Active DVR Backend
 
 - Source: `fortran/dvr/`

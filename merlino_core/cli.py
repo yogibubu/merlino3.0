@@ -17,6 +17,7 @@ from merlino_gic import (
     define_gics_from_cartesian,
     evaluate_gic_definition,
     run_gicforge,
+    run_gicforge_python_fortran_contract,
     write_gaussian_gic_input,
 )
 from merlino_gf import (
@@ -117,6 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
     gic_bmat.add_argument("--metadata-out", type=Path, help="Optional CSV GIC name/irrep metadata")
     gic_bmat.add_argument("--fortran-bmat", type=Path, help="Optional GICForge bmat.out for Python/Fortran comparison")
     gic_bmat.add_argument("--comparison-out", type=Path, help="Optional JSON report for --fortran-bmat comparison")
+
+    gic_contract = sub.add_parser("gic-contract", help="Run the Python/Fortran GICForge consistency contract")
+    gic_contract.add_argument("--geometry", "--xyz", dest="geometry", type=Path, required=True)
+    gic_contract.add_argument("--workdir", type=Path, required=True)
+    gic_contract.add_argument("--executable", type=Path)
+    gic_contract.add_argument("--json-out", type=Path)
 
     summary = sub.add_parser("gaussian-summary", help="Summarize a Gaussian log/out file")
     summary.add_argument("log", type=Path)
@@ -474,6 +481,30 @@ def main(argv: list[str] | None = None) -> int:
             args.metadata_out.write_text("\n".join(rows) + "\n", encoding="utf-8")
             print(f"metadata: {args.metadata_out}")
         return 0
+
+    if args.command == "gic-contract":
+        from merlino_semiexp.geometry_input import read_geometry_input
+
+        geometry = read_geometry_input(args.geometry)
+        contract = run_gicforge_python_fortran_contract(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=args.workdir,
+            executable=args.executable,
+        )
+        print(f"passed: {contract.passed}")
+        print(f"point_group: {contract.point_group}")
+        print(f"raw_b_matrix_match: {contract.raw_b_matrix.passed}")
+        print(f"raw_b_matrix_max_abs_diff: {contract.raw_b_matrix.max_abs_diff:.8e}")
+        print(f"raw_gic_count: {contract.raw_gic_count}")
+        print(f"sym_gic_count: {contract.sym_gic_count}")
+        print(f"totally_symmetric_count: {contract.totally_symmetric_count}")
+        print(f"raw_names: {','.join(contract.raw_names)}")
+        print(f"sym_irreps: {','.join(contract.irreps)}")
+        if args.json_out is not None:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(json.dumps(contract.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return 0 if contract.passed else 1
 
     if args.command == "semiexp":
         legacy_msr_job = bool(args.job and is_msr_legacy_file(args.job))
