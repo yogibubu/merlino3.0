@@ -551,7 +551,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
-     $  ValTO,C,DoBMat,BMat,Scr)
+     $  ValTO,C,DoBMat,BMat,Scr,ImpDih)
       NTTsav=NTT
       Write(IOut,'(/,'' Final GIC summary (Gaussian syntax)'')')
       PrtVal=.True.
@@ -576,9 +576,9 @@ C Gaussian Input
        Write(IPunch,'(2I3)') ICharg,Multip
        do 90 IAt=1,NAtoms
         If(Loose) then
-         Write(IPunch,'(I3,3F9.2)') IAn(IAt),(C(ii,IAt),ii=1,3)
+         Write(IPunch,'(I3,3F18.10)') IAn(IAt),(C(ii,IAt),ii=1,3)
         Else
-         Write(IPunch,'(I3,3F12.6)') IAn(IAt),(C(ii,IAt),ii=1,3)
+         Write(IPunch,'(I3,3F18.10)') IAn(IAt),(C(ii,IAt),ii=1,3)
         EndIf
    90  continue
        Write(IPunch,'('' '')')

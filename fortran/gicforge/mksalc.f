@@ -1635,16 +1635,16 @@ C       Value1=OutAngOLd(C(1,IAt2),C(1,IAt1),C(1,IAt3),C(1,IAt4))*ToDeg
         Write(IOut,'('' Combinations of Improper Dihedrals NYI'')')
         Stop
        EndIf
-       write(IOut,'('' UGNIC'',A4,''=['',F8.5,''*U('',3(I3,'',''),I3,
+       write(IOut,'('' UGNIC'',A4,''=['',F12.8,''*U('',3(I3,'',''),I3,
      $  '')'')',advance='no') StrVar(1:4),Coef(1,IVar),
      $  (IAtom(ii,1,IVar),ii=1,4)
        if(NTrmI.gt.2) then
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
-         write(IOut,'(''+'',F8.5,''*U('',3(I3,'',''),I3,'')'')',
+         write(IOut,'(''+'',F12.8,''*U('',3(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,4)
          else
-           write(IOut,'(''-'',F8.5,''*U('',3(I3,'',''),I3,'')'')',
+           write(IOut,'(''-'',F12.8,''*U('',3(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,4)
          endif
   110   continue
@@ -1837,11 +1837,11 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
        EndIf
        If(IFixA(IVar).eq.0) then
         If(PrtVal) then
-         write(IOut,'(1X,A4,A4,''(Value='',F8.5,'')=['',F8.5,''*A('',
+         write(IOut,'(1X,A4,A4,''(Value='',F8.5,'')=['',F12.8,''*A('',
      $    2(I3,'',''),I3,'')'')',advance='no')LBl(1:4),StrVar(1:4),
      $    Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3)
         Else
-         write(IOut,'(1X,A4,A4,'' =['',F8.5,''*A('',
+         write(IOut,'(1X,A4,A4,'' =['',F12.8,''*A('',
      $    2(I3,'',''),I3,'')'')',advance='no')LBl(1:4),StrVar(1:4),
      $    Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3)
         EndIf
@@ -1859,19 +1859,19 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
        if(NTrmI.gt.2) then 
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
-          write(IOut,'(''+'',F8.5,''*A('',2(I3,'',''),I3,'')'')',
+          write(IOut,'(''+'',F12.8,''*A('',2(I3,'',''),I3,'')'')',
      $    advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,3)
          else
-          write(IOut,'(''-'',F8.5,''*A('',2(I3,'',''),I3,'')'')',
+          write(IOut,'(''-'',F12.8,''*A('',2(I3,'',''),I3,'')'')',
      $    advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,3)
          endif
   110   continue
        endif
        if(Coef(NTrmI,IVar).gt.0.d0) then
-        write(IOut,'(''+'',F8.5,''*A('',2(I3,'',''),I3,'')]'')')
+        write(IOut,'(''+'',F12.8,''*A('',2(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3)
        else
-        write(IOut,'(''-'',F8.5,''*A('',2(I3,'',''),I3,'')]'')')
+        write(IOut,'(''-'',F12.8,''*A('',2(I3,'',''),I3,'')]'')')
      $     DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3)
        endif
   100 continue    
@@ -1924,22 +1924,22 @@ C Set for MxVar=999
         go to 100
        EndIf
        If(PrtVal) then
-        write(IOut,'('' LGIC'',A4,''(Value='',F7.4,'') =['',F7.4,
+        write(IOut,'('' LGIC'',A4,''(Value='',F7.4,'') =['',F12.8,
      $   ''*L('',4(I3,'',''),I3,'')'')',advance='no')StrVar(1:4), 
      $   Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3),I4,I5
        Else
-        write(IOut,'('' LGIC'',A4,'' =['',F7.4,
+        write(IOut,'('' LGIC'',A4,'' =['',F12.8,
      $   ''*L('',4(I3,'',''),I3,'')'')',advance='no')StrVar(1:4),
      $   Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3),I4,I5
        EndIf
        if(NTrmI.gt.2) then
         do 110 i44=2,NTrmI-1
          if(Coef(i44,IVar).gt.0.d0) then
-          write(IOut,'(''+'',F6.4,''*L('',4(I3,'',''),I3,'')'')',
+          write(IOut,'(''+'',F12.8,''*L('',4(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i44,IVar)),(IAtom(ii,i44,IVar),
      $     ii=1,3),Abs(I4),I5
          else
-          write(IOut,'(''-'',F6.4,''*L('',4(I3,'',''),I3,'')'')',
+          write(IOut,'(''-'',F12.8,''*L('',4(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i44,IVar)),(IAtom(ii,i44,IVar),
      $     ii=1,3),I4,I5
          endif
@@ -1947,11 +1947,11 @@ C Set for MxVar=999
        endif
        I5=IAtom(4,NTrmI,IVar)
        if(Coef(NTrmI,IVar).gt.0.d0) then
-        write(IOut,'(''+'',F6.4,''*L('',4(I3,'',''),I3,'')]'')')
+        write(IOut,'(''+'',F12.8,''*L('',4(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),
      $    I4,I5
        else
-        write(IOut,'(''-'',F6.4,''*L('',4(I3,'',''),I3,'')]'')')
+        write(IOut,'(''-'',F12.8,''*L('',4(I3,'',''),I3,'')]'')')
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),
      $    I4,I5
        endif
@@ -2041,23 +2041,23 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
        If(ITPV(IVar).eq.1) Then
         If(PrtVal) then
          write(IOut,'(1X,A4,A4,''(Inactive,Value='',F10.5,
-     $    '')=['',F10.5,''*D('',3(I3,'',''),I3,'')'')',
+     $    '')=['',F12.8,''*D('',3(I3,'',''),I3,'')'')',
      $    advance='no') Lbl(1:4),StrVar(1:4),Value,Coef(1,IVar),
      $    (IAtom(ii,1,IVar),ii=1,4)
         Else
-         write(IOut,'(1X,A4,A4,''(Inactive)=['',F10.5,
+         write(IOut,'(1X,A4,A4,''(Inactive)=['',F12.8,
      $    ''*D('',3(I3,'',''),I3,'')'')',advance='no')
      $    Lbl(1:4),StrVar(1:4),Coef(1,IVar),
      $    (IAtom(ii,1,IVar),ii=1,4)
         EndIf
        Else
         If(PrtVal) then
-         write(IOut,'(1X,A4,A4,''(Value='',F10.5,'')=['',F10.5,
+         write(IOut,'(1X,A4,A4,''(Value='',F10.5,'')=['',F12.8,
      $    ''*D('',3(I3,'',''),I3,'')'')',advance='no')
      $    Lbl(1:4),StrVar(1:4),Value,Coef(1,IVar),
      $    (IAtom(ii,1,IVar),ii=1,4)
         Else
-         write(IOut,'(1X,A4,A4,'' =['',F10.5,''*D('',
+         write(IOut,'(1X,A4,A4,'' =['',F12.8,''*D('',
      $    3(I3,'',''),I3,'')'')',advance='no') Lbl(1:4),
      $    StrVar(1:4),Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,4)
         EndIf
@@ -2065,19 +2065,19 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
        if(NTrmI.gt.2) then
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
-          write(IOut,'(''+'',F7.5,''*D('',3(I3,'',''),I3,'')'')',
+          write(IOut,'(''+'',F12.8,''*D('',3(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,4)
          else
-          write(IOut,'(''-'',F7.5,''*D('',3(I3,'',''),I3,'')'')',
+          write(IOut,'(''-'',F12.8,''*D('',3(I3,'',''),I3,'')'')',
      $     advance='no') DAbs(Coef(i4,IVar)),(IAtom(ii,i4,IVar),ii=1,4)
          endif
   110   continue
        endif
        if(Coef(NTrmI,IVar).gt.0.d0) then
-        write(IOut,'(''+'',F7.5,''*D('',3(I3,'',''),I3,'')]'')')
+        write(IOut,'(''+'',F12.8,''*D('',3(I3,'',''),I3,'')]'')')
      $   DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,4)
        else
-        write(IOut,'(''-'',F7.5,''*D('',3(I3,'',''),I3,'')]'')')
+        write(IOut,'(''-'',F12.8,''*D('',3(I3,'',''),I3,'')]'')')
      $   DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,4)
        endif
   100 continue

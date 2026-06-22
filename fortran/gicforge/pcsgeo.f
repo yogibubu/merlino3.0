@@ -80,6 +80,7 @@ C Compute New Internal Coordinates
       Call AMove(3*NAtoms,Scr(ICNew),C)
       Return
       End
+
 *Deck MkInt
       Subroutine MkInt(IOut,IPrint,NAtoms,MxAtP,MxTrm,NTot,NLen,NAng,
      $  NLAng,NDih,NOuPl,IAtmB,IAtmA,IAtmL,IAtmD,IAtmO,C,R)
@@ -228,7 +229,7 @@ C Compute B Matrix
       Call MkBNew(IOut,IPrint,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,
      $  NLAng,NOupl,NDih,IAtmB,IAtmA,IAtmL,IAtmD,IAtmO,NTermB,
      $  NTermA,NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,
-     $  C,Scr(IniB))
+     $  C,Scr(IniB),.False.)
       If(NoG) Return
 C Compute BB+ (DoMW=.false.) or G (DoMW=.true.) Matrix
       Call MakeG(IOut,IPrint,DoMW,NAtoms,NTot,AtMass,Scr(IniB),
@@ -246,4 +247,3 @@ C Compute (B+)-1 = (BB+)-1B (3*NAtoms columns)
      $  Scr(InBTm1))
       Return
       End
-

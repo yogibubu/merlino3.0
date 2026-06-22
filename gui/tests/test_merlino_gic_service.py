@@ -18,6 +18,7 @@ from merlino_gic import (
     run_gicforge_python_fortran_contract,
     run_gicforge,
 )
+from merlino_gic.model import parse_gicforge_line
 from merlino_fortran import resolve_backend
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
 from merlino_fit.survibfit.primitives import Primitive
@@ -299,6 +300,16 @@ def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
     assert sorted(contract.raw_primitive_signatures) == sorted(contract.sym_primitive_signatures)
     assert contract.raw_coordinate_kind_counts == {"angle": 1, "bond": 2}
     assert contract.sym_coordinate_kind_counts == contract.raw_coordinate_kind_counts
+
+
+def test_gicforge_parser_distinguishes_improper_dihedral_and_out_of_plane():
+    impd = parse_gicforge_line(" ImpD0001 = D(  1,  2,  6,  4)")
+    oupl = parse_gicforge_line(" OuPl0001 = U(  1,  2,  6,  4)")
+
+    assert impd is not None
+    assert oupl is not None
+    assert impd[1] == [(1.0, Primitive("dihedral", (0, 1, 5, 3)))]
+    assert oupl[1] == [(1.0, Primitive("out_of_plane", (0, 1, 5, 3)))]
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

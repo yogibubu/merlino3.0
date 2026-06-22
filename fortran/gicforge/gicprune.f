@@ -18,7 +18,7 @@ C=======================================================================
      $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,
      $ IPrimD,IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,
      $ IFixD,IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,
-     $ ValTD,ValTO,C,DoBMat,BMat,Scr)
+     $ ValTD,ValTO,C,DoBMat,BMat,Scr,ImpDih)
       Implicit Real*8 (A-H,O-Z)
       Integer MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,NOupl,NDih
       Dimension NTermB(*),NTermA(*),NTermL(*),NTermD(*),NTermO(*)
@@ -34,7 +34,7 @@ C=======================================================================
       Dimension ValTB(*),ValTA(*),ValTL(*),ValTD(*),ValTO(*)
       Dimension C(3,*),BMat(3*NAtoms,*),Scr(*)
       Logical Keep(1000)
-      Logical DoB1,DoBMat
+      Logical DoB1,DoBMat,ImpDih
       Character*16 Label
 
       If(NAtoms.le.0) return
@@ -45,7 +45,8 @@ C=======================================================================
       DoB1=.False.
       Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,
      $ NOupl,NDih,IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,NTermB,NTermA,
-     $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat)
+     $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat,
+     $ ImpDih)
 
       Write(IOut,'(/,'' Type-local residual GIC redundancy pruning'')')
       Write(IOut,'(''   Method: modified Gram-Schmidt on B rows;'',
@@ -112,7 +113,8 @@ C=======================================================================
        NTot=NLen+NAng+NLAng+NDih+NOupl
        Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,
      $ NOupl,NDih,IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,NTermB,NTermA,
-     $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat)
+     $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat,
+     $ ImpDih)
        Call WriteGICBMat(NAtoms,NTot,BMat)
        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
       EndIf

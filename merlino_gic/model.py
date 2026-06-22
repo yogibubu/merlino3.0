@@ -524,8 +524,8 @@ def run_gicforge_python_fortran_contract(
     totally_symmetric_count = sum(1 for irrep in sym_definition.irreps if irrep in {"A1", "A'", "Ag", "A"})
     raw_signatures = tuple(_primitive_signature(primitive) for primitive in raw_definition.primitives)
     sym_signatures = tuple(_primitive_signature(primitive) for primitive in sym_definition.primitives)
-    raw_kind_counts = _coordinate_kind_counts(raw_definition.names, raw_definition.labels)
-    sym_kind_counts = _coordinate_kind_counts(sym_definition.names, sym_definition.labels)
+    raw_kind_counts = _definition_coordinate_kind_counts(raw_definition)
+    sym_kind_counts = _definition_coordinate_kind_counts(sym_definition)
     errors: list[str] = []
     if not raw_comparison.passed:
         errors.append(
@@ -630,6 +630,22 @@ def _coordinate_kind(name: str, label: str) -> str:
     return "unknown"
 
 
+def _definition_coordinate_kind_counts(definition: GICDefinition) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    u_matrix = np.asarray(definition.u_matrix, dtype=float)
+    for column in range(u_matrix.shape[1]):
+        rows = np.flatnonzero(np.abs(u_matrix[:, column]) > 1.0e-12)
+        kinds = {definition.primitives[int(row)].kind for row in rows}
+        if len(kinds) == 1:
+            kind = next(iter(kinds))
+        elif not kinds:
+            kind = "unknown"
+        else:
+            kind = "mixed:" + "+".join(sorted(kinds))
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
 def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], str] | None:
     stripped = line.strip()
     if not stripped or "=" not in stripped:
@@ -640,11 +656,11 @@ def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], 
     number = r"[+-]?\s*(?:\d+(?:\.\d*)?|\.\d+)(?:[EDed][+-]?\d+)?"
     for match in re.finditer(rf"({number})\s*\*\s*([RADLU])\(([^)]*)\)", rhs):
         coeff = float(match.group(1).replace(" ", "").replace("D", "E").replace("d", "e"))
-        terms.append((coeff, _gicforge_primitive(match.group(2), match.group(3), out_of_plane=name.startswith("ImpD"))))
+        terms.append((coeff, _gicforge_primitive(match.group(2), match.group(3))))
     if not terms:
         simple = re.search(r"\b([RADLU])\(([^)]*)\)", rhs)
         if simple:
-            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2), out_of_plane=name.startswith("ImpD"))))
+            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2))))
     if not terms:
         return None
     return name, terms, rhs
@@ -711,15 +727,13 @@ def _gicforge_point_group(provout: Path) -> str:
     return match.group(1) if match else "UNKNOWN"
 
 
-def _gicforge_primitive(kind: str, atoms_text: str, *, out_of_plane: bool = False) -> Primitive:
+def _gicforge_primitive(kind: str, atoms_text: str) -> Primitive:
     values = tuple(int(item.strip()) for item in atoms_text.split(",") if item.strip())
     atoms = tuple(value - 1 for value in values)
     if kind == "R" and len(atoms) == 2:
         return Primitive("bond", atoms)
     if kind == "A" and len(atoms) == 3:
         return Primitive("angle", atoms)
-    if kind == "D" and len(atoms) == 4 and out_of_plane:
-        return Primitive("out_of_plane", atoms)
     if kind == "D" and len(atoms) == 4:
         return Primitive("dihedral", atoms)
     if kind == "U" and len(atoms) == 4:

@@ -86,6 +86,13 @@ schema that the Fortran file represents, typically the raw post-pruning
 symmetry-adapted B matrix is evaluated from that frozen schema on the Python
 side.
 
+Improper/out-of-plane generation is keyword-driven and must remain identical in
+Fortran and Python.  With `G16` or `ImpDih`, GICForge writes improper dihedral
+coordinates as `ImpD... = D(...)`, and Python parses them as `dihedral`
+primitives.  With `GDV` or the default behavior, GICForge writes out-of-plane
+coordinates as `OuPl... = U(...)`, and Python parses them as `out_of_plane`
+primitives.
+
 The reusable `gic-contract` check is intentionally stricter than a coordinate
 count comparison.  Its JSON output records raw and symmetrized names, labels,
 primitive signatures, complete irrep order and the number of totally

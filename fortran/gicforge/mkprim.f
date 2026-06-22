@@ -706,9 +706,10 @@ C ILstAt(IFrag) = last  atom of fragment Ifrag
 *Deck MkBNew
       Subroutine MkBNew(IOut,IPrint,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,
      $  NLAng,NOupl,NDih,IAtmB,IAtmA,IAtmL,IAtmD,IAtmO,NTermB,NTermA,
-     $  NTermL,NTermD,NtermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat)
+     $  NTermL,NTermD,NtermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat,
+     $  ImpDih)
       Implicit Real*8 (A-H,O-Z)
-      Logical DoB1
+      Logical DoB1,ImpDih
       Dimension IAtmB(MxAtP,MxTrm,*),IAtmA(MxAtP,MxTrm,*)
       Dimension IAtmL(MxAtP,MxTrm,*),IAtmD(MxAtP,MxTrm,*)
       Dimension IAtmO(MxAtP,MxTrm,*)
@@ -783,10 +784,14 @@ C
          IAt=IAtmL(1,ITerm,ILAng)
          JAt=IAtmL(2,ITerm,ILAng)
          KAt=IAtmL(3,ITerm,ILAng)
-         LL=0
+         LL=IAtmL(4,ITerm,ILAng)
          Call AClear(12,B)
          If(DoB1) Call AClear(144,DB)
-         call DBLBnd(1,IAt,JAt,KAt,LL,B,IB,C,DB)
+         If(LL.eq.-1.or.LL.eq.-2) then
+          Call DBLinPy(IAt,JAt,KAt,LL,B,C)
+         Else
+          call DBLBnd(1,IAt,JAt,KAt,LL,B,IB,C,DB)
+         EndIf
          IXYZ=3*(IAt-1)
          JXYZ=3*(JAt-1)
          KXYZ=3*(KAt-1)
@@ -843,11 +848,19 @@ C
          LAt=IAtmO(4,ITerm,IOupl)
          call Aclear(12,B)
          If(DoB1) call Aclear(144,DB)
-         call DBOOPl(IAt,JAt,KAt,LAt,B,IB,C,DB,COST,SINT)
-         IXYZ=3*(IAt-1)
-         JXYZ=3*(JAt-1)
-         KXYZ=3*(KAt-1)
-         LXYZ=3*(LAt-1)
+         If(ImpDih) then
+          call DBTors(1,JAt,IAt,LAt,KAt,B,IB,C,DB)
+          IXYZ=3*(JAt-1)
+          JXYZ=3*(IAt-1)
+          KXYZ=3*(LAt-1)
+          LXYZ=3*(KAt-1)
+         Else
+          call DBOOPl(IAt,JAt,KAt,LAt,B,IB,C,DB,COST,SINT)
+          IXYZ=3*(IAt-1)
+          JXYZ=3*(JAt-1)
+          KXYZ=3*(KAt-1)
+          LXYZ=3*(LAt-1)
+         EndIf
          Do 520 IP=1,3
           Ind0=3*NAtoms*(IA0+IOupl-1)+IP
           Ind1=Ind0+IXYZ
@@ -872,6 +885,91 @@ C Print B matrix
        IEnd=Ini+3*NAtoms-1
        Write(IOut,'(6F10.5)') (BMat(ii),ii=ini,iend)
   600 Continue
+      Return
+      End
+
+*Deck DBLinPy
+      Subroutine DBLinPy(I,J,K,Mode,B,C)
+      Implicit Real*8(A-H,O-Z)
+      Dimension B(3,4),C(3,*),CLoc(3,3)
+      Integer At(3)
+      Data H/1.0D-4/
+      At(1)=I
+      At(2)=J
+      At(3)=K
+      Do 30 IA=1,3
+       Do 20 IC=1,3
+        Do 10 JA=1,3
+         Do 5 JC=1,3
+          CLoc(JC,JA)=C(JC,At(JA))
+    5    Continue
+   10   Continue
+        CLoc(IC,IA)=CLoc(IC,IA)+H
+        Call LinPyVal(CLoc,Mode,VP)
+        CLoc(IC,IA)=CLoc(IC,IA)-2.0D0*H
+        Call LinPyVal(CLoc,Mode,VM)
+        B(IC,IA)=(VP-VM)/(2.0D0*H)
+   20  Continue
+   30 Continue
+      Return
+      End
+
+*Deck LinPyVal
+      Subroutine LinPyVal(CLoc,Mode,Val)
+      Implicit Real*8(A-H,O-Z)
+      Dimension CLoc(3,3),U(3),V(3),Axis(3),E1(3),E2(3),BVec(3)
+      RN1=0.0D0
+      RN2=0.0D0
+      Do 10 IC=1,3
+       U(IC)=CLoc(IC,1)-CLoc(IC,2)
+       V(IC)=CLoc(IC,3)-CLoc(IC,2)
+       RN1=RN1+U(IC)*U(IC)
+       RN2=RN2+V(IC)*V(IC)
+   10 Continue
+      RN1=DSqrt(RN1)
+      RN2=DSqrt(RN2)
+      If(RN1.lt.1.0D-12.or.RN2.lt.1.0D-12) then
+       Val=0.0D0
+       Return
+      EndIf
+      Do 20 IC=1,3
+       U(IC)=U(IC)/RN1
+       V(IC)=V(IC)/RN2
+   20 Continue
+      Axis(1)=1.0D0
+      Axis(2)=0.0D0
+      Axis(3)=0.0D0
+      If(DAbs(U(1)).gt.0.9D0) then
+       Axis(1)=0.0D0
+       Axis(2)=1.0D0
+      EndIf
+      E1(1)=U(2)*Axis(3)-U(3)*Axis(2)
+      E1(2)=U(3)*Axis(1)-U(1)*Axis(3)
+      E1(3)=U(1)*Axis(2)-U(2)*Axis(1)
+      RN=DSqrt(E1(1)*E1(1)+E1(2)*E1(2)+E1(3)*E1(3))
+      If(RN.lt.1.0D-12) then
+       Val=0.0D0
+       Return
+      EndIf
+      Do 30 IC=1,3
+       E1(IC)=E1(IC)/RN
+   30 Continue
+      E2(1)=U(2)*E1(3)-U(3)*E1(2)
+      E2(2)=U(3)*E1(1)-U(1)*E1(3)
+      E2(3)=U(1)*E1(2)-U(2)*E1(1)
+      Do 40 IC=1,3
+       BVec(IC)=V(IC)+U(IC)
+   40 Continue
+      Val=0.0D0
+      If(Mode.eq.-1) then
+       Do 50 IC=1,3
+        Val=Val+BVec(IC)*E1(IC)
+   50  Continue
+      Else
+       Do 60 IC=1,3
+        Val=Val+BVec(IC)*E2(IC)
+   60  Continue
+      EndIf
       Return
       End
 *Deck MakeB
