@@ -563,7 +563,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
       Call PrtLAn(IOut,MxAtP,MxTrm,NLAng,NTTsum,Linear,NTermL,IAtomL,
      $   ITVLA,IFixL,CoefL,ValTL,C,PrtVal)
       Call PrtDih(IOut,MxAtP,MxTrm,NDih,NTTsum,DoScan,NTermD,IAtomD,
-     $   ITVD,IPerD,IFixD,CoefD,ValTD,C,Clean,PrtVal,.False.)
+     $   ITVD,IPerD,IFixD,CoefD,ValTD,C,Clean,PrtVal,.True.)
       Call PrtOut(IOut,MxAtP,MxTrm,NOupl,NTTsum,NTermO,IAtomO,ITVO,
      $   IFixO,CoefO,ValTO,C,ImpDih,PrtVal)
       NTT=NTTsav

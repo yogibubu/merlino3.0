@@ -302,6 +302,38 @@ def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
     assert contract.sym_coordinate_kind_counts == contract.raw_coordinate_kind_counts
 
 
+def test_gicforge_provout_final_summary_includes_ring_dihedral_coordinates(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+    repo = Path(__file__).resolve().parents[2]
+    xyz = repo / "benchmarks/semiexp_msr/inputs/cyclopentadiene/parent.xyz"
+    lines = xyz.read_text(encoding="utf-8").splitlines()
+    natoms = int(lines[0].strip())
+    atoms: list[str] = []
+    coords: list[list[float]] = []
+    for raw in lines[2 : 2 + natoms]:
+        fields = raw.split()
+        atoms.append(fields[0])
+        coords.append([float(value) for value in fields[1:4]])
+
+    contract = run_gicforge_python_fortran_contract(
+        atoms,
+        np.asarray(coords, dtype=float),
+        workdir=tmp_path / "contract",
+        executable=executable,
+    )
+    provout = (tmp_path / "contract" / "raw" / "provout").read_text(encoding="utf-8", errors="replace")
+    final_summary = provout[provout.index("Final GIC summary") :]
+
+    assert contract.passed is True
+    assert "RDef000" in final_summary
+    assert "RPck000" in final_summary
+    assert "QPck000" in final_summary
+    assert final_summary.index("RPck000") < final_summary.index("QPck000")
+
+
 def test_gicforge_parser_distinguishes_improper_dihedral_and_out_of_plane():
     impd = parse_gicforge_line(" ImpD0001 = D(  1,  2,  6,  4)")
     oupl = parse_gicforge_line(" OuPl0001 = U(  1,  2,  6,  4)")
