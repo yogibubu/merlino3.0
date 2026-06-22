@@ -11,6 +11,7 @@ from merlino_core.cli import build_parser as merlino_parser
 from merlino_gic import (
     GICDefinition,
     GICDefinitionError,
+    compare_gicforge_python_to_fortran,
     compare_gic_b_matrix_to_fortran,
     define_gics_from_cartesian,
     evaluate_gic_definition,
@@ -379,6 +380,54 @@ def test_gicforge_parser_distinguishes_improper_dihedral_and_out_of_plane():
     assert oupl is not None
     assert impd[1] == [(1.0, Primitive("dihedral", (0, 1, 5, 3)))]
     assert oupl[1] == [(1.0, Primitive("out_of_plane", (0, 1, 5, 3)))]
+
+
+def test_gicforge_python_port_matches_fortran_for_small_reference_molecules(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    cases = [
+        ("h2o", Path("geometry/h2o.xyz")),
+        ("co2", Path("merlino_fit/tests/data/co2.xyz")),
+        ("formaldehyde", Path("examples/semiexp/formaldehyde/parent.xyz")),
+    ]
+    for name, path in cases:
+        geometry = read_geometry_input(path)
+        report = compare_gicforge_python_to_fortran(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=tmp_path / name,
+            executable=executable,
+        )
+
+        assert report["passed"], report
+
+
+def test_gicforge_python_port_reports_ring_gap_for_coronene(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/coronene.xyz"))
+    report = compare_gicforge_python_to_fortran(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "coronene",
+        executable=executable,
+    )
+
+    assert report["passed"] is False
+    assert report["python_gic_count"] == report["fortran_gic_count"] == 102
+    assert report["python_kind_counts"] != report["fortran_kind_counts"]
+    assert report["fortran_kind_counts"]["angle"] == 30
+    assert report["fortran_kind_counts"]["dihedral"] == 30
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

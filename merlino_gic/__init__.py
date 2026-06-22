@@ -1,6 +1,12 @@
 """GIC workflow services for Merlino4."""
 
 from .gicforge_service import GICForgeError, GICForgeResult, run_gicforge
+from .gicforge_python import (
+    GICForgePythonCoordinate,
+    GICForgePythonModel,
+    build_gicforge_python_model,
+    compare_gicforge_python_to_fortran,
+)
 from .model import (
     GIC_DEFINITION_SCHEMA,
     GICBMatrixComparison,
@@ -22,6 +28,10 @@ __all__ = [
     "GICForgeError",
     "GICForgeResult",
     "run_gicforge",
+    "GICForgePythonCoordinate",
+    "GICForgePythonModel",
+    "build_gicforge_python_model",
+    "compare_gicforge_python_to_fortran",
     "GIC_DEFINITION_SCHEMA",
     "GICBMatrixComparison",
     "GICDefinition",

@@ -56,11 +56,19 @@ C=======================================================================
       Write(IOut,'(''   Stretch: kept all '',I5,
      $ '' primitive coordinates.'')') NLen
 
-      If(NTot.le.NVib) then
+      If(NTot.lt.NVib) then
+       Write(IOut,'(''   Current GIC count='',I5,
+     $ '' target vibrational rank='',I5)') NTot,NVib
+       Write(IOut,'('' ERROR: GIC set is below the vibrational rank '',
+     $ ''before pruning.'')')
+       Stop 1
+      EndIf
+
+      If(NTot.eq.NVib) then
        Write(IOut,'(''   Current GIC count='',I5,
      $ '' target vibrational rank='',I5)') NTot,NVib
        Write(IOut,'(''   No pruning performed: the set is already '',
-     $ ''minimal or below the vibrational rank.'')')
+     $ ''minimal.'')')
        Write(IOut,'(''   Final active GIC counts:'')')
        Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,
      $ '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
@@ -110,8 +118,13 @@ C=======================================================================
       Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,'' Linear='',I5,
      $ '' Torsion='',I5,'' Out-of-plane='',I5)') NLen,NAng,NLAng,NDih,
      $ NOupl
+      NTot=NLen+NAng+NLAng+NDih+NOupl
+      If(NTot.ne.NVib) then
+       Write(IOut,'('' ERROR: final GIC count='',I5,
+     $ '' differs from target vibrational rank='',I5)') NTot,NVib
+       Stop 1
+      EndIf
       If(DoBMat) then
-       NTot=NLen+NAng+NLAng+NDih+NOupl
        Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,
      $ NOupl,NDih,IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,NTermB,NTermA,
      $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat,

@@ -128,6 +128,29 @@ GIC/B-matrix model on later Cartesian geometries.  If rank-complete Fortran
 changes the non-redundant basis, downstream Python programs see that exact
 basis.
 
+## Faithful Python Port
+
+The in-progress Python backend lives in `merlino_gic.gicforge_python`. It is
+not the older Python-local SVD generator: it mirrors GICForge ordering,
+coordinate families, primitive orientation and type-local pruning. The helper
+
+```python
+compare_gicforge_python_to_fortran(atoms, coordinates, workdir=work)
+```
+
+runs the Python port and the Fortran backend on the same molecule and reports
+whether the final counts, coordinate kinds, ordered primitive signatures and
+B-matrix agree. A CLI entry point can be added once the port is complete enough
+for routine user-facing diagnostics.
+
+The current port is intentionally incremental. It already matches Fortran for
+primitive stretches, two-coordinate bends, linear bends, C2v three-coordinate
+angle SALCs, G16 improper orientation and type-local Gram-Schmidt pruning. The
+current expected diagnostic gap is fused-ring handling: coronene has the same
+total count in Python and Fortran, but Python still reports the missing
+`CyGNA/CyGND` port as a different angle/dihedral partition. This is used as a
+regression target while porting ring valence angles and ring torsions.
+
 The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
 `xyzin`, `provin`, `gauin`/`gauin.symm`, the GICForge executable, the GICForge
 manifest and, when available, the Git commit and dirty-worktree flag.  This
