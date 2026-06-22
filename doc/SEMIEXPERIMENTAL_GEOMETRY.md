@@ -24,9 +24,10 @@ molecule-specific parameter choices. The Merlino solver instead uses:
   non-redundant GICs within homogeneous coordinate families.
 - Analytic Wilson B matrix for standard internal primitives and analytic
   Cartesian derivatives of principal moments/rotational constants.
-- Weighted trust-region Levenberg-Marquardt least squares with SVD/QR
-  rank-revealing steps, dynamic Jacobian-column scaling, optional robust loss
-  grouped by isotopologue and predicted/actual reduction control.
+- Weighted trust-region Levenberg-Marquardt least squares with
+  SVD/More-Hebden rank-revealing steps, QR/Cauchy fallbacks, dynamic
+  Jacobian-column scaling, optional robust loss grouped by isotopologue and
+  predicted/actual reduction control.
 - Direct propagation of experimental uncertainties to GIC parameters.
 - Optional totally symmetric symmetry-Cartesian working coordinates requiring
   neither a Hessian nor a Wilson B-matrix inversion.
@@ -660,6 +661,13 @@ The output directory contains:
   fit.
 - `semiexp_svd_diagnostics.csv`: final weighted-Jacobian singular values and
   dominant coordinate combinations for each singular vector.
+- `semiexp_uncertainty_diagnostics.csv`: one-sigma parameter uncertainties
+  recomputed over several SVD rank cutoffs. This is a diagnostic for
+  rank-cutoff sensitivity, not a replacement for the reported covariance.
+- `semiexp_iteration_trace.csv`: iteration-by-iteration trust-region trace
+  with objective values, predicted and actual reductions, trust ratio, damping,
+  trust radius, step norm, rank, smallest singular value, robust-weight counts
+  and maximum constraint violation.
 - `semiexp_constraints.csv`: input fixed patterns, symmetry-expanded primitive
   constraints, parameter classes and matched active labels.
 - `semiexp_warnings.csv`: non-blocking diagnostic warnings for reduced rank,

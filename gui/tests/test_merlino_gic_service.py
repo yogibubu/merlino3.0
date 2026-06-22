@@ -290,3 +290,77 @@ def test_gic_symmetry_preserves_cyclopentadiene_irrep_and_class_counts(tmp_path)
     assert "Tor" in gicsym
     assert "cartesian_mixed_projection" not in diagnostics["sources"]
     assert not any(source.startswith("global_") for source in diagnostics["sources"])
+
+
+def test_gic_symmetry_is_invariant_to_rigid_motion_and_equivalent_atom_swap(tmp_path):
+    base = np.array(
+        [
+            [0.000000, 0.000000, 0.000000],
+            [0.757000, 0.000000, 0.586000],
+            [-0.757000, 0.000000, 0.586000],
+        ],
+        dtype=float,
+    )
+    theta = 0.37
+    rotation = np.array(
+        [
+            [np.cos(theta), -np.sin(theta), 0.0],
+            [np.sin(theta), np.cos(theta), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    variants = {
+        "base": (base, ("O", "H", "H"), ("R(  1,  2)", "R(  1,  3)", "A(  2,  1,  3)")),
+        "moved": (base @ rotation.T + np.array([2.0, -1.0, 0.4]), ("O", "H", "H"), ("R(  1,  2)", "R(  1,  3)", "A(  2,  1,  3)")),
+        "swapped": (base[[0, 2, 1]], ("O", "H", "H"), ("R(  1,  3)", "R(  1,  2)", "A(  3,  1,  2)")),
+    }
+    signatures = {}
+    for name, (coords, atoms, primitive_texts) in variants.items():
+        workdir = tmp_path / name
+        workdir.mkdir()
+        (workdir / "xyzin").write_text(
+            "\n".join(
+                [
+                    "3",
+                    name,
+                    *(f"{atom} {x:.8f} {y:.8f} {z:.8f}" for atom, (x, y, z) in zip(atoms, coords)),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        r12, r13, angle = primitive_texts
+        (workdir / "gauin").write_text(
+            "\n".join(
+                [
+                    "%chk=water.chk",
+                    "",
+                    "0 1",
+                    "",
+                    f" S1=[ 0.70710678*{r12}+0.70710678*{r13}]",
+                    f" S2=[ 0.70710678*{r12}-0.70710678*{r13}]",
+                    f" A1=[ 1.00000000*{angle}]",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        write_gic_symmetry_files(workdir)
+        diagnostics = json.loads((workdir / "gic_symmetry_diagnostics.json").read_text(encoding="utf-8"))
+        gicsym_rows = [
+            tuple(line.split(",")[:2])
+            for line in (workdir / "gicsym").read_text(encoding="utf-8").splitlines()[1:]
+            if line.strip()
+        ]
+        signatures[name] = {
+            "counts": diagnostics["counts"],
+            "targets": diagnostics["targets"],
+            "class_counts": diagnostics["class_counts"],
+            "rows": tuple((row[0][:2], row[1]) for row in gicsym_rows),
+        }
+
+    assert signatures["base"]["counts"] == signatures["moved"]["counts"] == signatures["swapped"]["counts"]
+    assert signatures["base"]["targets"] == signatures["moved"]["targets"] == signatures["swapped"]["targets"]
+    assert signatures["base"]["class_counts"] == signatures["moved"]["class_counts"] == signatures["swapped"]["class_counts"]
+    assert signatures["base"]["rows"] == signatures["moved"]["rows"] == signatures["swapped"]["rows"]

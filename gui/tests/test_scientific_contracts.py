@@ -27,6 +27,9 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     VibrationalCorrection,
     cartesian_symmetry_coordinate_model,
+    finite_difference_constraint_b_matrix,
+    mass_vector_for_observation,
+    parse_gaussian_style_constraints,
     corrected_constants_rows,
     fit_semiexperimental_geometry,
     kraitchman_comparison,
@@ -52,9 +55,11 @@ from merlino_semiexp.fit import (
     SemiexperimentalFitDiagnostics,
     SemiexperimentalGeometryParameter,
     SemiexperimentalParameter,
+    _combined_primitive_constraint_b_matrix,
     _atomic_number,
     _auto_resolve_isotopic_substitutions,
     _dynamic_parameter_scales,
+    _finite_difference_constraint_b_matrix,
     _fixed_primitives_from_patterns,
     _gic_expression_definitions_from_patterns,
     _gic_fixed_patterns,
@@ -64,6 +69,7 @@ from merlino_semiexp.fit import (
     _gic_model,
     _hydrogen_fixed_primitives,
     _isotopic_mapping_warning_rows,
+    _linear_primitive_constraints_from_patterns,
     _make_gicforge_backend,
     _primitive_constraint_key,
     _rank_revealing_lm_step,
@@ -73,6 +79,7 @@ from merlino_semiexp.fit import (
     _stationary_point_type,
     _svd_diagnostics_csv,
     _symmetry_expanded_fixed_primitives,
+    _uncertainty_diagnostics_csv,
     _warnings_csv,
 )
 from merlino_vpt2_vci import (
@@ -1006,6 +1013,8 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert (tmp_path / "semiexp" / "semiexp_influence.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_high_correlations.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_svd_diagnostics.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_uncertainty_diagnostics.csv").exists()
+    assert (tmp_path / "semiexp" / "semiexp_iteration_trace.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_constraints.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_warnings.csv").exists()
     assert (tmp_path / "semiexp" / "semiexp_leave_one_out.csv").exists()
@@ -1022,6 +1031,11 @@ def test_semiexperimental_geometry_fit_reduces_rotational_residuals(tmp_path):
     assert "difference_MHz" in rotconst_text
     report_text = (tmp_path / "semiexp" / "semiexp_report.txt").read_text(encoding="utf-8")
     assert "rotational_mean_square_MHz2" in report_text
+    assert "[iteration_trace]" in report_text
+    trace_text = (tmp_path / "semiexp" / "semiexp_iteration_trace.csv").read_text(encoding="utf-8")
+    assert "objective_before" in trace_text
+    assert "constraint_max_abs" in trace_text
+    assert len(result.iteration_trace) >= 1
 
 
 def test_semiexperimental_fit_can_use_hessian_free_symmetry_cartesians(tmp_path):
@@ -1473,6 +1487,88 @@ def test_semiexperimental_gaussian_gic_keyword_syntax_is_accepted():
     inactive = _gic_expression_constraints_from_patterns(("RPck001(Inactive,Value=1.0)=D(1,2,3,4)",))
     assert inactive == ()
     assert _gic_fixed_patterns(("RPck001(Inactive,Value=1.0)=D(1,2,3,4)",)) == ()
+
+
+def test_semiexperimental_constraint_jacobians_match_finite_differences():
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.1, 0.0],
+            [1.0, 1.0, 0.2],
+        ],
+        dtype=float,
+    )
+    fixed = _fixed_primitives_from_patterns(("R(1,2) Frozen",))
+    fixed_targets = np.array([1.0], dtype=float)
+    linear = _linear_primitive_constraints_from_patterns(("Linear(bond(1,3)-bond(1,2)=0.0)",))
+    expressions = _gic_expression_constraints_from_patterns(
+        (
+            "DR(Frozen,Value=0.0)=R(1,3)-R(1,2)",
+            "ZLOCK(Frozen,Value=0.2)=Z(4)",
+        )
+    )
+    targets = _gic_expression_constraint_targets(expressions, coords, (), np.zeros((0, 0)), ())
+
+    analytic = _combined_primitive_constraint_b_matrix(
+        coords,
+        fixed,
+        linear,
+        expression_constraints=expressions,
+        prims=(),
+        u_matrix=np.zeros((0, 0)),
+        labels=(),
+    )
+    numeric = _finite_difference_constraint_b_matrix(
+        coords,
+        fixed,
+        fixed_targets,
+        linear,
+        expression_constraints=expressions,
+        expression_targets=targets,
+        prims=(),
+        u_matrix=np.zeros((0, 0)),
+        labels=(),
+    )
+
+    assert analytic.shape == numeric.shape
+    assert analytic == pytest.approx(numeric, abs=2.0e-6)
+
+
+def test_semiexperimental_public_constraint_and_mass_apis():
+    atoms = ("O", "H", "H")
+    observation = IsotopologueObservation(
+        "D1",
+        RotationalConstants(1.0, 2.0, 3.0),
+        substitutions={2: 2},
+    )
+    fixed, linear, expressions, definitions = parse_gaussian_style_constraints(
+        (
+            "R(1,2) Frozen",
+            "Linear(bond(1,3)-bond(1,2)=0.0)",
+            "R12=R(1,2)",
+            "LOCK(Frozen,Value=1.0)=R12",
+        )
+    )
+
+    assert len(fixed) == 1
+    assert len(linear) == 1
+    assert len(expressions) == 1
+    assert len(definitions) == 2
+    assert mass_vector_for_observation(atoms, observation)[1] > mass_vector_for_observation(atoms, observation)[2]
+    assert callable(finite_difference_constraint_b_matrix)
+
+
+def test_semiexperimental_uncertainty_diagnostics_report_cutoff_sensitivity():
+    labels = ("q1", "q2")
+    jac = np.array([[1.0, 0.0], [0.0, 1.0e-9], [1.0, 1.0e-9]], dtype=float)
+    residual = np.array([0.1, -0.2, 0.1], dtype=float)
+
+    text = _uncertainty_diagnostics_csv(labels, jac, residual)
+
+    assert "relative_cutoff" in text
+    assert "sigma_ratio_to_default" in text
+    assert "rel_1e-8" in text
 
 
 def test_semiexperimental_gaussian_gic_definitions_are_reusable_constraints():

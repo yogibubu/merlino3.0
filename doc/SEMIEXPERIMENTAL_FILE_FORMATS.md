@@ -396,6 +396,11 @@ Every semiexperimental run writes:
 - `semiexp_svd_diagnostics.csv`: singular values of the final weighted
   Jacobian and the dominant working-coordinate combinations associated with
   small singular values.
+- `semiexp_uncertainty_diagnostics.csv`: covariance sensitivity to the SVD
+  rank cutoff, reported as parameter sigmas for the default cutoff and several
+  explicit relative cutoffs.
+- `semiexp_iteration_trace.csv`: machine-readable trust-region trace for every
+  accepted, rejected or topology-rejected trial step.
 - `semiexp_constraints.csv`: input fixed patterns, symmetry-expanded primitive
   constraints, parameter classes and the active labels they match.
 - `semiexp_warnings.csv`: non-blocking diagnostic warnings for reduced rank,

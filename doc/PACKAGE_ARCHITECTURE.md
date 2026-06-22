@@ -103,3 +103,12 @@ Cartesian parent geometry
 The two SEfit coordinate models share observations, correction conventions,
 parameter classes, primitive constraints, covariance analysis and reporting.
 Only the working-coordinate basis and Cartesian update map differ.
+
+Reusable SEfit submodules:
+
+- `merlino_semiexp.constraints`: public Gaussian-style constraint parsing,
+  expression values/targets and analytic-vs-finite-difference B-matrix checks.
+- `merlino_semiexp.diagnostics`: public SVD, uncertainty and iteration-trace
+  CSV helpers.
+- `merlino_semiexp.performance`: cached isotope-aware mass vectors used by
+  observable and Jacobian builders.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, replace
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 import csv
 import json
@@ -13,7 +14,9 @@ import tempfile
 
 import numpy as np
 
-from geometry.inertia import principal_moments
+from geometry.average_atomic_masses import atomic_mass
+from geometry.elements import atomic_number as geometry_atomic_number
+from geometry.isotopes_table import get_default_isotope, get_isotope
 from geometry.physical_constants import Phy, get_physical_constants
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
@@ -167,6 +170,32 @@ class SemiexperimentalFitDiagnostics:
 
 
 @dataclass(frozen=True)
+class SemiexperimentalIterationTrace:
+    iteration: int
+    status: str
+    objective_before: float
+    objective_after: float
+    actual_reduction: float
+    predicted_reduction: float
+    trust_ratio: float
+    line_search_scale: float
+    damping: float
+    trust_radius: float
+    step_norm: float
+    gradient_inf_norm: float
+    rank: int
+    smallest_singular_value: float
+    relative_smallest_singular_value: float
+    constraint_max_abs: float
+    robust_scale: float
+    robust_downweighted_observations: int
+    robust_downweighted_isotopologues: int
+    coordinate_model_age: int
+    b_projector_secant_error: float
+    linear_solver: str
+
+
+@dataclass(frozen=True)
 class MeasurementModel:
     observable: str
     components: tuple[str, ...]
@@ -292,6 +321,7 @@ class SemiexperimentalFitResult:
     rms_MHz: float
     diagnostics: SemiexperimentalFitDiagnostics
     leave_one_out: tuple[SemiexperimentalLeaveOneOutRow, ...] = ()
+    iteration_trace: tuple[SemiexperimentalIterationTrace, ...] = ()
     manifest: Path | None = None
 
 
@@ -467,6 +497,7 @@ def fit_semiexperimental_geometry(
     robust_sqrt = np.ones_like(measurement_model.observed, dtype=float)
     checkpoint_file = _checkpoint_path(outdir, checkpoint)
     previous_objective = None
+    iteration_traces: list[SemiexperimentalIterationTrace] = []
     iteration = 0
     for iteration in range(1, loop_max_iter + 1):
         active_mask = _active_mask(labels, fixed_gic_patterns, request.parameter_classes)
@@ -533,6 +564,7 @@ def fit_semiexperimental_geometry(
             break
         jac_weighted_scaled = jac_weighted * reduced_scales[None, :] if reduced_scales.size else jac_weighted
         gradient = jac_weighted_scaled.T @ weighted_residual
+        gradient_inf_norm = float(np.linalg.norm(gradient, ord=np.inf))
         if float(np.linalg.norm(gradient, ord=np.inf)) < gradient_tolerance:
             convergence_reason = "gradient_tolerance"
             break
@@ -587,6 +619,35 @@ def fit_semiexperimental_geometry(
                 rejected_steps += 1
                 stalled_rejections += 1
                 current_damping, trust_radius = _rejected_trust_update(current_damping, trust_radius, max_step)
+                iteration_traces.append(
+                    _iteration_trace_row(
+                        iteration,
+                        "topology_rejected",
+                        current_objective,
+                        line_search,
+                        current_damping,
+                        trust_radius,
+                        line_search.scale * float(np.linalg.norm(dq_scaled)),
+                        gradient_inf_norm,
+                        jac_weighted_scaled,
+                        line_search.coords,
+                        fixed_primitives,
+                        fixed_primitive_targets,
+                        linear_constraints=linear_constraints,
+                        expression_constraints=expression_constraints,
+                        expression_targets=expression_targets,
+                        prims=prims,
+                        u_matrix=u_matrix,
+                        labels=labels,
+                        expression_definitions=expression_definitions,
+                        robust_scale=robust_scale_used,
+                        robust_downweighted_observations=robust_downweighted_observations,
+                        robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                        coordinate_model_age=model_age,
+                        b_projector_secant_error=secant_update.relative_error,
+                        linear_solver=trust_step.solver,
+                    )
+                )
                 continue
             refresh_required = _should_refresh_gic_model(
                 line_search,
@@ -608,6 +669,35 @@ def fit_semiexperimental_geometry(
                 line_search.scale,
                 float(line_search.scale * np.linalg.norm(dq_scaled)),
                 max_step,
+            )
+            iteration_traces.append(
+                _iteration_trace_row(
+                    iteration,
+                    "accepted",
+                    current_objective,
+                    line_search,
+                    current_damping,
+                    trust_radius,
+                    line_search.scale * float(np.linalg.norm(dq_scaled)),
+                    gradient_inf_norm,
+                    jac_weighted_scaled,
+                    line_search.coords,
+                    fixed_primitives,
+                    fixed_primitive_targets,
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=prims,
+                    u_matrix=u_matrix,
+                    labels=labels,
+                    expression_definitions=expression_definitions,
+                    robust_scale=robust_scale_used,
+                    robust_downweighted_observations=robust_downweighted_observations,
+                    robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                    coordinate_model_age=next_model_age,
+                    b_projector_secant_error=secant_update.relative_error,
+                    linear_solver=trust_step.solver,
+                )
             )
             if previous_objective is not None and abs(previous_objective - line_search.objective) < tolerance_MHz * tolerance_MHz:
                 convergence_reason = "objective_tolerance"
@@ -654,6 +744,35 @@ def fit_semiexperimental_geometry(
             rejected_steps += 1
             stalled_rejections += 1
             current_damping, trust_radius = _rejected_trust_update(current_damping, trust_radius, max_step)
+            iteration_traces.append(
+                _iteration_trace_row(
+                    iteration,
+                    "rejected",
+                    current_objective,
+                    line_search,
+                    current_damping,
+                    trust_radius,
+                    line_search.scale * float(np.linalg.norm(dq_scaled)),
+                    gradient_inf_norm,
+                    jac_weighted_scaled,
+                    coords,
+                    fixed_primitives,
+                    fixed_primitive_targets,
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=prims,
+                    u_matrix=u_matrix,
+                    labels=labels,
+                    expression_definitions=expression_definitions,
+                    robust_scale=robust_scale_used,
+                    robust_downweighted_observations=robust_downweighted_observations,
+                    robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                    coordinate_model_age=model_age,
+                    b_projector_secant_error=last_b_projector_secant_error,
+                    linear_solver=trust_step.solver,
+                )
+            )
             if model_age:
                 prims, u_matrix, labels = _gic_model(coords, z_numbers, request, gicforge_backend)
                 _validate_gic_model_signature(labels, reference_gic_signature)
@@ -835,6 +954,7 @@ def fit_semiexperimental_geometry(
             weighted_jacobian=weighted_jac,
             weighted_residual=weighted_residual,
             robust_sqrt_weights=robust_sqrt,
+            iteration_trace=tuple(iteration_traces),
             preflight_warnings=preflight_warnings,
         )
     return SemiexperimentalFitResult(
@@ -859,6 +979,7 @@ def fit_semiexperimental_geometry(
         rms_MHz=rms,
         diagnostics=diagnostics,
         leave_one_out=leave_one_out_rows,
+        iteration_trace=tuple(iteration_traces),
         manifest=manifest,
     )
 
@@ -997,6 +1118,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
     checkpoint_file = _checkpoint_path(outdir, checkpoint)
     previous_objective = None
     convergence_reason = "max_iter" if loop_max_iter else "no_active_totally_symmetric_cartesian_coordinates"
+    iteration_traces: list[SemiexperimentalIterationTrace] = []
     iteration = 0
 
     for iteration in range(1, loop_max_iter + 1):
@@ -1057,7 +1179,8 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             break
         jac_weighted_scaled = jac_weighted * reduced_scales[None, :] if reduced_scales.size else jac_weighted
         gradient = jac_weighted_scaled.T @ weighted_residual
-        if float(np.linalg.norm(gradient, ord=np.inf)) < gradient_tolerance:
+        gradient_inf_norm = float(np.linalg.norm(gradient, ord=np.inf))
+        if gradient_inf_norm < gradient_tolerance:
             convergence_reason = "gradient_tolerance"
             break
         trust_step = _adaptive_lm_step(jac_weighted_scaled, weighted_residual, current_damping, trust_radius)
@@ -1102,6 +1225,35 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
                 float(line_search.scale * np.linalg.norm(dq_scaled)),
                 max_step,
             )
+            iteration_traces.append(
+                _iteration_trace_row(
+                    iteration,
+                    "accepted",
+                    current_objective,
+                    line_search,
+                    current_damping,
+                    trust_radius,
+                    line_search.scale * float(np.linalg.norm(dq_scaled)),
+                    gradient_inf_norm,
+                    jac_weighted_scaled,
+                    line_search.coords,
+                    fixed_primitives,
+                    fixed_primitive_targets,
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=(),
+                    u_matrix=np.zeros((0, 0), dtype=float),
+                    labels=(),
+                    expression_definitions=expression_definitions,
+                    robust_scale=robust_scale_used,
+                    robust_downweighted_observations=robust_downweighted_observations,
+                    robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                    coordinate_model_age=0,
+                    b_projector_secant_error=0.0,
+                    linear_solver=trust_step.solver,
+                )
+            )
             if previous_objective is not None and abs(previous_objective - line_search.objective) < tolerance_MHz * tolerance_MHz:
                 convergence_reason = "objective_tolerance"
                 break
@@ -1127,6 +1279,35 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             rejected_steps += 1
             stalled_rejections += 1
             current_damping, trust_radius = _rejected_trust_update(current_damping, trust_radius, max_step)
+            iteration_traces.append(
+                _iteration_trace_row(
+                    iteration,
+                    "rejected",
+                    current_objective,
+                    line_search,
+                    current_damping,
+                    trust_radius,
+                    line_search.scale * float(np.linalg.norm(dq_scaled)),
+                    gradient_inf_norm,
+                    jac_weighted_scaled,
+                    coords,
+                    fixed_primitives,
+                    fixed_primitive_targets,
+                    linear_constraints=linear_constraints,
+                    expression_constraints=expression_constraints,
+                    expression_targets=expression_targets,
+                    prims=(),
+                    u_matrix=np.zeros((0, 0), dtype=float),
+                    labels=(),
+                    expression_definitions=expression_definitions,
+                    robust_scale=robust_scale_used,
+                    robust_downweighted_observations=robust_downweighted_observations,
+                    robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                    coordinate_model_age=0,
+                    b_projector_secant_error=0.0,
+                    linear_solver=trust_step.solver,
+                )
+            )
             if _trust_region_is_stalled(current_damping, trust_radius, stalled_rejections, max_step):
                 convergence_reason = (
                     "step_tolerance"
@@ -1283,6 +1464,8 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             measurement_model=measurement_model,
             weighted_jacobian=weighted_jac,
             weighted_residual=weighted_residual,
+            robust_sqrt_weights=robust_sqrt,
+            iteration_trace=tuple(iteration_traces),
             preflight_warnings=preflight_warnings,
         )
     return SemiexperimentalFitResult(
@@ -1307,6 +1490,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         rms_MHz=rms,
         diagnostics=diagnostics,
         leave_one_out=leave_one_out_rows,
+        iteration_trace=tuple(iteration_traces),
         manifest=manifest,
     )
 
@@ -1337,6 +1521,7 @@ def write_semiexperimental_outputs(
     weighted_jacobian: np.ndarray | None = None,
     weighted_residual: np.ndarray | None = None,
     robust_sqrt_weights: np.ndarray | None = None,
+    iteration_trace: tuple[SemiexperimentalIterationTrace, ...] = (),
     preflight_warnings: tuple[SemiexperimentalDiagnosticWarning, ...] = (),
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
@@ -1356,6 +1541,8 @@ def write_semiexperimental_outputs(
     influence_csv = outdir / "semiexp_influence.csv"
     high_correlation_csv = outdir / "semiexp_high_correlations.csv"
     svd_diagnostics_csv = outdir / "semiexp_svd_diagnostics.csv"
+    uncertainty_diagnostics_csv = outdir / "semiexp_uncertainty_diagnostics.csv"
+    iteration_trace_csv = outdir / "semiexp_iteration_trace.csv"
     constraints_csv = outdir / "semiexp_constraints.csv"
     warnings_csv = outdir / "semiexp_warnings.csv"
     leave_one_out_csv = outdir / "semiexp_leave_one_out.csv"
@@ -1380,6 +1567,7 @@ def write_semiexperimental_outputs(
             weighted_jacobian,
             measurement_model,
             robust_sqrt_weights,
+            weighted_residual,
         )
     )
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
@@ -1400,6 +1588,7 @@ def write_semiexperimental_outputs(
             diagnostic_warnings=diagnostic_warnings,
             svd_summary=svd_summary,
             constraint_summary=constraint_summary,
+            iteration_trace=iteration_trace,
             leave_one_out=leave_one_out,
         ),
         encoding="utf-8",
@@ -1423,6 +1612,11 @@ def write_semiexperimental_outputs(
     )
     high_correlation_csv.write_text(_high_correlations_csv(active_names, correlation), encoding="utf-8")
     svd_diagnostics_csv.write_text(_svd_diagnostics_csv(active_names, weighted_jacobian), encoding="utf-8")
+    uncertainty_diagnostics_csv.write_text(
+        _uncertainty_diagnostics_csv(active_names, weighted_jacobian, weighted_residual),
+        encoding="utf-8",
+    )
+    iteration_trace_csv.write_text(iteration_trace_csv_rows(iteration_trace), encoding="utf-8")
     constraints_csv.write_text(
         _constraints_csv(fixed_parameters, fixed_primitives, request.parameter_classes, parameters),
         encoding="utf-8",
@@ -1472,6 +1666,8 @@ def write_semiexperimental_outputs(
         "influence": influence_csv,
         "high_correlations": high_correlation_csv,
         "svd_diagnostics": svd_diagnostics_csv,
+        "uncertainty_diagnostics": uncertainty_diagnostics_csv,
+        "iteration_trace": iteration_trace_csv,
         "constraints": constraints_csv,
         "warnings": warnings_csv,
     }
@@ -1537,6 +1733,7 @@ def write_semiexperimental_outputs(
             "robust_downweighted_observations": diagnostics.robust_downweighted_observations if diagnostics else 0,
             "robust_downweighted_isotopologues": diagnostics.robust_downweighted_isotopologues if diagnostics else 0,
             "linear_solver": diagnostics.linear_solver if diagnostics else "svd_more_hebden_trust_region",
+            "n_iteration_trace_rows": len(iteration_trace),
             "leave_one_out": bool(leave_one_out),
             "n_leave_one_out_rows": len(leave_one_out),
             "coordinate_generation": coordinate_generation,
@@ -1820,6 +2017,7 @@ def semiexperimental_text_report(
     diagnostic_warnings: tuple[SemiexperimentalDiagnosticWarning, ...] = (),
     svd_summary: tuple[str, ...] = (),
     constraint_summary: tuple[str, ...] = (),
+    iteration_trace: tuple[SemiexperimentalIterationTrace, ...] = (),
     leave_one_out: tuple[SemiexperimentalLeaveOneOutRow, ...] = (),
 ) -> str:
     lines: list[str] = [
@@ -1929,6 +2127,31 @@ def semiexperimental_text_report(
 
     lines.extend(["", "[rank_diagnostics]"])
     lines.extend(svd_summary or ("svd_diagnostics = not_available",))
+
+    lines.extend(["", "[iteration_trace]", "iter status objective_before objective_after rho damping trust_radius step_norm rank smin rel_smin constraint_max"])
+    if iteration_trace:
+        selected_trace = iteration_trace[-min(12, len(iteration_trace)) :]
+        for item in selected_trace:
+            lines.append(
+                " ".join(
+                    (
+                        str(item.iteration),
+                        item.status,
+                        f"{item.objective_before:.12g}",
+                        f"{item.objective_after:.12g}",
+                        f"{item.trust_ratio:.12g}",
+                        f"{item.damping:.12g}",
+                        f"{item.trust_radius:.12g}",
+                        f"{item.step_norm:.12g}",
+                        str(item.rank),
+                        f"{item.smallest_singular_value:.12g}",
+                        f"{item.relative_smallest_singular_value:.12g}",
+                        f"{item.constraint_max_abs:.12g}",
+                    )
+                )
+            )
+    else:
+        lines.append("iteration_trace = not_available")
 
     lines.extend(["", "[working_coordinates]", f"coordinate_count = {len(parameters)}"])
     lines.append("index active class value sigma label")
@@ -2254,6 +2477,102 @@ def _svd_diagnostic_rows(
     return tuple(rows)
 
 
+def _uncertainty_diagnostics_csv(
+    labels: tuple[str, ...],
+    weighted_jac: np.ndarray | None,
+    weighted_residual: np.ndarray | None,
+) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(["cutoff", "relative_cutoff", "rank", "parameter", "sigma", "sigma_ratio_to_default"])
+    for cutoff_label, relative_cutoff, rank, parameter, sigma, ratio in _uncertainty_diagnostic_rows(
+        labels,
+        weighted_jac,
+        weighted_residual,
+    ):
+        writer.writerow([
+            cutoff_label,
+            f"{relative_cutoff:.12g}",
+            rank,
+            parameter,
+            f"{sigma:.12g}",
+            f"{ratio:.12g}",
+        ])
+    return stream.getvalue()
+
+
+def _uncertainty_cutoff_sensitivity(
+    labels: tuple[str, ...],
+    weighted_jac: np.ndarray | None,
+    weighted_residual: np.ndarray | None,
+) -> float:
+    ratios = [
+        max(ratio, 1.0 / ratio)
+        for _cutoff_label, _relative_cutoff, _rank, _parameter, _sigma, ratio in _uncertainty_diagnostic_rows(
+            labels,
+            weighted_jac,
+            weighted_residual,
+        )
+        if np.isfinite(ratio) and ratio > 0.0
+    ]
+    return max(ratios) if ratios else 1.0
+
+
+def _uncertainty_diagnostic_rows(
+    labels: tuple[str, ...],
+    weighted_jac: np.ndarray | None,
+    weighted_residual: np.ndarray | None,
+) -> tuple[tuple[str, float, int, str, float, float], ...]:
+    jac = np.asarray(weighted_jac if weighted_jac is not None else np.zeros((0, len(labels))), dtype=float)
+    residual = np.asarray(weighted_residual if weighted_residual is not None else np.zeros(0), dtype=float)
+    if jac.ndim != 2 or jac.shape[1] == 0:
+        return ()
+    try:
+        _u, singular, vh = np.linalg.svd(jac, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return ()
+    if not singular.size:
+        return ()
+    sigma2 = float(residual @ residual) / max(jac.shape[0] - jac.shape[1], 1) if residual.size else 0.0
+    s0 = max(float(singular[0]), 1.0)
+    default_relative = max(jac.shape) * np.finfo(float).eps * 100.0
+    cutoffs = (
+        ("default", default_relative),
+        ("rel_1e-12", 1.0e-12),
+        ("rel_1e-10", 1.0e-10),
+        ("rel_1e-8", 1.0e-8),
+        ("rel_1e-6", 1.0e-6),
+    )
+    sigma_by_cutoff: dict[str, np.ndarray] = {}
+    rank_by_cutoff: dict[str, int] = {}
+    for label, relative in cutoffs:
+        keep = singular > max(float(relative), 0.0) * s0
+        inv_s2 = np.zeros_like(singular)
+        inv_s2[keep] = 1.0 / (singular[keep] * singular[keep])
+        covariance = sigma2 * ((vh.T * inv_s2) @ vh)
+        diag = np.diag(covariance) if covariance.size else np.zeros(jac.shape[1], dtype=float)
+        sigma_by_cutoff[label] = np.sqrt(np.maximum(diag, 0.0))
+        rank_by_cutoff[label] = int(np.sum(keep))
+    default_sigma = sigma_by_cutoff["default"]
+    rows: list[tuple[str, float, int, str, float, float]] = []
+    for label, relative in cutoffs:
+        sigmas = sigma_by_cutoff[label]
+        for idx, sigma in enumerate(sigmas):
+            base = float(default_sigma[idx]) if idx < default_sigma.size else 0.0
+            ratio = float(sigma / base) if base > 0.0 else (1.0 if sigma == 0.0 else float("inf"))
+            rows.append(
+                (
+                    label,
+                    float(relative),
+                    rank_by_cutoff[label],
+                    labels[idx] if idx < len(labels) else f"q{idx + 1}",
+                    float(sigma),
+                    ratio,
+                )
+            )
+    return tuple(rows)
+
+
 def _format_svd_combination(labels: tuple[str, ...], vector: np.ndarray, nterms: int = 5) -> str:
     if vector.size == 0:
         return ""
@@ -2420,6 +2739,65 @@ def _diagnostics_csv(diagnostics: SemiexperimentalFitDiagnostics | None) -> str:
         return stream.getvalue()
     for key, value in diagnostics.__dict__.items():
         writer.writerow([key, value])
+    return stream.getvalue()
+
+
+def iteration_trace_csv_rows(rows: tuple[SemiexperimentalIterationTrace, ...]) -> str:
+    stream = StringIO()
+    writer = csv.writer(stream)
+    writer.writerow(
+        [
+            "iteration",
+            "status",
+            "objective_before",
+            "objective_after",
+            "actual_reduction",
+            "predicted_reduction",
+            "trust_ratio",
+            "line_search_scale",
+            "damping",
+            "trust_radius",
+            "step_norm",
+            "gradient_inf_norm",
+            "rank",
+            "smallest_singular_value",
+            "relative_smallest_singular_value",
+            "constraint_max_abs",
+            "robust_scale",
+            "robust_downweighted_observations",
+            "robust_downweighted_isotopologues",
+            "coordinate_model_age",
+            "b_projector_secant_error",
+            "linear_solver",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                row.iteration,
+                row.status,
+                f"{row.objective_before:.12g}",
+                f"{row.objective_after:.12g}",
+                f"{row.actual_reduction:.12g}",
+                f"{row.predicted_reduction:.12g}",
+                f"{row.trust_ratio:.12g}",
+                f"{row.line_search_scale:.12g}",
+                f"{row.damping:.12g}",
+                f"{row.trust_radius:.12g}",
+                f"{row.step_norm:.12g}",
+                f"{row.gradient_inf_norm:.12g}",
+                row.rank,
+                f"{row.smallest_singular_value:.12g}",
+                f"{row.relative_smallest_singular_value:.12g}",
+                f"{row.constraint_max_abs:.12g}",
+                f"{row.robust_scale:.12g}",
+                row.robust_downweighted_observations,
+                row.robust_downweighted_isotopologues,
+                row.coordinate_model_age,
+                f"{row.b_projector_secant_error:.12g}",
+                row.linear_solver,
+            ]
+        )
     return stream.getvalue()
 
 
@@ -2648,6 +3026,7 @@ def _semiexp_warning_rows(
     weighted_jacobian: np.ndarray | None,
     measurement_model: MeasurementModel | None,
     robust_sqrt_weights: np.ndarray | None,
+    weighted_residual: np.ndarray | None = None,
 ) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
     rows: list[SemiexperimentalDiagnosticWarning] = []
     seen: set[tuple[str, str]] = set()
@@ -2743,6 +3122,15 @@ def _semiexp_warning_rows(
 
     for warning in _large_geometry_uncertainty_warnings(geometry_parameters):
         add(warning.severity, warning.code, warning.message, warning.context)
+
+    sensitivity = _uncertainty_cutoff_sensitivity(active_names, weighted_jacobian, weighted_residual)
+    if sensitivity > 10.0:
+        add(
+            "warning",
+            "uncertainty_cutoff_sensitive",
+            "At least one parameter uncertainty is strongly sensitive to the SVD rank cutoff.",
+            f"max_sigma_ratio={sensitivity:.6g}",
+        )
 
     active_sigmas = [item.sigma for item in parameters if item.active and np.isfinite(item.sigma)]
     if active_sigmas:
@@ -4710,6 +5098,77 @@ def _combined_primitive_constraint_b_matrix(
     return np.vstack(rows)
 
 
+def _finite_difference_constraint_b_matrix(
+    coords: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    fixed_targets: np.ndarray,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...],
+    *,
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+    step: float = 1.0e-6,
+) -> np.ndarray:
+    """Finite-difference derivative of combined constraint values.
+
+    `_combined_primitive_constraint_b_matrix` returns derivatives of the
+    constrained values.  The residual is target minus current value, therefore
+    the finite-difference residual derivative has the opposite sign.
+    """
+    base = np.asarray(coords, dtype=float)
+    flat = base.reshape(-1)
+    residual0 = _combined_primitive_constraint_residual(
+        base,
+        fixed_primitives,
+        fixed_targets,
+        linear_constraints,
+        expression_constraints=expression_constraints,
+        expression_targets=expression_targets,
+        prims=prims,
+        u_matrix=u_matrix,
+        labels=labels,
+        expression_definitions=expression_definitions,
+    )
+    rows = np.zeros((residual0.size, flat.size), dtype=float)
+    if residual0.size == 0:
+        return rows
+    for idx in range(flat.size):
+        delta = float(step) * max(1.0, abs(float(flat[idx])))
+        plus = flat.copy()
+        minus = flat.copy()
+        plus[idx] += delta
+        minus[idx] -= delta
+        residual_plus = _combined_primitive_constraint_residual(
+            plus.reshape(base.shape),
+            fixed_primitives,
+            fixed_targets,
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
+        residual_minus = _combined_primitive_constraint_residual(
+            minus.reshape(base.shape),
+            fixed_primitives,
+            fixed_targets,
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
+        rows[:, idx] = -(residual_plus - residual_minus) / (2.0 * delta)
+    return rows
+
+
 def _linear_constraint_values(
     constraints: tuple[PrimitiveLinearConstraint, ...],
     coords: np.ndarray,
@@ -5296,8 +5755,11 @@ def _moments_cartesian_jacobian(
 ) -> np.ndarray:
     rows = []
     for obs in observations:
-        isotopes = _isotopes_for_observation(atoms, obs)
-        _moments, jac = _principal_moments_and_cartesian_jacobian(atoms, coords, isotopes)
+        _moments, jac = _principal_moments_and_cartesian_jacobian(
+            atoms,
+            coords,
+            _isotopes_for_observation(atoms, obs),
+        )
         rows.append(jac)
     return np.vstack(rows) if rows else np.zeros((0, np.asarray(coords).size), dtype=float)
 
@@ -5309,8 +5771,11 @@ def _rotational_constants_cartesian_jacobian(
 ) -> np.ndarray:
     rows = []
     for obs in observations:
-        isotopes = _isotopes_for_observation(atoms, obs)
-        moments, moment_jac = _principal_moments_and_cartesian_jacobian(atoms, coords, isotopes)
+        moments, moment_jac = _principal_moments_and_cartesian_jacobian(
+            atoms,
+            coords,
+            _isotopes_for_observation(atoms, obs),
+        )
         factors = np.zeros(3, dtype=float)
         positive = moments > 0.0
         factors[positive] = -ROTCONST_TO_MOMENT / (moments[positive] * moments[positive])
@@ -5324,14 +5789,9 @@ def _principal_moments_and_cartesian_jacobian(
     isotopes: list[int | None],
 ) -> tuple[np.ndarray, np.ndarray]:
     arr = np.asarray(coords, dtype=float)
-    structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in arr], isotopes=isotopes)
-    masses = np.asarray(structure.mass_isotope, dtype=float)
-    total_mass = float(np.sum(masses))
-    centered = arr - (masses[:, None] * arr).sum(axis=0) / total_mass
-    inertia = np.zeros((3, 3), dtype=float)
+    masses = _mass_vector_for_isotopes(atoms, isotopes)
+    centered, inertia = _centered_coords_and_inertia(arr, masses)
     eye = np.eye(3)
-    for mass, xyz in zip(masses, centered):
-        inertia += mass * ((xyz @ xyz) * eye - np.outer(xyz, xyz))
     moments, axes = np.linalg.eigh(inertia)
     jac = np.zeros((3, arr.size), dtype=float)
     for atom_idx, (mass, xyz) in enumerate(zip(masses, centered)):
@@ -5343,6 +5803,25 @@ def _principal_moments_and_cartesian_jacobian(
                 vector = axes[:, moment_idx]
                 jac[moment_idx, col] = float(vector @ derivative @ vector)
     return moments, jac
+
+
+def _principal_moments_from_masses(coords: np.ndarray, masses: np.ndarray) -> np.ndarray:
+    _centered, inertia = _centered_coords_and_inertia(np.asarray(coords, dtype=float), np.asarray(masses, dtype=float))
+    return np.linalg.eigvalsh(inertia)
+
+
+def _centered_coords_and_inertia(coords: np.ndarray, masses: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    arr = np.asarray(coords, dtype=float)
+    mass = np.asarray(masses, dtype=float)
+    total_mass = float(np.sum(mass))
+    if total_mass <= 0.0 or not np.isfinite(total_mass):
+        raise ScientificValidationError("Cannot build inertia tensor with non-positive total mass")
+    centered = arr - (mass[:, None] * arr).sum(axis=0) / total_mass
+    inertia = np.zeros((3, 3), dtype=float)
+    eye = np.eye(3)
+    for atom_mass, xyz in zip(mass, centered):
+        inertia += atom_mass * ((xyz @ xyz) * eye - np.outer(xyz, xyz))
+    return centered, inertia
 
 
 def _predicate_jacobian(
@@ -5609,6 +6088,124 @@ def _line_search_update_cartesian_basis(
             if predicted_reduction <= 0.0 or actual_reduction >= 1.0e-4 * predicted_reduction:
                 break
     return best
+
+
+def _iteration_trace_row(
+    iteration: int,
+    status: str,
+    current_objective: float,
+    line_search: LineSearchResult,
+    damping: float,
+    trust_radius: float,
+    step_norm: float,
+    gradient_inf_norm: float,
+    jac_weighted_scaled: np.ndarray,
+    coords_for_constraints: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    fixed_primitive_targets: np.ndarray,
+    *,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...] = (),
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+    robust_scale: float = 0.0,
+    robust_downweighted_observations: int = 0,
+    robust_downweighted_isotopologues: int = 0,
+    coordinate_model_age: int = 0,
+    b_projector_secant_error: float = 0.0,
+    linear_solver: str = "svd_more_hebden_trust_region",
+) -> SemiexperimentalIterationTrace:
+    rank, smallest, relative = _jacobian_singular_trace(np.asarray(jac_weighted_scaled, dtype=float))
+    return SemiexperimentalIterationTrace(
+        iteration=int(iteration),
+        status=str(status),
+        objective_before=float(current_objective),
+        objective_after=float(line_search.objective),
+        actual_reduction=float(line_search.actual_reduction),
+        predicted_reduction=float(line_search.predicted_reduction),
+        trust_ratio=float(line_search.ratio),
+        line_search_scale=float(line_search.scale),
+        damping=float(damping),
+        trust_radius=float(trust_radius),
+        step_norm=float(step_norm),
+        gradient_inf_norm=float(gradient_inf_norm),
+        rank=int(rank),
+        smallest_singular_value=float(smallest),
+        relative_smallest_singular_value=float(relative),
+        constraint_max_abs=_constraint_max_abs(
+            coords_for_constraints,
+            fixed_primitives,
+            fixed_primitive_targets,
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        ),
+        robust_scale=float(robust_scale),
+        robust_downweighted_observations=int(robust_downweighted_observations),
+        robust_downweighted_isotopologues=int(robust_downweighted_isotopologues),
+        coordinate_model_age=int(coordinate_model_age),
+        b_projector_secant_error=float(b_projector_secant_error),
+        linear_solver=str(linear_solver),
+    )
+
+
+def _jacobian_singular_trace(jacobian: np.ndarray) -> tuple[int, float, float]:
+    jac = np.asarray(jacobian, dtype=float)
+    if jac.ndim != 2 or jac.size == 0 or jac.shape[1] == 0:
+        return 0, 0.0, 0.0
+    try:
+        singular = np.linalg.svd(jac, compute_uv=False)
+    except np.linalg.LinAlgError:
+        return 0, float("nan"), float("nan")
+    if not singular.size:
+        return 0, 0.0, 0.0
+    s0 = max(float(singular[0]), 1.0)
+    tol = max(jac.shape) * np.finfo(float).eps * s0 * 100.0
+    rank = int(np.sum(singular > tol))
+    smallest = float(singular[-1]) if singular.size else 0.0
+    return rank, smallest, smallest / s0 if s0 > 0.0 else 0.0
+
+
+def _constraint_max_abs(
+    coords: np.ndarray,
+    fixed_primitives: tuple[Primitive, ...],
+    fixed_targets: np.ndarray,
+    linear_constraints: tuple[PrimitiveLinearConstraint, ...],
+    *,
+    expression_constraints: tuple[GICExpressionConstraint, ...] = (),
+    expression_targets: np.ndarray | None = None,
+    prims: object = (),
+    u_matrix: np.ndarray | None = None,
+    labels: tuple[str, ...] = (),
+    expression_definitions: tuple[GICExpressionDefinition, ...] = (),
+) -> float:
+    if not fixed_primitives and not linear_constraints and not expression_constraints:
+        return 0.0
+    try:
+        residual = _combined_primitive_constraint_residual(
+            np.asarray(coords, dtype=float),
+            fixed_primitives,
+            np.asarray(fixed_targets, dtype=float),
+            linear_constraints,
+            expression_constraints=expression_constraints,
+            expression_targets=expression_targets,
+            prims=prims,
+            u_matrix=u_matrix,
+            labels=labels,
+            expression_definitions=expression_definitions,
+        )
+    except Exception:
+        return float("inf")
+    if residual.size == 0:
+        return 0.0
+    return float(np.max(np.abs(residual)))
 
 
 def _adaptive_lm_step(
@@ -5917,9 +6514,11 @@ def _constants_vector(
 ) -> np.ndarray:
     values: list[float] = []
     for obs in observations:
-        isotopes = _isotopes_for_observation(atoms, obs)
-        structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in coords], isotopes=isotopes)
-        values.extend(rotational_constants_MHz(structure, isotopic=True))
+        moments = _principal_moments_from_masses(coords, _mass_vector_for_observation(atoms, obs))
+        constants = np.zeros(3, dtype=float)
+        positive = moments > 0.0
+        constants[positive] = ROTCONST_TO_MOMENT / moments[positive]
+        values.extend(constants)
     return np.array(values, dtype=float)
 
 
@@ -5930,9 +6529,7 @@ def _moments_vector(
 ) -> np.ndarray:
     values: list[float] = []
     for obs in observations:
-        isotopes = _isotopes_for_observation(atoms, obs)
-        structure = Structure.from_atoms_coords(list(atoms), [tuple(row) for row in coords], isotopes=isotopes)
-        values.extend(principal_moments(structure, isotopic=True))
+        values.extend(_principal_moments_from_masses(coords, _mass_vector_for_observation(atoms, obs)))
     return np.array(values, dtype=float)
 
 
@@ -6511,6 +7108,46 @@ def _isotopes_for_observation(atoms: list[str] | tuple[str, ...], obs: Isotopolo
             raise ScientificValidationError(f"Isotopologue {obs.label} substitution atom {atom_index} is out of range")
         isotopes[atom_index - 1] = int(isotope_a)
     return isotopes
+
+
+def _mass_vector_for_observation(
+    atoms: list[str] | tuple[str, ...],
+    obs: IsotopologueObservation,
+) -> np.ndarray:
+    return _mass_vector_for_isotopes(atoms, _isotopes_for_observation(atoms, obs))
+
+
+def _mass_vector_for_isotopes(
+    atoms: list[str] | tuple[str, ...],
+    isotopes: list[int | None] | tuple[int | None, ...],
+) -> np.ndarray:
+    isotope_key = tuple(0 if item is None else int(item) for item in isotopes)
+    return np.asarray(_cached_mass_tuple(tuple(str(atom) for atom in atoms), isotope_key), dtype=float)
+
+
+@lru_cache(maxsize=4096)
+def _cached_mass_tuple(atoms: tuple[str, ...], isotope_key: tuple[int, ...]) -> tuple[float, ...]:
+    if len(atoms) != len(isotope_key):
+        raise ValueError("Mass-cache atom/isotope length mismatch")
+    masses: list[float] = []
+    for atom, isotope_a in zip(atoms, isotope_key):
+        z_number = geometry_atomic_number(atom)
+        if z_number is None:
+            raise ValueError(f"Unknown atomic symbol: {atom}")
+        if isotope_a == 0:
+            try:
+                masses.append(float(get_default_isotope(z_number).mass))
+            except Exception:
+                masses.append(float(atomic_mass(z_number)))
+        else:
+            try:
+                isotope = get_isotope(z_number, int(isotope_a))
+                if isotope is None:
+                    isotope = get_default_isotope(z_number)
+                masses.append(float(isotope.mass))
+            except Exception:
+                masses.append(float(atomic_mass(z_number)))
+    return tuple(masses)
 
 
 def _validate_observations(observations: tuple[IsotopologueObservation, ...], natoms: int) -> None:
