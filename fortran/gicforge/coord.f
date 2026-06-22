@@ -285,6 +285,21 @@ C find atomic number or atomic symbol and isotope (separate by -)
       IIso = 0
       If(CLine(ICur+2:ICur+2).eq.'-')  IIso = IStart(1)+3
       If(CLine(ICur+1:Icur+1).eq.'-')  IIso = IStart(1)+2
+      If(IIso.eq.0) then
+       El=CLine(IStart(1):IStart(1)+1)
+      Else
+       El=CLine(IStart(1):IIso-2)
+      EndIf
+      call FilIAn(El,Number)
+      If(Number.gt.-1) then
+       IAn=Number
+       If(IIso.ne.0) then
+        call St2Dat(CLine,0,0,IIso,IType,CType,IVal,RVal,CVal,LVal,
+     $    SVal)
+        Isotp = IVal
+       EndIf
+       goto 10
+      EndIf
       call St2Dat(CLine,0,0,ICur,IType,CType,IVal,RVal,CVal,LVal,SVal)
       if(CType.eq.'S') then
        If(IIso.eq.0) then
@@ -525,6 +540,21 @@ C
       IIso = 0
       If(CLine(ICur+2:ICur+2).eq.'-')  IIso = IStart(1)+3
       If(CLine(ICur+1:Icur+1).eq.'-')  IIso = IStart(1)+2
+      If(IIso.eq.0) then
+       El=CLine(IStart(1):IStart(1)+1)
+      Else
+       El=CLine(IStart(1):IIso-2)
+      EndIf
+      call FilIAn(El,Number)
+      If(Number.gt.-1) then
+       IAnZ=Number
+       If(IIso.ne.0) then
+        call St2Dat(CLine,0,0,IIso,IType,CType,IVal,RVal,CVal,LVal,
+     $    SVal)
+        Isotp = IVal
+       EndIf
+       goto 10
+      EndIf
       call St2Dat(CLine,0,0,ICur,IType,CType,IVal,RVal,CVal,LVal,SVal)
       if(CType.eq.'S') then
        If(IIso.eq.0) then

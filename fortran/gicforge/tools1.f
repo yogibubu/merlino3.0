@@ -795,28 +795,20 @@ C     IAn    : Atomic Number
 C     NoCase : Ignore case
 C Output:
 C     IAnEl2 : Atomic Symbol (A2)
-      Logical NoCase
 C     Local
-      Integer i
-      Character AllSmb*222
+      Integer Pos
+      Character AllSmb*238
 C
-      If(NoCase) then
-        AllSmb = ' ' // 'H HELIBEB C N O F NENAMGALSIP S CLARK CASCTIV '
-     $  //'CRMNFECONICUZNGAGEASSEBRKRRBSRY ZRNBMOTCRURHPDAGCDINSNSBTEI '
-     $  //'XECSBALACEPRNDPMSMEUGDTBDYHOERTMYBLUHFTAW REOSIRPTAUHGTLPBBI'
-     $  //'POATRNFRRAACTHPAU NPPUAMCMBKCFESFMMDNOLRRFDBSGBHHSMTDS'
-      else
-        AllSmb = ' ' // 'H HeLiBeB C N O F NeNaMgAlSiP S ClArK CaScTiV '
-     $  //'CrMnFeCoNiCuZnGaGeAsSeBrKrRbSrY ZrNbMoTcRuRhPdAgCdInSnSbTeI '
-     $  //'XeCsBaLaCePrNdPmSmEuGdTbDyHoErTmYbLuHfTaW ReOsIrPtAuHgTlPbBi'
-     $  //'PoAtRnFrRaAcThPaU NpPuAmCmBkCfEsFmMdNoLrRfDbSgBhHsMtDs'
-      endIf
-      Ini=2*IAn
-      IEnd=Ini+1
-      If(Ini.le.0) then
+      AllSmb='BqH HeLiBeB C N O F NeNaMgAlSiP S ClArK CaScTiV '
+     $ //'CrMnFeCoNiCuZnGaGeAsSeBrKrRbSrY ZrNbMoTcRuRhPdAgCdInSn'
+     $ //'SbTeI XeCsBaLaCePrNdPmSmEuGdTbDyHoErTmYbLuHfTaW ReOsIr'
+     $ //'PtAuHgTlPbBiPoAtRnFrRaAcThPaU NpPuAmCmBkCfEsFmMdNoLrRf'
+     $ //'DbSgBhHsMtDsRgCnNhFlMcLvTsOg'
+      If(IAn.lt.0.or.IAn.gt.118) then
        IAnEl2='  '
       Else
-       IAnEl2=AllSmb(Ini:IEnd)
+       Pos=2*IAn+1
+       IAnEl2=AllSmb(Pos:Pos+1)
       EndIf
       Return
       End
@@ -834,28 +826,34 @@ C     Input
       Character AtSymb*2
       Logical NoCase
 C     Local
-      Integer i
-      Character AllSmb*222, ASymb*2
+      Integer i, Pos
+      Character ASymb*2, TSymb*2
+      Character AllSmb*238
 C
+      AllSmb='BqH HeLiBeB C N O F NeNaMgAlSiP S ClArK CaScTiV '
+     $ //'CrMnFeCoNiCuZnGaGeAsSeBrKrRbSrY ZrNbMoTcRuRhPdAgCdInSn'
+     $ //'SbTeI XeCsBaLaCePrNdPmSmEuGdTbDyHoErTmYbLuHfTaW ReOsIr'
+     $ //'PtAuHgTlPbBiPoAtRnFrRaAcThPaU NpPuAmCmBkCfEsFmMdNoLrRf'
+     $ //'DbSgBhHsMtDsRgCnNhFlMcLvTsOg'
       If(NoCase) then
-        AllSmb = ' ' // 'H HELIBEB C N O F NENAMGALSIP S CLARK CASCTIV '
-     $  //'CRMNFECONICUZNGAGEASSEBRKRRBSRY ZRNBMOTCRURHPDAGCDINSNSBTEI '
-     $  //'XECSBALACEPRNDPMSMEUGDTBDYHOERTMYBLUHFTAW REOSIRPTAUHGTLPBBI'
-     $  //'POATRNFRRAACTHPAU NPPUAMCMBKCFESFMMDNOLRRFDBSGBHHSMTDS'
         Call LinUpC(AtSymb,ASymb)
       else
-        AllSmb = ' ' // 'H HeLiBeB C N O F NeNaMgAlSiP S ClArK CaScTiV '
-     $  //'CrMnFeCoNiCuZnGaGeAsSeBrKrRbSrY ZrNbMoTcRuRhPdAgCdInSnSbTeI '
-     $  //'XeCsBaLaCePrNdPmSmEuGdTbDyHoErTmYbLuHfTaW ReOsIrPtAuHgTlPbBi'
-     $  //'PoAtRnFrRaAcThPaU NpPuAmCmBkCfEsFmMdNoLrRfDbSgBhHsMtDs'
         ASymb = AtSymb
       endIf
-      i = Index(AllSmb,ASymb)
-      If(i.eq.0) then
-        El2IAN = -1
-      else
-        El2IAN = i/2
-      endIf
+      If(ASymb(1:1).eq.' '.and.ASymb(2:2).ne.' ') then
+       ASymb(1:1)=ASymb(2:2)
+       ASymb(2:2)=' '
+      EndIf
+      El2IAN = -1
+      Do 10 i=0,118
+       Pos=2*i+1
+       TSymb=AllSmb(Pos:Pos+1)
+       If(NoCase) Call LinUpC(TSymb,TSymb)
+       If(ASymb.eq.TSymb) then
+        El2IAN=i
+        Return
+       EndIf
+   10 Continue
       Return
       End
 *Deck ElNeg
@@ -5142,4 +5140,3 @@ C
         endIf
       Return
       End
-

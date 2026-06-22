@@ -413,14 +413,14 @@ def test_gicforge_handles_square_planar_tetracoordinate_center(tmp_path):
     except Exception as exc:
         pytest.skip(f"GICForge backend not available: {exc}")
 
-    atoms = ("C", "H", "H", "H", "H")
+    atoms = ("C", "F", "F", "F", "F")
     coords = np.array(
         [
             [0.0, 0.0, 0.0],
-            [1.1, 0.0, 0.0],
-            [-1.1, 0.0, 0.0],
-            [0.0, 1.1, 0.0],
-            [0.0, -1.1, 0.0],
+            [1.35, 0.0, 0.0],
+            [-1.35, 0.0, 0.0],
+            [0.0, 1.35, 0.0],
+            [0.0, -1.35, 0.0],
         ],
         dtype=float,
     )
