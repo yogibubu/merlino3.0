@@ -4,6 +4,8 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
+
 from survibfit.modify_geom import read_xyz
 from merlino_gic import define_gics_from_cartesian
 from merlino_gic.model import parse_gicforge_line
@@ -77,6 +79,50 @@ def test_survibfit_gic_cli_is_gicforge_identical(tmp_path):
     xyz = base / "data" / "c4_chain.xyz"
     out = tmp_path / "python.gic"
     workdir = tmp_path / "gicforge"
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "survibfit.cli",
+            "gic",
+            "--xyz",
+            str(xyz),
+            "--out",
+            str(out),
+            "--workdir",
+            str(workdir),
+        ],
+        check=True,
+    )
+
+    python_lines = out.read_text(encoding="utf-8").splitlines()
+    fortran_lines = [
+        line.rstrip()
+        for line in (workdir / "gauin").read_text(encoding="utf-8", errors="replace").splitlines()
+        if parse_gicforge_line(line) is not None
+    ]
+    assert python_lines == fortran_lines
+
+
+@pytest.mark.parametrize(
+    "xyz_name",
+    [
+        "polycyclics/naphthalene.xyz",
+        "polycyclics/anthracene.xyz",
+        "polycyclics/coronene.xyz",
+        "polycyclics/norbornane.xyz",
+        "polycyclics/myrtenol.xyz",
+        "polycyclics/testosterone.xyz",
+        "polycyclics/saccharine.xyz",
+        "polycyclics/2_deoxyribose.xyz",
+    ],
+)
+def test_survibfit_gic_cli_is_gicforge_identical_polycyclic(tmp_path, xyz_name):
+    base = Path(__file__).resolve().parent
+    xyz = base / "data" / xyz_name
+    out = tmp_path / f"{Path(xyz_name).stem}.gic"
+    workdir = tmp_path / Path(xyz_name).stem
 
     subprocess.run(
         [

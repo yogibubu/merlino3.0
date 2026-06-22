@@ -35,6 +35,28 @@ def hermite_c1(t, y0, y1, m0, m1):
     return h00*y0 + h10*m0 + h01*y1 + h11*m1
 
 
+def _hermite_slope(table, keys, D):
+    """Return a finite-difference slope using the closest available tabulated keys."""
+    if D <= keys[0]:
+        return table[keys[1]] - table[keys[0]]
+    if D >= keys[-1]:
+        return table[keys[-1]] - table[keys[-2]]
+
+    lower = max(k for k in keys if k < D and k in table)
+    upper = min(k for k in keys if k > D and k in table)
+    if upper == lower:
+        return 0.0
+    if lower == keys[0]:
+        left = lower
+    else:
+        left = max(k for k in keys if k < lower and k in table)
+    if upper == keys[-1]:
+        right = upper
+    else:
+        right = min(k for k in keys if k > upper and k in table)
+    return 0.5 * (table[upper] - table[lower]) if right == left else 0.5 * (table[right] - table[left])
+
+
 def principal_n(Z):
     if Z <= 2:
         return 1
@@ -116,11 +138,7 @@ class AtomicSynthons:
         y1 = table[D1]
 
         def slope(D):
-            if D == Ds[0]:
-                return table[Ds[1]] - table[Ds[0]]
-            if D == Ds[-1]:
-                return table[Ds[-1]] - table[Ds[-2]]
-            return 0.5 * (table[D+1] - table[D-1])
+            return _hermite_slope(table, Ds, D)
 
         return hermite_c1(t, y0, y1, slope(D0), slope(D1))
 
@@ -200,11 +218,7 @@ class AtomicSynthons:
         y1 = self._theta_bar[k1]
 
         def slope(k):
-            if k == keys[0]:
-                return self._theta_bar[keys[1]] - self._theta_bar[keys[0]]
-            if k == keys[-1]:
-                return self._theta_bar[keys[-1]] - self._theta_bar[keys[-2]]
-            return 0.5 * (self._theta_bar[k+1] - self._theta_bar[k-1])
+            return _hermite_slope(self._theta_bar, keys, k)
 
         return hermite_c1(t, y0, y1, slope(k0), slope(k1))
 

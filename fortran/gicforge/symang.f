@@ -28,11 +28,6 @@ C Build Valence Angles
      $  ''      Free Atoms      Free Angles'')')
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
-       if(NBJ.gt.4) then
-        write(IOut,'(I3,''-coordinated atom'',I5,
-     $    '' but maximum allowed coordination is'',I2)') NBJ,JAt 
-        STOP 
-       endif
        if(NBJ.eq.1) go to 30
        if(NBJ.eq.2) then
         if(IAtCyc(JAt).gt.0) go to 30
@@ -1545,4 +1540,3 @@ C + - + - symmetry coordinate
       IAtomA(3,4,ICoord)=IAng4
       Return
       End
-

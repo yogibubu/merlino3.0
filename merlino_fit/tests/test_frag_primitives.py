@@ -1,6 +1,7 @@
 import numpy as np
 
 from survibfit.pipeline import primitives_from_topology
+from survibfit.primitives import Primitive
 
 
 def test_fragment_primitives_stable():
@@ -46,6 +47,112 @@ def test_dihedral_u_pick_and_combine():
     assert U_comb.shape[0] == len(idx_comb)
     # combine should reduce each multi-dihedral group to a single column
     assert U_comb.shape[1] <= U_pick.shape[1]
+
+
+def test_dihedral_u_orbit_closure(monkeypatch):
+    from survibfit import transforms
+    from survibfit.transforms import dihedral_u
+
+    prims = [
+        Primitive("bond", (0, 1)),
+        Primitive("bond", (4, 1)),
+        Primitive("bond", (1, 2)),
+        Primitive("bond", (2, 3)),
+        Primitive("bond", (2, 5)),
+        Primitive("dihedral", (0, 1, 2, 3)),
+        Primitive("dihedral", (0, 1, 2, 5)),
+        Primitive("dihedral", (4, 1, 2, 3)),
+        Primitive("dihedral", (4, 1, 2, 5)),
+    ]
+    coords = np.array(
+        [
+            [-1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [2.5, 0.5, 0.2],
+            [-0.8, 1.0, 0.1],
+            [2.4, -0.4, 0.3],
+        ],
+        dtype=float,
+    )
+    Z = np.array([6, 6, 6, 6, 6, 6], dtype=int)
+    priority = np.array([1.0, 2.0, 2.0, 1.5, 3.0, 3.0], dtype=float)
+
+    def fake_atom_classes(coords_in, Z_in, zeff_tol=0.05):
+        atom_class = np.array([10, 20, 30, 40, 10, 40], dtype=int)
+        return atom_class, {}, None, None, None
+
+    monkeypatch.setattr(transforms, "atom_classes", fake_atom_classes)
+
+    U, idx, info = dihedral_u(
+        prims,
+        coords,
+        Z=Z,
+        priority=priority,
+        mode="orbit",
+        return_info=True,
+    )
+
+    assert idx == [5, 6, 7, 8]
+    assert U.shape == (4, 1)
+    assert np.allclose(U[:, 0], np.full(4, 0.25))
+    assert info["bonds"][0]["reason"] == "orbit"
+    assert info["bonds"][0]["selected"] == [5, 6, 7, 8]
+
+
+def test_xy3_valence_block_matches_fortran_style():
+    from survibfit.transforms import valence_angle_u
+
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],   # center
+            [1.0, 0.0, 0.0],   # heavy
+            [-0.5, 0.87, 0.0], # heavy
+            [0.0, -1.0, 0.0],  # H
+        ],
+        dtype=float,
+    )
+    Z = np.array([7, 6, 6, 1], dtype=int)
+    prims = [
+        Primitive("bond", (0, 1)),
+        Primitive("bond", (0, 2)),
+        Primitive("bond", (0, 3)),
+        Primitive("angle", (1, 0, 2)),
+        Primitive("angle", (1, 0, 3)),
+        Primitive("angle", (2, 0, 3)),
+    ]
+    U, idx = valence_angle_u(prims, coords, ringset=None, Z=Z)
+
+    angle_map = {tuple(sorted((prims[i].atoms[0], prims[i].atoms[2]))): r for r, i in enumerate(idx)}
+    # Expected angle primitive order from the explicit XY3 basis:
+    # (1,0,2), (1,0,3), (2,0,3)
+    assert U.shape[1] == 2
+    assert np.allclose(U[angle_map[(1, 2)], :], [2.0 / np.sqrt(6.0), 0.0], atol=1e-8)
+    assert np.allclose(U[angle_map[(1, 3)], :], [-1.0 / np.sqrt(6.0), 1.0 / np.sqrt(2.0)], atol=1e-8)
+    assert np.allclose(U[angle_map[(2, 3)], :], [-1.0 / np.sqrt(6.0), -1.0 / np.sqrt(2.0)], atol=1e-8)
+
+
+def test_xy2_valence_block_is_explicit():
+    from survibfit.transforms import valence_angle_u
+
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+        ],
+        dtype=float,
+    )
+    Z = np.array([8, 1, 1], dtype=int)
+    prims = [
+        Primitive("bond", (0, 1)),
+        Primitive("bond", (0, 2)),
+        Primitive("angle", (1, 0, 2)),
+    ]
+    U, idx = valence_angle_u(prims, coords, ringset=None, Z=Z)
+    assert idx == [2]
+    assert U.shape == (1, 1)
+    assert np.allclose(U, np.eye(1))
 
 
 def test_ring_angle_u_excludes_valence():

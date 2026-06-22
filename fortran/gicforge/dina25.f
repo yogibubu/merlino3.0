@@ -22,7 +22,7 @@ C MxAtCy = Maximum Number of Atoms in a Cycle
 C MxPot  = Max Terms in Potential Fitting
       Parameter(MaxEl=200)
       Parameter(MxScr=100000,MxAt=1000,MxBnd=10,MxKwd=50,LenPhy=30)
-      Parameter(MxGNIC=1000,MxTrm=15,MxAtP=4,MxCyc=10,MxAtCy=10)
+      Parameter(MxGNIC=1000,MxTrm=45,MxAtP=4,MxCyc=10,MxAtCy=10)
       Parameter(MxFrg=100,MxAtFr=30,MxAtB=100,MaxNZ=1000,MxBox=1000)
       Parameter(MxPot=20)  
       Character*80 FilNam,InFil,OutFil,GauKwd,Title,React,LinScr
@@ -446,10 +446,11 @@ C Print results
      $  NOuPl,NTot
       NRed=NTot-3*NAtoms+NTRot
       If(NRed.eq.0) then
-       write(IOut,'('' All the Redundancies have been Eliminated'',/)')
+       write(IOut,'('' All local redundancies have been '',
+     $  ''Eliminated'',/)')
       else
-       write(IOut,'('' WARNING:'',I3,'' Redundancies Still Present'',
-     $   /)') NRed 
+       write(IOut,'('' Pre-pruning residual redundancies:'',I3,
+     $  '' (handled by type-preserving rank check)'',/)') NRed 
       endif        
       NTT=0
       IVlt=0
@@ -541,6 +542,21 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
      $  ValTO,C,DoBMat,BMat,Scr)
+      NTTsav=NTT
+      Write(IOut,'(/,'' Final GIC summary (Gaussian syntax)'')')
+      PrtVal=.True.
+      NTTsum=0.0d0
+      Call PrtBnd(IOut,MxAtP,MxTrm,InvDst,NLen,NTTsum,NTermB,IAtomB,
+     $   ITVB,IFixB,IAn,CoefB,ValTB,C,PrtVal)
+      Call PrtAng(IOut,MxAtP,MxTrm,NAng,NTTsum,NTermA,IAtomA,ITVA,
+     $  IFixA,CoefA,ValTA,C,PrtVal)
+      Call PrtLAn(IOut,MxAtP,MxTrm,NLAng,NTTsum,Linear,NTermL,IAtomL,
+     $   ITVLA,IFixL,CoefL,ValTL,C,PrtVal)
+      Call PrtDih(IOut,MxAtP,MxTrm,NDih,NTTsum,DoScan,NTermD,IAtomD,
+     $   ITVD,IPerD,IFixD,CoefD,ValTD,C,Clean,PrtVal)
+      Call PrtOut(IOut,MxAtP,MxTrm,NOupl,NTTsum,NTermO,IAtomO,ITVO,
+     $   IFixO,CoefO,ValTO,C,ImpDih,PrtVal)
+      NTT=NTTsav
 C Gaussian Input
       if(DoG16.or.DoGDV) then
        OPEN(IPunch,FILE='gauin',STATUS='UNKNOWN')

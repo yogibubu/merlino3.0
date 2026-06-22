@@ -347,40 +347,26 @@ C Build Dihedral GNICs
      $    NCyc,NBond,IBond,NAtC,ICAt,IAtCyc,ITVD,NTermD,IAtomD,CoefD,C,
      $    TreshL,DoNorm)
        ElseIf(Do1Dih) then
-C Compute Torsional energy
-        call TORSEN( JAt, KAt, MxBnd, NAtoms, IAn, EAn, IAtCyc,
-     &     NLen, IAtomB, NBond, IBond, C, V0, V1, V2, V3, V6, NSA,
-     &     NSB, IAt, LAt, IFLAG)
-C Avoid dihedrals incolving linear bendings
-        VAl1=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
-        Val2=ValAng(C(1,JAt),C(1,KAt),C(1,LAt))
-        If(Val1.gt.TreshL.or.Val2.gt.TreshL) goto 10
+C Deterministic non-ring torsion: one dihedral per central bond.  The
+C substituents are selected by local priority, with linear-angle and
+C small-ring exclusions applied before the final choice.
+        call PickDih(IOut,IPrint,MxBnd,JAt,KAt,NBJ,NBK,IBond,IAtCyc,
+     $   IAt,LAt,NEqAt(1,ILen),NEqAt(2,ILen),EAn,C,TreshL,IFLAG)
+        If(IFLAG.ne.0) goto 10
         NDih=NDih+1
-        NTermD(NDih)=1
-        IAtomD(1,1,NDih)=IAt
-        IAtomD(2,1,NDih)=JAt
-        IAtomD(3,1,NDih)=KAt
-        IAtomD(4,1,NDih)=LAt
-        CoefD(1,NDih)=1.0d0
+        Call OrbitDih(IOut,IPrint,MxBnd,MxTrmD,NDih,JAt,KAt,NBJ,NBK,
+     $    IBond,IAtCyc,IAn,NBond,IAt,LAt,NTermD,IAtomD,CoefD,C,TreshL,
+     $    DoNorm,ITerm)
+        NTermD(NDih)=ITerm
 CENZO
-        NSmx=NSA
-        If(NSB.gt.NSA) NSmx=NSB
+        NSmx=NEqAt(1,ILen)
+        If(NEqAt(2,ILen).gt.NSmx) NSmx=NEqAt(2,ILen)
         If(NSMx.eq.3) then
          ITVD(NDih)=-3
-         If(DAbs(V1).gt.1.0d-3) then
-          IPerd(NDih)=1      
-         ElseIf(DAbs(V2).gt.1.0d-03) then
-          IPerd(NDih)=2
-         Else
-          IPerd(NDih)=3
-         EndIf
+         IPerd(NDih)=3
         ElseIf(NSmx.eq.2) then
          ITVD(NDih)=-2
-         If(DAbs(V1).gt.1.0d-03) then
-          IPerd(NDih)=1
-         Else
-          IPerD(NDih)=2
-         EndIf
+         IPerD(NDih)=2
         Else
          ITVD(NDIH)=-1
          IPerd(NDih)=1
@@ -392,6 +378,154 @@ CENZO
        EndIf
    10 continue 
       return
+      End
+*Deck PickDih
+      Subroutine PickDih(IOut,IPrint,MxBnd,JAt,KAt,NBJ,NBK,IBond,
+     $ IAtCyc,IAt,LAt,NEqJ,NEqK,EAn,C,TreshL,IFLAG)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,IPrint,MxBnd,JAt,KAt,NBJ,NBK,IAt,LAt,NEqJ,NEqK
+      Integer IBond(MxBnd,*),IAtCyc(*),IFLAG
+      Integer JJ,KK,ICand,LCand,NBJB,NBKB,IC
+      Dimension EAn(*),C(3,*)
+      Logical Join2C,Better
+      Common/bic/N2Cyc,N3Cyc,IAt2C(3,20),Iat3C(4,20)
+      Real*8 BJ,BK,BestJ,BestK,Tresh
+
+      Tresh=5.0d-4
+      IFLAG=1
+      IAt=0
+      LAt=0
+      NEqJ=1
+      NEqK=1
+      BestJ=-1.0d30
+      BestK=-1.0d30
+
+      Do 10 JJ=1,NBJ
+       ICand=IBond(JJ,JAt)
+       If(ICand.eq.KAt) go to 10
+       Value=ValAng(C(1,ICand),C(1,JAt),C(1,KAt))
+       If(Value.gt.TreshL) go to 10
+       Join2C=.False.
+       If(N2Cyc.gt.0) then
+        Do 20 IC=1,N2Cyc
+         If(IAt2C(1,IC).eq.ICand) Join2C=.True.
+   20   Continue
+       EndIf
+       If(Join2C) go to 10
+       Do 30 KK=1,NBK
+        LCand=IBond(KK,KAt)
+        If(LCand.eq.JAt.or.LCand.eq.ICand) go to 30
+        Value=ValAng(C(1,JAt),C(1,KAt),C(1,LCand))
+        If(Value.gt.TreshL) go to 30
+        Join2C=.False.
+        If(N2Cyc.gt.0) then
+         Do 40 IC=1,N2Cyc
+          If(IAt2C(1,IC).eq.LCand) Join2C=.True.
+   40    Continue
+        EndIf
+        If(Join2C) go to 30
+        BJ=EAn(ICand)
+        BK=EAn(LCand)
+        Better=.False.
+        If(IFLAG.ne.0) then
+         Better=.True.
+        ElseIf(BJ.gt.BestJ+Tresh) then
+         Better=.True.
+        ElseIf(DAbs(BJ-BestJ).lt.Tresh) then
+         If(BK.gt.BestK+Tresh) then
+          Better=.True.
+         ElseIf(DAbs(BK-BestK).lt.Tresh) then
+C Stable tie-breakers: prefer more substituted ends, then lower atom labels.
+          If(NBJ.gt.NBJB) then
+           Better=.True.
+          ElseIf(NBJ.eq.NBJB.and.NBK.gt.NBKB) then
+           Better=.True.
+          ElseIf(NBJ.eq.NBJB.and.NBK.eq.NBKB) then
+           If(ICand.lt.IAt) then
+            Better=.True.
+           ElseIf(ICand.eq.IAt.and.LCand.lt.LAt) then
+            Better=.True.
+           EndIf
+          EndIf
+         EndIf
+        EndIf
+        If(Better) then
+         IFLAG=0
+         IAt=ICand
+         LAt=LCand
+         BestJ=BJ
+         BestK=BK
+         NBJB=NBJ
+         NBKB=NBK
+        EndIf
+   30  Continue
+   10 Continue
+
+      If(IFLAG.ne.0) then
+       If(IPrint.gt.0) write(IOut,'('' No valid priority torsion '',
+     $  ''around bond'',2I5)') JAt,KAt
+       Return
+      EndIf
+      If(IPrint.gt.0) then
+       If(NEqJ.gt.1.or.NEqK.gt.1) write(IOut,'('' ONEDIH orbit-closed '',
+     $  ''representative around bond'',2I5,'' eq classes'',2I3)')
+     $  JAt,KAt,NEqJ,NEqK
+      EndIf
+      Return
+      End
+*Deck OrbitDih
+      Subroutine OrbitDih(IOut,IPrint,MxBnd,MxTrmD,NDih,JAt,KAt,NBJ,NBK,
+     $  IBond,IAtCyc,IAn,NBond,SIAt,SLAt,NTermD,IAtomD,CoefD,C,TreshL,
+     $  DoNorm,ITerm)
+      Implicit Real*8 (A-H,O-Z)
+      Logical DoNorm
+      Integer IOut,IPrint,MxBnd,MxTrmD,NDih,JAt,KAt,NBJ,NBK,SIAt,SLAt
+      Integer IBond(MxBnd,*),IAtCyc(*),IAn(*),NBond(*),NTermD(*),ITerm
+      Integer IAtomD(4,MxTrmD,*)
+      Real*8 CoefD(MxTrmD,*),C(3,*),TreshL
+      Integer JJ,KK,IAt,LAt
+      Real*8 Value
+
+      ITerm=0
+      Do 10 JJ=1,NBJ
+       IAt=IBond(JJ,JAt)
+       If(IAt.eq.KAt) go to 10
+       Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
+       If(Value.gt.TreshL) go to 10
+       If(IAtCyc(IAt).ne.IAtCyc(SIAt)) go to 10
+       If(IAn(IAt).ne.IAn(SIAt)) go to 10
+       If(NBond(IAt).ne.NBond(SIAt)) go to 10
+       Do 20 KK=1,NBK
+        LAt=IBond(KK,KAt)
+        If(LAt.eq.JAt) go to 20
+        Value=ValAng(C(1,JAt),C(1,KAt),C(1,LAt))
+        If(Value.gt.TreshL) go to 20
+        If(LAt.eq.IAt) go to 20
+        If(IAtCyc(LAt).ne.IAtCyc(SLAt)) go to 20
+        If(IAn(LAt).ne.IAn(SLAt)) go to 20
+        If(NBond(LAt).ne.NBond(SLAt)) go to 20
+        If(ITerm.ge.MxTrmD) go to 10
+        ITerm=ITerm+1
+        IAtomD(1,ITerm,NDih)=IAt
+        IAtomD(2,ITerm,NDih)=JAt
+        IAtomD(3,ITerm,NDih)=KAt
+        IAtomD(4,ITerm,NDih)=LAt
+        CoefD(ITerm,NDih)=1.0d0
+   20   Continue
+   10 Continue
+      If(ITerm.eq.0) then
+       ITerm=1
+       IAtomD(1,1,NDih)=SIAt
+       IAtomD(2,1,NDih)=JAt
+       IAtomD(3,1,NDih)=KAt
+       IAtomD(4,1,NDih)=SLAt
+       CoefD(1,NDih)=1.0d0
+      EndIf
+      If(.not.DoNorm) Return
+      Do 30 II=1,ITerm
+       CoefD(II,NDih)=CoefD(II,NDih)/SQrt(Float(ITerm))
+   30 Continue
+      Return
       End
 *Deck BtFly
       Subroutine BtFly(IOut,IPrint,MxBnd,MxAtCy,MxAtD,MxTrmD,NDih,JAt,

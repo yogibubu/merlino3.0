@@ -5,7 +5,6 @@ import numpy as np
 
 from .pipeline import b_matrix, eval_primitives, zeff_from_topology
 from .symmetry_local import (
-    angle_bin,
     atom_classes,
     match_local_geometry,
     pattern_for_center,
@@ -13,7 +12,7 @@ from .symmetry_local import (
     write_pattern_report,
     write_pattern_report_txt,
 )
-from .topo_groups import group_primitives
+from .topo_groups import group_primitives, primitive_signature
 
 
 def mass_matrices(masses):
@@ -305,6 +304,78 @@ def _orthonormal_basis_sumdiff(n):
     return U
 
 
+def _xy3_basis():
+    return np.array(
+        [
+            [2.0 / np.sqrt(6.0), 0.0],
+            [-1.0 / np.sqrt(6.0), 1.0 / np.sqrt(2.0)],
+            [-1.0 / np.sqrt(6.0), -1.0 / np.sqrt(2.0)],
+        ],
+        dtype=float,
+    )
+
+
+def _choose_xy3_unique(neigh, degree, Z=None, atom_class=None):
+    neigh = list(neigh)
+    if len(neigh) != 3:
+        raise ValueError("XY3 selection requires three neighbors")
+    if Z is not None:
+        h = [int(Z[i] == 1) for i in neigh]
+        if sum(h) == 1:
+            return neigh[h.index(1)]
+    term = [int(degree[i] <= 1) for i in neigh]
+    if sum(term) == 1:
+        return neigh[term.index(1)]
+    if atom_class is not None:
+        classes = [atom_class[i] for i in neigh]
+        counts = {c: classes.count(c) for c in set(classes)}
+        unique = [i for i, c in zip(neigh, classes) if counts[c] == 1]
+        if len(unique) == 1:
+            return unique[0]
+    return min(neigh)
+
+
+def _xy3_angle_block(prims, center, neigh, degree, Z=None, atom_class=None):
+    if len(neigh) != 3:
+        return None, None
+    unique = _choose_xy3_unique(neigh, degree, Z=Z, atom_class=atom_class)
+    others = [i for i in neigh if i != unique]
+    others = sorted(others)
+    pair_order = [
+        tuple(sorted((others[0], others[1]))),
+        tuple(sorted((unique, others[0]))),
+        tuple(sorted((unique, others[1]))),
+    ]
+    angle_map = {}
+    for idx, p in enumerate(prims):
+        if p.kind != "angle" or p.atoms[1] != center:
+            continue
+        angle_map[tuple(sorted((p.atoms[0], p.atoms[2])))] = idx
+    idxs = []
+    for pair in pair_order:
+        idx = angle_map.get(pair)
+        if idx is None:
+            return None, None
+        idxs.append(idx)
+    U = _xy3_basis()
+    return idxs, U
+
+
+def _xy2_angle_block(prims, center, neigh):
+    if len(neigh) != 2:
+        return None, None
+    angle_map = {}
+    for idx, p in enumerate(prims):
+        if p.kind != "angle" or p.atoms[1] != center:
+            continue
+        angle_map[tuple(sorted((p.atoms[0], p.atoms[2])))] = idx
+    pair = tuple(sorted((neigh[0], neigh[1])))
+    idx = angle_map.get(pair)
+    if idx is None:
+        return None, None
+    return [idx], np.eye(1, dtype=float)
+
+
 def _ring_ordered_indices(prims, ring, kind):
     from topology.ring_primitives import ring_valence_angles, ring_dihedrals, ring_bonds
 
@@ -419,7 +490,16 @@ def _ring_cyclic_u(prims, ringset, kind, planar_tol=0.05):
     return U, idxs_all
 
 
-def valence_angle_u(prims, coords, tol=1e-8, fd_step=1e-4, ringset=None):
+def valence_angle_u(
+    prims,
+    coords,
+    tol=1e-8,
+    fd_step=1e-4,
+    ringset=None,
+    Z=None,
+    atom_class=None,
+    exclude_centers=None,
+):
     """Build non-redundant valence-angle transform U via per-center G blocks.
 
     Returns:
@@ -462,8 +542,39 @@ def valence_angle_u(prims, coords, tol=1e-8, fd_step=1e-4, ringset=None):
         by_center = {}
         for i in angle_indices:
             _, j, _ = prims[i].atoms
+            if exclude_centers is not None and j in exclude_centers:
+                continue
             by_center.setdefault(j, []).append(i)
+        neighbors = {}
+        degree = None
+        if Z is not None or atom_class is not None:
+            neigh_sets = {}
+            for p in prims:
+                if p.kind != "bond":
+                    continue
+                a, b = p.atoms
+                neigh_sets.setdefault(a, set()).add(b)
+                neigh_sets.setdefault(b, set()).add(a)
+            neighbors = {j: sorted(v) for j, v in neigh_sets.items()}
+            degree = {j: len(v) for j, v in neigh_sets.items()}
         for center, idxs in sorted(by_center.items()):
+            if len(idxs) == 1 and center in neighbors and len(neighbors[center]) == 2:
+                xy2_idxs, Uxy2 = _xy2_angle_block(prims, center, neighbors[center])
+                if xy2_idxs is not None:
+                    blocks.append((xy2_idxs, Uxy2))
+                    continue
+            if len(idxs) == 3 and center in neighbors and len(neighbors[center]) == 3:
+                xy3_idxs, Uxy3 = _xy3_angle_block(
+                    prims,
+                    center,
+                    neighbors[center],
+                    degree,
+                    Z=Z,
+                    atom_class=atom_class,
+                )
+                if xy3_idxs is not None:
+                    blocks.append((xy3_idxs, Uxy3))
+                    continue
             prim_block = [prims[i] for i in idxs]
             Bc = b_matrix(prim_block, coords, fd_step)
             G = Bc @ Bc.T
@@ -675,7 +786,8 @@ def dihedral_u(
     """Build non-redundant dihedral transform U.
 
     For each non-terminal bond, either pick a single dihedral based on
-    atomic priority or combine all dihedrals with equal weights.
+    atomic priority, combine all dihedrals with equal weights, or close the
+    local symmetry orbit of the selected representative.
     """
     dihedral_indices = []
     for i, p in enumerate(prims):
@@ -702,6 +814,13 @@ def dihedral_u(
         neighbors[a].add(b)
         neighbors[b].add(a)
     degree = np.array([len(n) for n in neighbors], dtype=int)
+
+    atom_class = None
+    if mode == "orbit":
+        if Z is None:
+            mode = "pick"
+        else:
+            atom_class, _, _, ringset, _ = atom_classes(coords, Z)
 
     # priority
     if priority is None:
@@ -761,6 +880,46 @@ def dihedral_u(
                         "candidates": [int(x) for x in idxs],
                         "selected": [int(x) for x in idxs],
                         "reason": "combine",
+                    }
+            )
+            continue
+
+        if mode == "orbit":
+            best_idx = None
+            best_score = None
+            for idx in idxs:
+                i, j0, k0, l = prims[idx].atoms
+                mid = 0.5 * (coords[j0] + coords[k0])
+                di = float(np.linalg.norm(coords[i] - mid))
+                dl = float(np.linalg.norm(coords[l] - mid))
+                dist_score = max(di, dl)
+                score = (max(priority[i], priority[l]), min(priority[i], priority[l]), dist_score)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_idx = idx
+            if best_idx is None:
+                continue
+            if atom_class is None:
+                col = np.zeros(len(dihedral_indices), dtype=float)
+                col[row_map[best_idx]] = 1.0
+                cols.append(col)
+                continue
+            ref_sig = primitive_signature(prims[best_idx], atom_class, Z, ringset=ringset)
+            orbit = [idx for idx in idxs if primitive_signature(prims[idx], atom_class, Z, ringset=ringset) == ref_sig]
+            if not orbit:
+                orbit = [best_idx]
+            col = np.zeros(len(dihedral_indices), dtype=float)
+            w = 1.0 / len(orbit)
+            for idx in orbit:
+                col[row_map[idx]] = w
+            cols.append(col)
+            if return_info:
+                info["bonds"].append(
+                    {
+                        "bond": [int(j), int(k)],
+                        "candidates": [int(x) for x in idxs],
+                        "selected": [int(x) for x in orbit],
+                        "reason": "orbit",
                     }
                 )
             continue
@@ -927,6 +1086,13 @@ def _build_u_blocks_gblock(
     if idx_lin:
         blocks.append(("linear_bend", idx_lin, U_lin))
 
+    nat = coords.shape[0]
+    neighbors = [set() for _ in range(nat)]
+    for p in prims:
+        if p.kind == "bond":
+            i, j = p.atoms
+            neighbors[i].add(j)
+            neighbors[j].add(i)
     # out-of-plane (reduced)
     U_oop, idx_oop = oop_u(
         prims, coords, tol=tol, fd_step=fd_step, linear_threshold=linear_threshold
@@ -935,7 +1101,14 @@ def _build_u_blocks_gblock(
         blocks.append(("out_of_plane", idx_oop, U_oop))
 
     # angles
-    U_val, idx_val = valence_angle_u(prims, coords, tol=tol, fd_step=fd_step, ringset=ringset)
+    U_val, idx_val = valence_angle_u(
+        prims,
+        coords,
+        tol=tol,
+        fd_step=fd_step,
+        ringset=ringset,
+        Z=Z,
+    )
     if idx_val:
         blocks.append(("angle", idx_val, U_val))
     U_ring_ang, idx_ring_ang = ring_angle_u(prims, coords, ringset, tol=tol, fd_step=fd_step)
@@ -991,8 +1164,6 @@ def _build_u_blocks_symmetry(
 
     atom_class, class_meta, zeff, ringset, quasi = atom_classes(coords, Z, zeff_tol=zeff_tol)
 
-    # angle bins for geometry-sensitive grouping
-    angle_bins = {}
     n = coords.shape[0]
     neighbors = [set() for _ in range(n)]
     for p in prims:
@@ -1029,18 +1200,6 @@ def _build_u_blocks_symmetry(
         geom = geom.__class__(label=geom_label, score=geom.score, angles=geom.angles)
         pattern_report["centers"].append(pattern_for_center(j, neigh, atom_class, geom))
 
-    # compute angle bins per angle primitive
-    for i, p in enumerate(prims):
-        if p.kind != "angle":
-            continue
-        a, j, b = p.atoms
-        v1 = coords[a] - coords[j]
-        v2 = coords[b] - coords[j]
-        v1 = v1 / np.linalg.norm(v1)
-        v2 = v2 / np.linalg.norm(v2)
-        ang = math.degrees(math.acos(float(np.clip(np.dot(v1, v2), -1.0, 1.0))))
-        angle_bins[i] = angle_bin(ang)
-
     # Stretchings are already the desired independent coordinates.  Bending,
     # torsion and out-of-plane blocks below are the ones reduced from their
     # redundant primitive sets.
@@ -1067,21 +1226,18 @@ def _build_u_blocks_symmetry(
             U = _orthonormal_basis_sumdiff(len(idxs))
             blocks.append(("out_of_plane", idxs, U))
 
-    # angles (non-ring) grouped by signature + angle bin
-    angle_idx = [i for i, p in enumerate(prims) if p.kind == "angle" and _ring_index_for_atoms(ringset, p.atoms) is None]
-    if angle_idx:
-        groups = group_primitives(
-            [prims[i] for i in angle_idx],
-            atom_class,
-            Z,
-            ringset=ringset,
-            angle_bins=angle_bins,
-            idx_map=angle_idx,
-        )
-        for sig, local in groups.items():
-            idxs = [angle_idx[i] for i in local]
-            U = _orthonormal_basis_sumdiff(len(idxs))
-            blocks.append(("angle", idxs, U))
+    # non-ring valence angles
+    U_val, idx_val = valence_angle_u(
+        prims,
+        coords,
+        tol=tol,
+        fd_step=fd_step,
+        ringset=ringset,
+        Z=Z,
+        atom_class=atom_class,
+    )
+    if idx_val:
+        blocks.append(("angle", idx_val, U_val))
 
     # ring angles / dihedrals (cyclic)
     U_ring_ang, idx_ring_ang = _ring_cyclic_u(prims, ringset, "angle")
@@ -1313,8 +1469,13 @@ def _rank_pruned_column_indices(prims, coords, U, column_labels, fd_step=1e-4, t
     B = b_matrix(prims, coords, fd_step)
     projector = _vibrational_projector_local(coords)
     rows = U.T @ B @ projector
-    if np.linalg.matrix_rank(rows, tol=tol) < min(target, U.shape[1]):
-        return list(range(U.shape[1]))
+    max_rank = int(np.linalg.matrix_rank(rows, tol=tol))
+    if max_rank < target:
+        import warnings
+        warnings.warn(
+            f"non-redundant GIC basis reaches rank {max_rank} instead of vibrational target {target}; "
+            "returning the maximal rank-preserving subset"
+        )
 
     priorities = {
         "bond": 0,
@@ -1342,9 +1503,9 @@ def _rank_pruned_column_indices(prims, coords, U, column_labels, fd_step=1e-4, t
         if row_norm > tol and row_norm > 1.0e-8 * row_norm0:
             basis.append(row / row_norm)
             keep.append(col)
-        if len(keep) == target:
+        if len(keep) == min(target, max_rank):
             break
-    if len(keep) != target:
+    if len(keep) != min(target, max_rank):
         return list(range(U.shape[1]))
     return sorted(keep)
 
