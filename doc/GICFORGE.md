@@ -92,6 +92,11 @@ primitive signatures, complete irrep order and the number of totally
 symmetric coordinates in addition to the Python/Fortran B-matrix difference.
 These fields are part of the regression contract because BSR and Gaussian GIC
 generation depend on deterministic ordering and exact symmetry labels.
+The contract fails if raw and symmetrized GICForge runs disagree on point
+group, final GIC count, coordinate-class counts or primitive signature set, or
+if the Python analytic B matrix differs from Fortran `bmat.out` beyond
+numerical roundoff.  Python is therefore not allowed to repair, reorder or
+replace the Fortran coordinate definition silently.
 
 The Python ReadGIC command in `survibfit` uses the same canonical definition:
 `python -m survibfit.cli gic --xyz in.xyz --out gic.txt` runs GICForge and

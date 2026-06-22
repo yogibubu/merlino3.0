@@ -174,21 +174,27 @@ class GICForgePythonFortranContract:
     irreps: tuple[str, ...]
     raw_workdir: str
     sym_workdir: str
+    contract_errors: tuple[str, ...] = ()
+    raw_point_group: str = "UNKNOWN"
     raw_names: tuple[str, ...] = ()
     sym_names: tuple[str, ...] = ()
     raw_labels: tuple[str, ...] = ()
     sym_labels: tuple[str, ...] = ()
     raw_primitive_signatures: tuple[str, ...] = ()
     sym_primitive_signatures: tuple[str, ...] = ()
+    raw_coordinate_kind_counts: dict[str, int] = field(default_factory=dict)
+    sym_coordinate_kind_counts: dict[str, int] = field(default_factory=dict)
     totally_symmetric_count: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
             "passed": self.passed,
+            "contract_errors": list(self.contract_errors),
             "raw_b_matrix": self.raw_b_matrix.to_dict(),
             "raw_gic_count": self.raw_gic_count,
             "sym_gic_count": self.sym_gic_count,
             "sym_primitive_count": self.sym_primitive_count,
+            "raw_point_group": self.raw_point_group,
             "point_group": self.point_group,
             "irreps": list(self.irreps),
             "raw_names": list(self.raw_names),
@@ -197,6 +203,8 @@ class GICForgePythonFortranContract:
             "sym_labels": list(self.sym_labels),
             "raw_primitive_signatures": list(self.raw_primitive_signatures),
             "sym_primitive_signatures": list(self.sym_primitive_signatures),
+            "raw_coordinate_kind_counts": dict(sorted(self.raw_coordinate_kind_counts.items())),
+            "sym_coordinate_kind_counts": dict(sorted(self.sym_coordinate_kind_counts.items())),
             "totally_symmetric_count": self.totally_symmetric_count,
             "raw_workdir": self.raw_workdir,
             "sym_workdir": self.sym_workdir,
@@ -476,8 +484,8 @@ def run_gicforge_python_fortran_contract(
     *,
     workdir: Path,
     executable: Path | None = None,
-    atol: float = 1.0e-6,
-    rtol: float = 1.0e-6,
+    atol: float = 1.0e-7,
+    rtol: float = 1.0e-7,
 ) -> GICForgePythonFortranContract:
     """Run the reusable Python/Fortran GICForge consistency contract.
 
@@ -513,25 +521,53 @@ def run_gicforge_python_fortran_contract(
         executable=executable,
         symmetrize=True,
     )
-    sym_ok = (
-        sym_definition.symmetrized
-        and sym_definition.point_group != "UNKNOWN"
-        and len(sym_definition.labels) == int(np.asarray(sym_definition.u_matrix).shape[1])
-        and len(sym_definition.irreps) == len(sym_definition.labels)
-        and all(irrep and irrep != "UNK" for irrep in sym_definition.irreps)
-    )
     totally_symmetric_count = sum(1 for irrep in sym_definition.irreps if irrep in {"A1", "A'", "Ag", "A"})
-    schema_ok = (
-        len(raw_definition.names) == len(raw_definition.labels)
-        and len(sym_definition.names) == len(sym_definition.labels)
-        and len(set(raw_definition.names)) == len(raw_definition.names)
-        and len(set(sym_definition.names)) == len(sym_definition.names)
-        and raw_comparison.python_shape[0] == len(raw_definition.labels)
-        and raw_comparison.python_shape[1] == 3 * len(raw_definition.atom_symbols)
-        and totally_symmetric_count > 0
-    )
+    raw_signatures = tuple(_primitive_signature(primitive) for primitive in raw_definition.primitives)
+    sym_signatures = tuple(_primitive_signature(primitive) for primitive in sym_definition.primitives)
+    raw_kind_counts = _coordinate_kind_counts(raw_definition.names, raw_definition.labels)
+    sym_kind_counts = _coordinate_kind_counts(sym_definition.names, sym_definition.labels)
+    errors: list[str] = []
+    if not raw_comparison.passed:
+        errors.append(
+            "Python analytic B matrix differs from Fortran bmat.out "
+            f"(max_abs={raw_comparison.max_abs_diff:.3e}, max_rel={raw_comparison.max_rel_diff:.3e})"
+        )
+    if raw_definition.point_group != sym_definition.point_group:
+        errors.append(
+            f"Raw/sym point group mismatch: {raw_definition.point_group} != {sym_definition.point_group}"
+        )
+    if raw_definition.point_group == "UNKNOWN" or sym_definition.point_group == "UNKNOWN":
+        errors.append("GICForge point group is UNKNOWN")
+    if len(raw_definition.names) != len(raw_definition.labels):
+        errors.append("Raw definition name/label count mismatch")
+    if len(sym_definition.names) != len(sym_definition.labels):
+        errors.append("Sym definition name/label count mismatch")
+    if len(set(raw_definition.names)) != len(raw_definition.names):
+        errors.append("Raw definition names are not unique")
+    if len(set(sym_definition.names)) != len(sym_definition.names):
+        errors.append("Sym definition names are not unique")
+    if len(raw_definition.labels) != len(sym_definition.labels):
+        errors.append(
+            f"Raw/sym GIC count mismatch: {len(raw_definition.labels)} != {len(sym_definition.labels)}"
+        )
+    if sorted(raw_signatures) != sorted(sym_signatures):
+        errors.append("Raw/sym primitive signature sets differ")
+    if raw_kind_counts != sym_kind_counts:
+        errors.append(f"Raw/sym coordinate kind counts differ: {raw_kind_counts} != {sym_kind_counts}")
+    if raw_comparison.python_shape[0] != len(raw_definition.labels):
+        errors.append("Fortran B row count does not match raw GIC count")
+    if raw_comparison.python_shape[1] != 3 * len(raw_definition.atom_symbols):
+        errors.append("Fortran B column count does not match 3N")
+    if not sym_definition.symmetrized:
+        errors.append("Symmetrized definition is not marked symmetrized")
+    if len(sym_definition.irreps) != len(sym_definition.labels):
+        errors.append("Sym definition irrep/label count mismatch")
+    if any(not irrep or irrep == "UNK" for irrep in sym_definition.irreps):
+        errors.append("Sym definition contains missing irreducible representations")
+    if totally_symmetric_count <= 0:
+        errors.append("Sym definition has no totally symmetric coordinates")
     return GICForgePythonFortranContract(
-        passed=bool(raw_comparison.passed and sym_ok and schema_ok),
+        passed=not errors,
         raw_b_matrix=raw_comparison,
         raw_gic_count=len(raw_definition.labels),
         sym_gic_count=len(sym_definition.labels),
@@ -540,12 +576,16 @@ def run_gicforge_python_fortran_contract(
         irreps=sym_definition.irreps,
         raw_workdir=str(raw_dir),
         sym_workdir=str(sym_dir),
+        contract_errors=tuple(errors),
+        raw_point_group=raw_definition.point_group,
         raw_names=raw_definition.names,
         sym_names=sym_definition.names,
         raw_labels=raw_definition.labels,
         sym_labels=sym_definition.labels,
-        raw_primitive_signatures=tuple(_primitive_signature(primitive) for primitive in raw_definition.primitives),
-        sym_primitive_signatures=tuple(_primitive_signature(primitive) for primitive in sym_definition.primitives),
+        raw_primitive_signatures=raw_signatures,
+        sym_primitive_signatures=sym_signatures,
+        raw_coordinate_kind_counts=raw_kind_counts,
+        sym_coordinate_kind_counts=sym_kind_counts,
         totally_symmetric_count=totally_symmetric_count,
     )
 
@@ -564,6 +604,30 @@ def _primitive_signature(primitive: Primitive) -> str:
     ref = ",".join(str(int(idx) + 1) for idx in getattr(primitive, "ref", ()))
     suffix = f":ref={ref}" if ref else ""
     return f"{primitive.kind}:mode={int(getattr(primitive, 'mode', 0))}:atoms={atoms}{suffix}"
+
+
+def _coordinate_kind_counts(names: tuple[str, ...], labels: tuple[str, ...]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for index, label in enumerate(labels):
+        name = names[index] if index < len(names) else ""
+        kind = _coordinate_kind(name, label)
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
+def _coordinate_kind(name: str, label: str) -> str:
+    text = f"{name} {label}".lower()
+    if any(marker in text for marker in ("str", "stre", "r(")):
+        return "bond"
+    if any(marker in text for marker in ("lin", "l(")):
+        return "linear_bend"
+    if any(marker in text for marker in ("oop", "out", "impd", "u(")):
+        return "out_of_plane"
+    if any(marker in text for marker in ("tor", "pck", "phi", "d(")):
+        return "dihedral"
+    if any(marker in text for marker in ("ang", "bend", "rock", "symd", "rdef", "a(")):
+        return "angle"
+    return "unknown"
 
 
 def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], str] | None:

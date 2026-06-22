@@ -262,7 +262,10 @@ def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
     )
 
     assert contract.passed is True
+    assert contract.contract_errors == ()
     assert contract.raw_b_matrix.passed is True
+    assert contract.raw_b_matrix.max_abs_diff < 1.0e-7
+    assert contract.raw_point_group == "C2v"
     assert contract.point_group == "C2v"
     assert "A1" in contract.irreps
     assert contract.raw_gic_count == 3
@@ -273,6 +276,9 @@ def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
     assert len(contract.raw_labels) == contract.raw_gic_count
     assert len(contract.sym_labels) == contract.sym_gic_count
     assert all(signature.startswith(("bond:", "angle:")) for signature in contract.raw_primitive_signatures)
+    assert sorted(contract.raw_primitive_signatures) == sorted(contract.sym_primitive_signatures)
+    assert contract.raw_coordinate_kind_counts == {"angle": 1, "bond": 2}
+    assert contract.sym_coordinate_kind_counts == contract.raw_coordinate_kind_counts
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
