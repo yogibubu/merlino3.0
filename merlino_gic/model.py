@@ -242,6 +242,15 @@ def define_gics_from_cartesian(
         result = run_gicforge(run_dir, symmetrize=symmetrize)
     else:
         result = run(run_dir)
+    fallback_target = _gicforge_python_fallback_target(run_dir / "provout")
+    if fallback_target is not None:
+        return _define_python_local_gics(
+            atoms,
+            coords,
+            workdir=run_dir,
+            target_rank=fallback_target,
+            fallback_reason="gicforge_pre_pruning_below_vibrational_rank",
+        )
     gauin = (result.files.get("gauin.symm") if symmetrize else None) or result.files.get("gauin")
     if gauin is None:
         raise GICDefinitionError(f"GICForge did not produce gauin/gauin.symm in {run_dir}")
@@ -321,6 +330,86 @@ def read_gic_definition_from_gauin(
         provenance=dict(provenance or {}),
     )
     validate_gic_definition(definition)
+    return definition
+
+
+def _gicforge_python_fallback_target(provout: Path) -> int | None:
+    path = Path(provout)
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"Current GIC count=\s*(\d+)\s+target vibrational rank=\s*(\d+)", text)
+    if match is None:
+        return None
+    current = int(match.group(1))
+    target = int(match.group(2))
+    return target if current < target else None
+
+
+def _define_python_local_gics(
+    atom_symbols: tuple[str, ...],
+    coordinates_angstrom: np.ndarray,
+    *,
+    workdir: Path,
+    target_rank: int,
+    fallback_reason: str,
+) -> GICDefinition:
+    from merlino_fit.survibfit.primitives import build_primitives
+    from merlino_fit.survibfit.transforms import build_u_with_names, format_readgic_lines
+    from merlino_fit.topology.pipeline import build_topology_objects
+
+    atoms = tuple(atom_symbols)
+    coords = _validated_coordinates(coordinates_angstrom, len(atoms))
+    atomic_numbers = tuple(atomic_number(atom) for atom in atoms)
+    _continuous, graph, ringset, _synthons, _aromaticity = build_topology_objects(coords, np.asarray(atomic_numbers))
+    primitives = tuple(build_primitives(graph, coords))
+    u_matrix, names_with_values = build_u_with_names(
+        primitives,
+        coords,
+        Z=atomic_numbers,
+        ringset=ringset,
+        include_frag=False,
+        prune_mode="svd",
+    )
+    if u_matrix.shape[1] != target_rank:
+        raise GICDefinitionError(
+            "Python-local GIC fallback did not produce the required vibrational rank "
+            f"({u_matrix.shape[1]} != {target_rank})"
+        )
+    if len(names_with_values) != u_matrix.shape[1]:
+        raise GICDefinitionError(
+            "Python-local GIC fallback produced a name/coordinate mismatch "
+            f"({len(names_with_values)} != {u_matrix.shape[1]})"
+        )
+    gaussian_lines = tuple(format_readgic_lines(names_with_values))
+    names = tuple(str(name) for name, _value, _expr in names_with_values)
+    labels = tuple(
+        f"GIC{index:03d} PythonLocal {name} irrep=UNK {line}"
+        for index, (name, line) in enumerate(zip(names, gaussian_lines), start=1)
+    )
+    definition = GICDefinition(
+        atom_symbols=atoms,
+        atomic_numbers=atomic_numbers,
+        reference_coordinates_angstrom=tuple(tuple(float(value) for value in row) for row in coords),
+        primitives=primitives,
+        u_matrix=np.asarray(u_matrix, dtype=float),
+        labels=labels,
+        names=names,
+        irreps=tuple("UNK" for _ in names),
+        point_group="UNKNOWN",
+        symmetrized=False,
+        symmetry_source="python-local-svd",
+        gaussian_input="\n".join(gaussian_lines) + "\n",
+        source="python-local",
+        generation_workdir=str(workdir),
+        provenance={
+            "backend": "python-local",
+            "fallback_reason": fallback_reason,
+            "target_vibrational_rank": str(target_rank),
+        },
+    )
+    validate_gic_definition(definition)
+    definition.write(Path(workdir) / "gic_definition.json")
     return definition
 
 

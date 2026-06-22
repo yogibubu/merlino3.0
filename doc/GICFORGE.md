@@ -109,16 +109,23 @@ The Python ReadGIC command in `survibfit` uses the same canonical definition:
 `python -m survibfit.cli gic --xyz in.xyz --out gic.txt` runs GICForge and
 writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
 pure-Python local coordinate builder is available only with `--python-local`
-for diagnostics, requires `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1`, and is not an
-alternative production GIC definition.
+for diagnostics and requires `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1`.
+
+There is one controlled production fallback: if the Fortran pre-pruning GIC
+count is below the vibrational rank (`3N-6`, or `3N-5` for linear molecules),
+Merlino does not accept the incomplete GICForge set.  It falls back to the
+Python-local SVD generator and accepts that fallback only when the pruned
+Python basis has exactly the required vibrational rank.  Otherwise GIC
+definition fails explicitly.
 
 This is a strict identity contract.  The Python layer must not create an
-independent production GIC basis from topology after GICForge has run.  Its
-allowed responsibilities are orchestration, deterministic post-check
+independent production GIC basis from topology after a rank-complete GICForge
+run.  Its allowed responsibilities are orchestration, deterministic post-check
 symmetrization, schema serialization and analytic evaluation of the frozen
-GIC/B-matrix model on later Cartesian geometries.  If Fortran `gauin` contains
-one coordinate, Python freezes one coordinate; if Fortran changes the
-non-redundant basis, downstream Python programs see that exact basis.
+GIC/B-matrix model on later Cartesian geometries.  If rank-complete Fortran
+`gauin` contains one coordinate, Python freezes one coordinate; if Fortran
+changes the non-redundant basis, downstream Python programs see that exact
+basis.
 
 The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
 `xyzin`, `provin`, `gauin`/`gauin.symm`, the GICForge executable, the GICForge
