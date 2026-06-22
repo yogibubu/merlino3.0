@@ -6,6 +6,12 @@ from pathlib import Path
 import tomllib
 
 from .contracts import ElectronicCorrection, IsotopologueObservation, RotationalConstants, VibrationalCorrection
+from .isotopologue_format import (
+    format_substitutions,
+    mass_number as _mass_number,
+    parse_substitutions,
+    sigma_text_from_weight,
+)
 
 
 CSV_FIELDS = (
@@ -42,31 +48,14 @@ REQUIRED_CSV_FIELDS = (
 )
 
 
-def parse_substitutions(text: str) -> dict[int, int]:
-    """Parse compact isotope substitutions like `2:13;5:18`."""
-    result: dict[int, int] = {}
-    text = (text or "").strip()
-    if not text:
-        return result
-    for chunk in text.split(";"):
-        atom_text, isotope_text = chunk.split(":", 1)
-        atom_index = int(atom_text.strip())
-        isotope_a = _mass_number(isotope_text.strip())
-        if atom_index < 1:
-            raise ValueError("Substitution atom indexes are one-based")
-        result[atom_index] = isotope_a
-    return result
-
-
-def format_substitutions(substitutions: dict[int, int]) -> str:
-    return ";".join(f"{atom}:{mass}" for atom, mass in sorted(substitutions.items()))
-
-
 def read_observations(path: Path) -> tuple[IsotopologueObservation, ...]:
     target = Path(path)
     suffix = target.suffix.lower()
     from .msr_legacy import is_msr_legacy_file, read_msr_legacy_observations
+    from .xyzin_observations import has_xyzin_isotopologues, read_xyzin_isotopologues
 
+    if has_xyzin_isotopologues(target):
+        return read_xyzin_isotopologues(target)
     if is_msr_legacy_file(target):
         return read_msr_legacy_observations(target)
     if suffix == ".csv":
@@ -277,14 +266,6 @@ def _substitutions_from_mapping(value) -> dict[int, int]:
     raise ValueError("Invalid semiexp substitutions format")
 
 
-def _mass_number(value) -> int:
-    text = str(value).strip()
-    aliases = {"D": 2, "T": 3}
-    if text.upper() in aliases:
-        return aliases[text.upper()]
-    return int(text)
-
-
 def _weights_from_sigmas(row: dict[str, str]) -> RotationalConstants | None:
     keys = ("sigma_A_MHz", "sigma_B_MHz", "sigma_C_MHz")
     raw = tuple(str(row.get(key, "") or "").strip() for key in keys)
@@ -299,6 +280,4 @@ def _weights_from_sigmas(row: dict[str, str]) -> RotationalConstants | None:
 
 
 def _sigma_text(weight: float) -> str:
-    if weight <= 0.0:
-        return ""
-    return f"{(1.0 / weight) ** 0.5:.12g}"
+    return sigma_text_from_weight(weight)

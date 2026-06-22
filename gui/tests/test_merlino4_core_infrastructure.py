@@ -83,6 +83,7 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
     assert args.checkpoint is None
     assert args.restart is None
     assert args.max_step == pytest.approx(0.25)
+    assert args.xyzin is None
 
     job_args = merlino_parser().parse_args([
         "semiexp",
@@ -305,10 +306,29 @@ def test_merlino_cli_semiexp(tmp_path):
         + "\n",
         encoding="utf-8",
     )
+    xyzin = tmp_path / "xyzin"
+    xyzin.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.987200",
+                "H 0.906600 0.000000 -0.239600",
+                "",
+                "#BASIC",
+                "charge 0",
+                "multiplicity 1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     outdir = tmp_path / "semiexp"
 
     assert merlino_cli(["semiexp", "--job", str(job_file), "--outdir", str(outdir)]) == 0
 
+    assert "#ISOTOPOLOGUES" in xyzin.read_text(encoding="utf-8")
     assert (outdir / "semiexp_geometry.xyz").exists()
     assert (outdir / "semiexp_report.txt").exists()
     assert (outdir / "semiexp_parameters.csv").exists()
@@ -328,6 +348,7 @@ def test_merlino_cli_semiexp(tmp_path):
     assert (outdir / "semiexp_report.html").exists()
     assert (outdir / "semiexp_tables.tex").exists()
     manifest = json.loads((outdir / "semiexp_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["inputs"]["initial_geometry"] == str(xyzin)
     assert manifest["backend"]["fortran77_role"] == "validated numerical kernels only"
     assert manifest["outputs"]["html_report"] == str(outdir / "semiexp_report.html")
     assert manifest["outputs"]["latex_tables"] == str(outdir / "semiexp_tables.tex")

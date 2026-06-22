@@ -42,14 +42,22 @@ from merlino_semiexp import (
     read_observations,
     read_observations_csv,
     read_semiexperimental_job,
+    read_xyzin_isotopologues,
     semiexperimental_latex_tables,
     validate_semiexperimental_request,
     write_semiexperimental_html_report,
     write_observations_csv,
+    write_xyzin_isotopologues,
     is_msr_legacy_file,
 )
 from merlino_vpt2_vci.gaussian_qff import hessian_input_from_gaussian_fchk
-from merlino_core import repo_root
+from merlino_core import (
+    XyzinIsotopologueRecord,
+    merge_xyzin_isotopologue_records,
+    read_xyzin_isotopologue_records,
+    repo_root,
+    write_xyzin_isotopologue_records,
+)
 from merlino_semiexp.fit import (
     MeasurementModel,
     SemiexperimentalFitDiagnostics,
@@ -447,6 +455,138 @@ C_MHz = 500.0
     assert toml_obs[1].substitutions == {2: 2}
     assert json_obs[0].substitutions == {1: 13}
     assert json_obs[0].corrected.C_MHz == pytest.approx(587.5)
+
+
+def test_semiexperimental_xyzin_isotopologue_section_roundtrip(tmp_path):
+    xyzin = tmp_path / "xyzin"
+    xyzin.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+                "",
+                "#BASIC",
+                "charge 0",
+                "multiplicity 1",
+                "",
+                "#ROTATIONAL",
+                "A_MHz = 1000.0",
+                "B_MHz = 800.0",
+                "C_MHz = 600.0",
+                "",
+                "#VIBRATIONAL",
+                "freq_cm-1 1000.0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    observations = (
+        IsotopologueObservation(
+            "parent",
+            RotationalConstants(1000.0, 800.0, 600.0),
+            correction=VibrationalCorrection(1.0, 2.0, 3.0, source="QM test", convention="subtract"),
+            electronic_correction=ElectronicCorrection(0.1, 0.2, 0.3, source="el", convention="additive"),
+            weights=RotationalConstants(10000.0, 2500.0, 1111.111111111111),
+        ),
+        IsotopologueObservation(
+            "D2",
+            RotationalConstants(990.0, 790.0, 590.0),
+            substitutions={2: 2},
+            correction=VibrationalCorrection(0.5, 0.6, 0.7, source="QM test"),
+        ),
+    )
+
+    write_xyzin_isotopologues(xyzin, observations)
+    text = xyzin.read_text(encoding="utf-8")
+    assert "#BASIC" in text
+    assert "#ROTATIONAL" in text
+    assert "#VIBRATIONAL" in text
+    assert "#ISOTOPOLOGUES" in text
+    assert "DEFINITION 2:2" in text
+    assert "SOURCE='QM test'" in text
+
+    loaded = read_xyzin_isotopologues(xyzin)
+    generic = read_observations(xyzin)
+    assert generic == loaded
+    assert loaded[0].label == "parent"
+    assert loaded[0].substitutions == {}
+    assert loaded[0].corrected.as_tuple() == pytest.approx((999.1, 798.2, 597.3))
+    assert loaded[0].weights is not None
+    assert loaded[0].weights.as_tuple() == pytest.approx((10000.0, 2500.0, 1111.111111111111))
+    assert loaded[1].substitutions == {2: 2}
+
+
+def test_xyzin_isotopologues_allow_definition_only_records(tmp_path):
+    xyzin = tmp_path / "xyzin"
+    xyzin.write_text(
+        "2\nhydrogen\nH 0 0 0\nH 0 0 1\n#BASIC\ncharge 0\n",
+        encoding="utf-8",
+    )
+    write_xyzin_isotopologue_records(
+        xyzin,
+        (
+            XyzinIsotopologueRecord("D1", substitutions={1: 2}),
+            XyzinIsotopologueRecord("D2", substitutions={2: 2}),
+        ),
+    )
+
+    records = read_xyzin_isotopologue_records(xyzin)
+    assert records[0].substitutions == {1: 2}
+    assert records[0].rotational_MHz is None
+    with pytest.raises(ValueError, match="SEfit requires ROTATIONAL_MHZ"):
+        read_observations(xyzin)
+
+
+def test_semiexperimental_geometry_input_accepts_xyzin(tmp_path):
+    xyzin = tmp_path / "xyzin"
+    xyzin.write_text(
+        "\n".join(
+            [
+                "2",
+                "",
+                "H 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.740000",
+                "",
+                "#BASIC",
+                "charge 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    geometry = read_geometry_input(xyzin)
+
+    assert geometry.source_format == "xyzin"
+    assert geometry.atoms == ("H", "H")
+    assert geometry.coordinates_angstrom[1, 2] == pytest.approx(0.74)
+
+
+def test_xyzin_isotopologue_merge_preserves_existing_observables(tmp_path):
+    xyzin = tmp_path / "xyzin"
+    xyzin.write_text("1\nx\nH 0 0 0\n#BASIC\ncharge 0\n", encoding="utf-8")
+    write_xyzin_isotopologue_records(
+        xyzin,
+        (
+            XyzinIsotopologueRecord(
+                "iso_001",
+                substitutions={1: 2},
+                rotational_MHz=(1000.0, 800.0, 600.0),
+                deltavib_MHz=(1.0, 2.0, 3.0),
+            ),
+        ),
+    )
+
+    merge_xyzin_isotopologue_records(xyzin, (XyzinIsotopologueRecord("iso_001", substitutions={1: 2}),))
+
+    record = read_xyzin_isotopologue_records(xyzin)[0]
+    assert record.substitutions == {1: 2}
+    assert record.rotational_MHz == pytest.approx((1000.0, 800.0, 600.0))
+    assert record.deltavib_MHz == pytest.approx((1.0, 2.0, 3.0))
 
 
 def test_semiexperimental_reads_gaussian_cartesian_com_and_modredundant_constraints(tmp_path):

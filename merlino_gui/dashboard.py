@@ -43,6 +43,7 @@ from merlino_semiexp import (
     read_geometry_input,
     read_observations,
     validate_semiexperimental_request,
+    write_xyzin_isotopologues,
 )
 
 from .manifest_browser import ManifestBrowserWindow
@@ -521,7 +522,7 @@ class DashboardWindow(QMainWindow):
         input_layout.addLayout(form)
 
         self.semiexp_xyz = _path_row(self, form, "Parent geometry:", "Select parent geometry", "*.xyz *.com *.gjf")
-        self.semiexp_observations = _path_row(self, form, "Isotopologues:", "Select isotopologue observations", "*.toml *.json *.csv")
+        self.semiexp_observations = _path_row(self, form, "Isotopologues:", "Select isotopologue observations", "xyzin *.toml *.json *.csv *.msr *.msr.inp")
         self.semiexp_outdir = _directory_row(self, form, "Output directory:")
 
         self.semiexp_iso_table = QTableWidget(0, 14)
@@ -542,7 +543,7 @@ class DashboardWindow(QMainWindow):
             "sigma_C",
         ])
         self.semiexp_iso_table.setMaximumHeight(150)
-        input_layout.addWidget(QLabel("Isotopologue editor (optional, writes TOML):"))
+        input_layout.addWidget(QLabel("Isotopologue editor (optional; writes TOML and #ISOTOPOLOGUES in xyzin when available):"))
         input_layout.addWidget(self.semiexp_iso_table)
 
         option_tab = QWidget()
@@ -639,7 +640,7 @@ class DashboardWindow(QMainWindow):
         add_iso_button = QPushButton("Add Isotopologue")
         add_iso_button.clicked.connect(self.add_semiexp_isotopologue_row)
         buttons.addWidget(add_iso_button)
-        save_iso_button = QPushButton("Save TOML")
+        save_iso_button = QPushButton("Save TOML/xyzin")
         save_iso_button.clicked.connect(self.save_semiexp_observations_toml)
         buttons.addWidget(save_iso_button)
         save_job_button = QPushButton("Save Job")
@@ -685,6 +686,8 @@ class DashboardWindow(QMainWindow):
                 str(self.workdir / "semiexp_job.mse.toml"),
                 "--outdir",
                 self.semiexp_outdir.text().strip(),
+                "--xyzin",
+                str(self.workdir / "xyzin"),
             ]
         args = [
             "semiexp",
@@ -694,6 +697,8 @@ class DashboardWindow(QMainWindow):
             self.semiexp_observations.text().strip(),
             "--outdir",
             self.semiexp_outdir.text().strip(),
+            "--xyzin",
+            str(self.workdir / "xyzin"),
             "--backend",
             self.selected_backends.get("semiexp_geometry", "python"),
             "--coordinate-model",
@@ -747,7 +752,18 @@ class DashboardWindow(QMainWindow):
             if job is None:
                 self._update_semiexp_preview()
                 return
-            args = ["semiexp", "--job", str(job), "--outdir", self.semiexp_outdir.text().strip()]
+            args = [
+                "semiexp",
+                "--job",
+                str(job),
+                "--outdir",
+                self.semiexp_outdir.text().strip(),
+                "--xyzin",
+                str(self.workdir / "xyzin"),
+            ]
+        else:
+            obs_path = Path(self.semiexp_observations.text().strip()) if self.semiexp_observations.text().strip() else None
+            self._sync_semiexp_observations_file_to_xyzin(obs_path)
         self._semiexp_process = QProcess(self)
         self._semiexp_process.setWorkingDirectory(str(self.workdir))
         self._semiexp_process.setProgram("python")
@@ -789,7 +805,10 @@ class DashboardWindow(QMainWindow):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(self._semiexp_table_toml(), encoding="utf-8")
         self.semiexp_observations.setText(str(target))
+        xyzin_target = self._write_semiexp_observations_to_xyzin()
         self._append_semiexp_text(f"\nwrote observations: {target}\n")
+        if xyzin_target is not None:
+            self._append_semiexp_text(f"updated #ISOTOPOLOGUES: {xyzin_target}\n")
         return target
 
     def save_semiexp_job_toml(self, checked: bool = False) -> Path | None:
@@ -803,7 +822,14 @@ class DashboardWindow(QMainWindow):
         target = self.workdir / "semiexp_job.mse.toml"
         external_observations = None if has_inline_observations else Path(observations_path)
         target.write_text(self._semiexp_job_toml(geometry, external_observations), encoding="utf-8")
+        xyzin_target = (
+            self._write_semiexp_observations_to_xyzin()
+            if has_inline_observations
+            else self._sync_semiexp_observations_file_to_xyzin(external_observations)
+        )
         self._append_semiexp_text(f"\nwrote job: {target}\n")
+        if xyzin_target is not None:
+            self._append_semiexp_text(f"updated #ISOTOPOLOGUES: {xyzin_target}\n")
         return target
 
     def preview_semiexp_gics(self) -> None:
@@ -1120,6 +1146,23 @@ class DashboardWindow(QMainWindow):
     def _semiexp_table_observations(self):
         data = tomllib.loads(self._semiexp_table_toml(definition_table=True))
         return observations_from_mapping(data)
+
+    def _write_semiexp_observations_to_xyzin(self) -> Path | None:
+        xyzin = self.workdir / "xyzin"
+        if not xyzin.exists() or not self._semiexp_table_has_observations():
+            return None
+        observations = self._semiexp_table_observations()
+        return write_xyzin_isotopologues(xyzin, observations)
+
+    def _sync_semiexp_observations_file_to_xyzin(self, observations_path: Path | None) -> Path | None:
+        xyzin = self.workdir / "xyzin"
+        if observations_path is None or not xyzin.exists():
+            return None
+        observations_path = Path(observations_path)
+        if observations_path.exists() and observations_path.resolve() == xyzin.resolve():
+            return None
+        observations = read_observations(observations_path)
+        return write_xyzin_isotopologues(xyzin, observations)
 
 
 def workflow_detail_text(workflow: WorkflowSpec, selected_backend: str | None = None, workdir: Path | None = None) -> str:

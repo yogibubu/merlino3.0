@@ -58,6 +58,7 @@ from .similarity_window import SimilarityWindow
 from .fragment_pipeline_window import FragmentPipelineWindow
 from topology.elements import atomic_number
 from geometry.isotopes_table import get_default_isotope, get_isotopes
+from merlino_core.isotopologues import XyzinIsotopologueRecord, merge_xyzin_isotopologue_records
 from merlino_fit.survibfit.modify_geom import write_xyz, read_xyz
 from merlino_fit.survibfit.fragment_pipeline import run_fragment_pipeline, write_fragment_view_html
 from merlino_fit.survibfit.fragment_delta_correction import (
@@ -1384,10 +1385,19 @@ class MainWindow(QMainWindow):
 
         out_path = self.working_dir / "isotopologues.txt"
         out_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+        records = []
+        for i in range(1, n_iso + 1):
+            records.append(
+                XyzinIsotopologueRecord(
+                    label=f"iso_{i:03d}",
+                    substitutions={atom_idx: mass_a for atom_idx, mass_a in by_iso.get(i, [])},
+                )
+            )
+        merge_xyzin_isotopologue_records(self.xyzin_path, tuple(records))
         QMessageBox.information(
             self,
             "Isotopologues",
-            f"Saved: {out_path}",
+            f"Saved: {out_path}\nUpdated: {self.xyzin_path} (#ISOTOPOLOGUES)",
         )
 
     def _open_symmetry_panel(self):

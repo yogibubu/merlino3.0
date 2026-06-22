@@ -34,6 +34,7 @@ from merlino_semiexp import (
     SemiexperimentalFitRequest,
     fit_semiexperimental_geometry,
     is_msr_legacy_file,
+    prepare_semiexperimental_xyzin,
     read_observations,
     read_semiexperimental_job,
     semiexperimental_latex_tables,
@@ -154,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--observations",
         type=Path,
         help="CSV/JSON/TOML with isotopologue B0 constants and corrections, or legacy MSR file (.msr, .msr.inp)",
+    )
+    semiexp.add_argument(
+        "--xyzin",
+        type=Path,
+        help="Canonical Merlino xyzin container to create/update before SEfit; SEfit always rereads geometry and isotopologues from this file",
     )
     semiexp.add_argument("--outdir", type=Path, required=True, help="Output directory for geometry, parameters, residuals and manifest")
     semiexp.add_argument("--backend", choices=("python", "fortran77"), default="python", help="Numerical backend requested by CLI/GUI")
@@ -486,10 +492,23 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("semiexp needs --geometry or --job")
         if observations_path is None and not observations_inline:
             raise ValueError("semiexp needs --observations, inline [[isotopologues]], or a [files].observations entry in --job")
-        fixed = _merge_unique(job.fixed_parameters if job else (), _parse_fixed_parameters(args.fixed))
+        preprocess = prepare_semiexperimental_xyzin(
+            Path(geometry_path),
+            observations_source=Path(observations_path) if observations_path is not None else None,
+            observations_inline=observations_inline,
+            xyzin_path=args.xyzin,
+        )
+        geometry_path = preprocess.xyzin
+        observations = read_observations(preprocess.xyzin)
+        print(f"semiexp_xyzin: {preprocess.xyzin}")
+        if preprocess.created_or_updated_geometry:
+            print("semiexp_xyzin_geometry: updated")
+        if preprocess.updated_isotopologues:
+            print("semiexp_xyzin_isotopologues: updated")
+        fixed = _merge_unique(preprocess.source_fixed_parameters, job.fixed_parameters if job else ())
+        fixed = _merge_unique(fixed, _parse_fixed_parameters(args.fixed))
         if args.fix_hydrogens:
             fixed = _merge_unique(fixed, (HYDROGEN_PARAMETER_CONSTRAINT,))
-        observations = read_observations(observations_path) if observations_path is not None else observations_inline
         observable = _job_default(args.observable, DEFAULT_SEMIEXP_OBSERVABLE, job.observable if job else None)
         coordinate_model = _job_default(args.coordinate_model, "gic", job.coordinate_model if job else None)
         rotational_components = _job_default(

@@ -6,6 +6,7 @@ import re
 
 import numpy as np
 
+from merlino_core.xyzin_geometry import read_xyzin_geometry
 from merlino_fit.survibfit.modify_geom import read_xyz
 from topology.elements import atomic_number, atomic_symbol
 
@@ -26,6 +27,15 @@ def read_geometry_input(path: Path) -> SemiexperimentalGeometryInput:
 
     if is_msr_legacy_file(target):
         return read_msr_legacy_geometry(target)
+    if target.name.lower() == "xyzin":
+        geometry = read_xyzin_geometry(target)
+        return SemiexperimentalGeometryInput(
+            geometry.atoms,
+            geometry.coordinates_angstrom,
+            geometry.comment or target.name,
+            (),
+            "xyzin",
+        )
     if suffix == ".xyz":
         atoms, coords, comment = read_xyz(target)
         return SemiexperimentalGeometryInput(tuple(atoms), np.asarray(coords, dtype=float), comment, (), "xyz")

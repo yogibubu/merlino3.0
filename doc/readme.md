@@ -58,8 +58,9 @@ di stato del repository, non una scelta di design.
 - **Single source of truth**
 - Contiene:
   - blocco XYZ
-  - sezioni (`#BASIC`, `#SMILES`, …)
+  - sezioni (`#BASIC`, `#SMILES`, `#ROTATIONAL`, `#VIBRATIONAL`, `#ISOTOPOLOGUES`, …)
 - Nessun altro canale di comunicazione è permesso
+- Il formato sezionato completo è descritto in `doc/XYZIN_FORMAT.md`.
 
 ---
 
@@ -106,6 +107,24 @@ Questo consente di ottenere in automatico:
 - Somma selettiva per modo
 - inversione opzionale del segno per frequenze immaginarie
 - scrittura di `ΔVib` nella sezione rotazionale di `xyzin`
+
+### Isotopologhi per SEfit
+- Gli isotopologhi sono conservati direttamente in `xyzin` nella sezione unica
+  `#ISOTOPOLOGUES`.
+- Ogni record contiene sempre la definizione isotopica; costanti rotazionali,
+  correzioni vibrazionali/elettroniche ed errori sperimentali sono opzionali.
+- Tutti i moduli devono usare la libreria comune `merlino_core.isotopologues`.
+- SEfit parte sempre da `xyzin`: TOML/JSON/CSV/MSR/job-table sono sorgenti di
+  preprocessing che vengono prima materializzate nel contenitore comune.
+- Se il `xyzin` di progetto manca, il preprocessing lo crea dalla geometria
+  cartesiana/MSR/job fornita e poi il fit riparte da quel file.
+
+### GICForge: H-bond e frammenti
+- La strategia per il prossimo sviluppo GICForge è descritta in
+  `doc/GICFORGE_HBOND_FRAGMENT_ROADMAP.md`.
+- Il punto centrale è separare coordinate intra-frammento, coordinate rigide
+  inter-frammento e contatti non covalenti pesati, usando librerie comuni per
+  Python, Fortran77 e GUI.
 
 Nota di architettura:
 - questa non è più la linea scientifica principale per il problema vibro-rotazionale

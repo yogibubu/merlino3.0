@@ -33,6 +33,10 @@ observables, constraints, and structural parameters. Z-matrices are compact for
 simple acyclic molecules; in rings, fused systems, and bridged frameworks they
 introduce reference-tree choices, derived ring quantities, and manually selected
 symmetry relationships.
+The approach extends to semiexperimental refinement the coordinate philosophy
+by which geometry optimization moved from minimal Z-matrices to redundant
+internal coordinates, with the additional requirement that the active fitting
+space be non-redundant and statistically well defined.
 
 We present \texttt{SEfit}, a black-box structure-refinement framework in which
 the input structure is Cartesian and the active coordinate model is generated
@@ -93,6 +97,11 @@ well-conditioned observables, include theoretical predicates when experimental
 information is incomplete, and propagate the covariance matrix to derived
 structural parameters.\cite{Bartell1975Predicate} The remaining bottleneck is
 the coordinate model rather than the least-squares formalism.
+Geometry optimization solved the analogous coordinate problem by moving from
+minimal Z-matrices to redundant internal coordinates rather than by searching
+for a unique minimal parameterization. Semiexperimental refinement requires
+the same change in philosophy, but the active least-squares space must also be
+non-redundant and statistically well defined.
 This issue is easily hidden in small acyclic molecules, where a single
 Z-matrix reference tree can represent the important distances and angles
 without serious ambiguity.
@@ -115,6 +124,8 @@ may be an adjustable parameter in one Z-matrix and a derived quantity in
 another, even though both describe the same Cartesian structure. Symmetry
 relationships and hydrogen constraints can compensate for this non-uniqueness,
 but only if they are introduced manually and consistently.
+The goal is therefore not to obtain a different structure, but to obtain the
+same structure from a unique topology-derived coordinate model.
 
 This work replaces the user-defined coordinate model by an automatic
 topology-driven layer. Starting from Cartesian coordinates, the coordinate
@@ -1892,6 +1903,10 @@ space can be built either from symmetry-adapted GICs or from
 translation- and rotation-free symmetry Cartesians; constraints, predicates,
 and parameter classes are specified in the same primitive-coordinate layer in
 both cases.
+In this sense, \texttt{SEfit} transfers to semiexperimental refinement the
+coordinate philosophy that made redundant internal coordinates standard in
+geometry optimization, while replacing redundancy by a projected active space
+suitable for statistical inference.
 
 The benchmarks show that this separation is especially useful when a compact
 acyclic Z-matrix is no longer natural: constrained glycine I/II, cyclic

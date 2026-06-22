@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from merlino_gui import DashboardWindow, default_workflows
 from merlino_gui.app import build_parser
 from merlino_gui.dashboard import _semiexp_expert_diagnostics, workflow_detail_text, workflow_state_lines
+from merlino_semiexp import read_observations
 
 
 def test_default_workflows_include_new_scientific_areas():
@@ -195,6 +196,7 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     window.semiexp_xyz.setText(str(parent_xyz))
     window.semiexp_observations.setText(str(tmp_path / "isotopologues.toml"))
     window.semiexp_outdir.setText(str(tmp_path / "semiexp"))
+    (tmp_path / "xyzin").write_text(parent_xyz.read_text(encoding="utf-8") + "\n#BASIC\ncharge 0\nmultiplicity 1\n", encoding="utf-8")
     window.semiexp_fixed.setText("GIC001")
     window.semiexp_gic_constraints.setText("QFIX=[GIC001+2*GIC002] Value=0.0; DR(Frozen,Value=0.0)=R[1,3]-R[1,2]")
     window.semiexp_fix_hydrogens.setChecked(True)
@@ -202,6 +204,7 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     window.semiexp_classes.setText("CH:shared:R(1,2)|R(1,3);XYH:fixed:A(")
     args = window.semiexp_command_args()
     assert "--backend" in args
+    assert args[args.index("--xyzin") + 1] == str(tmp_path / "xyzin")
     assert "fortran77" in args
     assert "--fix-hydrogens" in args
     assert args[args.index("--fixed") + 1] == "GIC001;QFIX=[GIC001+2*GIC002] Value=0.0;DR(Frozen,Value=0.0)=R[1,3]-R[1,2]"
@@ -214,6 +217,9 @@ def test_dashboard_lists_workflows(tmp_path, qtbot):
     toml = window.save_semiexp_observations_toml()
     assert toml.exists()
     assert "A_MHz = 1000.0" in toml.read_text(encoding="utf-8")
+    xyzin_text = (tmp_path / "xyzin").read_text(encoding="utf-8")
+    assert "#ISOTOPOLOGUES" in xyzin_text
+    assert read_observations(tmp_path / "xyzin")[0].constants.A_MHz == 1000.0
     job = window.save_semiexp_job_toml()
     assert job is not None
     job_text = job.read_text(encoding="utf-8")
@@ -277,15 +283,20 @@ def test_semiexp_dashboard_preview_validate_and_conditioning(tmp_path, qtbot):
     window.semiexp_xyz.setText(str(xyz))
     window.semiexp_observations.setText(str(obs))
     window.semiexp_outdir.setText(str(tmp_path / "run"))
+    (tmp_path / "xyzin").write_text(xyz.read_text(encoding="utf-8") + "\n#BASIC\ncharge 0\nmultiplicity 1\n", encoding="utf-8")
 
     window.preview_semiexp_gics()
     window.validate_semiexp_input()
     window.preview_semiexp_conditioning()
+    job = window.save_semiexp_job_toml()
 
     text = window.semiexp_command.toPlainText()
     assert window.semiexp_preview_table.rowCount() > 0
     assert "input validation: OK" in text
     assert "condition number" in text
+    assert job is not None
+    assert "#ISOTOPOLOGUES" in (tmp_path / "xyzin").read_text(encoding="utf-8")
+    assert read_observations(tmp_path / "xyzin")[0].constants.A_MHz == pytest.approx(822180.189172425)
 
 
 @pytest.mark.usefixtures("qtbot")
@@ -318,6 +329,7 @@ def test_semiexp_dashboard_can_use_inline_isotopologue_job(tmp_path, qtbot):
     job = window.save_semiexp_job_toml()
 
     assert args[:3] == ["semiexp", "--job", str(tmp_path / "semiexp_job.mse.toml")]
+    assert args[args.index("--xyzin") + 1] == str(tmp_path / "xyzin")
     assert "--observations" not in args
     assert job is not None
     text = job.read_text(encoding="utf-8")
@@ -385,6 +397,7 @@ def test_semiexp_dashboard_builds_advanced_sefit_command_and_job(tmp_path, qtbot
     args = window.semiexp_command_args()
 
     assert args[args.index("--backend") + 1] == "fortran77"
+    assert args[args.index("--xyzin") + 1] == str(tmp_path / "xyzin")
     assert args[args.index("--coordinate-model") + 1] == "cartesian_symmetry"
     assert args[args.index("--observable") + 1] == "moments"
     assert args[args.index("--rotational-components") + 1] == "AB"

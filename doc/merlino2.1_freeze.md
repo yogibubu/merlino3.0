@@ -43,6 +43,8 @@ Typical sections include:
 - `#ROTATIONAL` (rotational constants and rotor classification)
 - `#THERMO` (translational + rotational + vibrational + total thermodynamics)
 - `#TOPOLOGY` (topological analysis)
+- `#ISOTOPOLOGUES` (parent/isotopologue definitions, optionally enriched with
+  rotational constants, DeltaVib/DeltaEl corrections and experimental sigmas)
 - `#SMILES_Synthons` (SMILES reconstructed from topology)
 
 The presence of a section depends on the input type and the executed pipelines.
