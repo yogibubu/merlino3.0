@@ -106,7 +106,6 @@ C Do not add silent fallbacks to FCHK, Z-matrix, or stdin coordinates here.
        GROUP0='C1'
        GROUP='c1'
       END IF
-      write(IOut,'('' Group ='',A4)') GROUP0
       Do 10 IAt=1,NAtoms
        Call LlinCl(LinScr)
        Read(InFil,'(A80)') LinScr
