@@ -1096,14 +1096,15 @@ C Clean values close to n*pi
      $  ValTot(IGic)
        write(IOut,'(100(''-''))')
   10  continue
-      If(ITp.eq.4) Call PrtPckVal(IOut,NVar,ITPV,ValTot)
+      If(ITp.eq.4) Call PrtPckVal(IOut,NVar,NTerm,IAtom,ITPV,ValTot)
       return
       end
 
 *Deck PrtPckVal
-      Subroutine PrtPckVal(IOut,NVar,ITPV,ValTot)
+      Subroutine PrtPckVal(IOut,NVar,NTerm,IAtom,ITPV,ValTot)
       Implicit Real*8 (A-H,O-Z)
-      Integer IOut,NVar,ITPV(*)
+      Integer IOut,NVar,ITPV(*),NTerm(*)
+      Dimension IAtom(4,15,*)
       Dimension ValTot(*)
       Character S1*4,S2*4,SP*4
       Pi=4.0d0*DAtan(1.0d0)
@@ -1125,17 +1126,24 @@ C Clean values close to n*pi
       Call IntoCh(IVar,S1,L1)
       Call IntoCh(JVar,S2,L2)
       Call IntoCh(IPair,SP,LP)
+      I1a=IAtom(1,1,IVar)
+      I2a=IAtom(2,1,IVar)
+      I3a=IAtom(3,1,IVar)
+      I4a=IAtom(4,1,IVar)
+      J1a=IAtom(1,1,JVar)
+      J2a=IAtom(2,1,JVar)
+      J3a=IAtom(3,1,JVar)
+      J4a=IAtom(4,1,JVar)
       QPck=DSqrt(ValTot(IVar)*ValTot(IVar)+
      $           ValTot(JVar)*ValTot(JVar))
       PhiP=DAtan2(ValTot(JVar),ValTot(IVar))
-      Write(IOut,1000) SP,S1,S2,QPck
-      Write(IOut,1010) SP,S2,S1,PhiP,PhiP*ToDeg
+      Write(IOut,1000) SP,S1,S2,I1a,I2a,I3a,I4a,J1a,J2a,J3a,J4a,
+     $  QPck,PhiP,PhiP*ToDeg
       IVar=IVar+2
       Go To 10
- 1000 Format(6X,'QPck',A4,' from RPck',A4,'/RPck',A4,
-     $ ' Value=',F12.6,' rad')
- 1010 Format(6X,'PhiP',A4,' = ATAN2(RPck',A4,',RPck',A4,
-     $ ') Value=',F12.6,' rad =',F12.6,' deg')
+ 1000 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
+     $ '  D(',I3,',',I3,',',I3,',',I3,') and D(',I3,',',I3,',',
+     $ I3,',',I3,') Q=',F12.6,' rad Phi=',F12.6,' rad =',F12.6,' deg')
       End
 *Deck FndRed
       Subroutine FndRed(MxIAt,MaxTer,IAt,JAt,KAt,LAt,NVar,IJKL,NTerm,
@@ -1758,8 +1766,10 @@ C Set for MxVar=999
       If(NVar.eq.0) return 
       do 100 IVar=1,NVar
        Call IntoCh(IVar,StrVar(1:4),Len4)
-       If(ITPV(IVar).eq.0.or.ITPV(IVAR).gt.16) then
+       If(ITPV(IVar).eq.0) then
         Lbl(1:4)='Bend'
+       ElseIf(ITPV(IVar).gt.16) then
+        Lbl(1:4)='HCAn'
        ElseIf(ITPV(IVAr).eq.14) then
         Lbl(1:4)='RDef'
        ElseIf(ITPV(IVAr).eq.15) then
@@ -1776,24 +1786,33 @@ C Set for MxVar=999
        If(NTrmI.eq.1) then
         Value=ValTot(IVar)*ToDeg       
         IAt1=IAtom(1,1,IVar)
-        IAt2=IAtom(2,1,IVar)
-        IAt3=IAtom(3,1,IVar)
+       IAt2=IAtom(2,1,IVar)
+       IAt3=IAtom(3,1,IVar)
 C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg                
+        If(ITPV(IVar).gt.16) then
+         Lbl(1:4)='HCAn'
+        Else
+         Lbl(1:4)='Bend'
+        EndIf
         If(IFixA(IVar).eq.0) then 
          If(PrtVal) then
-           write(IOut,'('' Bend'',A4,''(Value='',F10.5,'') = A('',I3,
-     $     '','',I3,'','',I3,'')'')') StrVar(1:4),Value,IAt1,IAt2,IAt3
+           write(IOut,'(1X,A4,A4,''(Value='',F10.5,'') = A('',I3,
+     $     '','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),Value,
+     $     IAt1,IAt2,IAt3
          Else
-           write(IOut,'('' Bend'',A4,'' = A('',I3,
-     $     '','',I3,'','',I3,'')'')') StrVar(1:4),IAt1,IAt2,IAt3
+           write(IOut,'(1X,A4,A4,'' = A('',I3,
+     $     '','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),
+     $     IAt1,IAt2,IAt3
          EndIf
         Else
          If(PrtVal) then
-          write(IOut,'('' Bend'',A4,''(Frozen,Value='',F10.5,'') = A('',
-     $    I3,'','',I3,'','',I3,'')'')') StrVar(1:4),Value,IAt1,IAt2,IAt3
+          write(IOut,'(1X,A4,A4,''(Frozen,Value='',F10.5,'') = A('',
+     $    I3,'','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),Value,
+     $    IAt1,IAt2,IAt3
          Else
-          write(IOut,'('' Bend'',A4,''(Frozen) = A('',
-     $     I3,'','',I3,'','',I3,'')'')') StrVar(1:4),IAt1,IAt2,IAt3
+          write(IOut,'(1X,A4,A4,''(Frozen) = A('',
+     $     I3,'','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),
+     $     IAt1,IAt2,IAt3
          EndIf
         EndIf 
        go to 100
@@ -1923,9 +1942,9 @@ C Set for MxVar=999
       end
 *Deck PrtDih
       Subroutine PrtDih(IOut,MaxAtG,MaxTer,NVar,NTT,DoScan,NTerm,IAtom,
-     $  ITPV,IPerD,IFixD,Coef,ValTot,C,Clean,PrtVal)
+     $  ITPV,IPerD,IFixD,Coef,ValTot,C,Clean,PrtVal,PrtRingInt)
       Implicit Real*8 (A-H,O-Z)
-      Logical DoScan,Clean,PrtVal
+      Logical DoScan,Clean,PrtVal,PrtRingInt
       Character Lbl*4,StrVar*4
       Dimension NTerm(*),ITPV(*),IPerD(*),IFixD(*)
       Dimension IAtom(MaxAtG,MaxTer,*)
@@ -1956,6 +1975,7 @@ CENZO
        EndIf 
        If(.not.Clean) ValRef=Value
        If(ITpV(IVar).eq.1) then
+        If(.not.PrtRingInt) go to 100
         Lbl(1:4)='RPck'
        ElseIf(ITpV(IVar).eq.2) then
         Lbl(1:4)='BtFl'

@@ -376,6 +376,20 @@ def _xy2_angle_block(prims, center, neigh):
     return [idx], np.eye(1, dtype=float)
 
 
+def _high_coord_angle_block(prims, center, neigh):
+    neigh = set(neigh)
+    idxs = []
+    for idx, p in enumerate(prims):
+        if p.kind != "angle" or p.atoms[1] != center:
+            continue
+        a, _, b = p.atoms
+        if a in neigh and b in neigh:
+            idxs.append(idx)
+    if len(idxs) <= 1:
+        return None, None
+    return idxs, np.eye(len(idxs), dtype=float)
+
+
 def _ring_ordered_indices(prims, ring, kind):
     from topology.ring_primitives import ring_valence_angles, ring_dihedrals, ring_bonds
 
@@ -545,19 +559,21 @@ def valence_angle_u(
             if exclude_centers is not None and j in exclude_centers:
                 continue
             by_center.setdefault(j, []).append(i)
-        neighbors = {}
-        degree = None
-        if Z is not None or atom_class is not None:
-            neigh_sets = {}
-            for p in prims:
-                if p.kind != "bond":
-                    continue
-                a, b = p.atoms
-                neigh_sets.setdefault(a, set()).add(b)
-                neigh_sets.setdefault(b, set()).add(a)
-            neighbors = {j: sorted(v) for j, v in neigh_sets.items()}
-            degree = {j: len(v) for j, v in neigh_sets.items()}
+        neigh_sets = {}
+        for p in prims:
+            if p.kind != "bond":
+                continue
+            a, b = p.atoms
+            neigh_sets.setdefault(a, set()).add(b)
+            neigh_sets.setdefault(b, set()).add(a)
+        neighbors = {j: sorted(v) for j, v in neigh_sets.items()}
+        degree = {j: len(v) for j, v in neigh_sets.items()}
         for center, idxs in sorted(by_center.items()):
+            if center in neighbors and len(neighbors[center]) > 4:
+                hc_idxs, Uhc = _high_coord_angle_block(prims, center, neighbors[center])
+                if hc_idxs is not None:
+                    blocks.append((hc_idxs, Uhc))
+                    continue
             if len(idxs) == 1 and center in neighbors and len(neighbors[center]) == 2:
                 xy2_idxs, Uxy2 = _xy2_angle_block(prims, center, neighbors[center])
                 if xy2_idxs is not None:
@@ -1482,12 +1498,13 @@ def _rank_pruned_column_indices(prims, coords, U, column_labels, fd_step=1e-4, t
         "fragment": 1,
         "linear_bend": 2,
         "angle": 3,
-        "cyclic_valence_bend": 4,
-        "out_of_plane": 5,
-        "cyclic_torsion": 6,
-        "dihedral": 7,
-        "butterfly": 8,
-        "hinge": 9,
+        "high_coord_angle": 4,
+        "cyclic_valence_bend": 5,
+        "out_of_plane": 6,
+        "cyclic_torsion": 7,
+        "dihedral": 8,
+        "butterfly": 9,
+        "hinge": 10,
     }
     candidates = sorted(range(U.shape[1]), key=lambda col: (priorities.get(column_labels[col], 99), col))
     basis: list[np.ndarray] = []
@@ -1717,6 +1734,8 @@ def build_u_with_names(
                 name = f"Stre{tag:04d}"
             elif label == "angle":
                 name = f"Bend{tag:04d}"
+            elif label == "high_coord_angle":
+                name = f"HCAn{tag:04d}"
             elif label == "cyclic_valence_bend":
                 name = f"CVB{tag:04d}"
             elif label == "dihedral":

@@ -416,8 +416,6 @@ C Make ring coordinates for dihedra angles
         call CyGND(IOut,IPrtCD,MxAtCy,MxAtP,MxTrm,NAtC,NDih,ICyc,ICAt,
      $    NTermD,IAtomD,ITVD,CoefD)
    30  continue
-       write(IOut,'(/,I3,'' Ring coordinates for Dihedral Angles'')')
-     $    NDih-NDihCh
       endif
 C Make Out-of-Plane GNICs
       NOupl=0
@@ -553,7 +551,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
       Call PrtLAn(IOut,MxAtP,MxTrm,NLAng,NTTsum,Linear,NTermL,IAtomL,
      $   ITVLA,IFixL,CoefL,ValTL,C,PrtVal)
       Call PrtDih(IOut,MxAtP,MxTrm,NDih,NTTsum,DoScan,NTermD,IAtomD,
-     $   ITVD,IPerD,IFixD,CoefD,ValTD,C,Clean,PrtVal)
+     $   ITVD,IPerD,IFixD,CoefD,ValTD,C,Clean,PrtVal,.False.)
       Call PrtOut(IOut,MxAtP,MxTrm,NOupl,NTTsum,NTermO,IAtomO,ITVO,
      $   IFixO,CoefO,ValTO,C,ImpDih,PrtVal)
       NTT=NTTsav
@@ -586,7 +584,7 @@ C Linear Angles
      $   ITVLA,IFixL,CoefL,ValtL,C,PrtVal)
 C Dihedral Angles
        Call PrtDih(IPunch,MxAtP,MxTrm,NDih,NTT,DoScan,NTermD,IAtomD,
-     $   ITVD,IPerD,IFixD,CoefD,ValtD,C,Clean,PrtVal)
+     $   ITVD,IPerD,IFixD,CoefD,ValtD,C,Clean,PrtVal,.True.)
 C Out of Plane Angles(U) or Impr. Dihedrals (Only option in g16)      
        Call PrtOut(IPunch,MxAtP,MxTrm,NOuPl,NTT,NTermO,IAtomO,ITVO,
      $   IFixO,CoefO,ValtO,C,ImpDih,PrtVal)

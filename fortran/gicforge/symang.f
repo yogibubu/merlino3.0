@@ -24,7 +24,7 @@ C
       ToDeg=1.80d+2/pi
 C     NGicA=0
 C Build Valence Angles 
-      write(IOut,'('' Center  Symm  Equal Substituents   Frozen Atoms'',      
+      write(IOut,'('' Center  Equal Substituents   Frozen Atoms'',      
      $  ''      Free Atoms      Free Angles'')')
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
@@ -49,13 +49,7 @@ C Build Valence Angles
           IAtomA(3,1,NGicA)=KAt 
           CoefA(1,NGicA)=1.0d0
           NFree=1
-          If(Abs(EAn(IAt)-EAn(KAt)).gt.tresh) then
-           write(IOut,'(I4,5X,'' Cs '',39X,2I4,14X,I2)') JAt,IAt,KAt,
-     $       NFree
-          Else
-           write(IOut,'(I4,5X,'' C2v'',39X,2I4,14X,I2)') JAt,IAt,KAt,
-     $       NFree
-          EndIf
+          write(IOut,'(I4,5X,2I4,14X,I2)') JAt,IAt,KAt,NFree
    50    continue
    40   continue
         go to 30
@@ -72,6 +66,11 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
      $   NBond,IBond,IAtCyc,NTermA,IAtomA,ITVA,CoefA,C,EAN)
         go to 30
        endif 
+       if(NBJ.gt.4) then
+        call HighCoordAt(IOut,IPrint,MxBnd,MaxAtA,MxTerA,NGICA,JAt,
+     $   NBond,IBond,NTermA,IAtomA,ITVA,CoefA,C)
+        go to 30
+       endif
    30 continue
       If(IPrint.gt.0) then
        write(IOut,'(/,I5,'' Angle GNICS'')') NGICA
@@ -328,6 +327,53 @@ C    $     MAt,NEq1,FrozJ,FrozK,FrozL,FrozM,NTermA,IAtomA,ITVA,CoefA)
       endif
       return
       end
+*Deck HighCoordAt
+      Subroutine HighCoordAt(IOut,IPrint,MxBnd,MaxAtA,MxTrmA,ICoord,IAt,
+     $  NBond,IBond,NTermA,IAtomA,ITVA,CoefA,C)
+      Implicit None
+C
+C High-coordination fallback: explicit pairwise valence angles for centers
+C with coordination > 4.  These are not symmetry-adapted here; the global
+C rank pruning keeps the final set non-redundant.
+C
+C Dimensions
+      Integer IOut,IPrint,MxBnd,MaxAtA,MxTrmA,ICoord,IAt
+      Integer NBond(*),IBond(MxBnd,*)
+      Integer NTermA(*),IAtomA(MaxAtA,MxTrmA,*),ITVA(*)
+      Real*8 CoefA(MxTrmA,*),C(3,*)
+      Double Precision ValAng
+C Local
+      Integer II,KK,I1,I2,I3,NAng
+      Real*8 Value,ToDeg,Pi
+      Pi = Dacos(-1.D0)
+      ToDeg = 1.80D+2 / Pi
+      NAng = 0
+      Do 20 II=1,NBond(IAt)-1
+       I1 = IBond(II,IAt)
+       Do 10 KK=II+1,NBond(IAt)
+        I2 = IBond(KK,IAt)
+        If(I1.gt.I2) then
+         I3 = I1
+         I1 = I2
+         I2 = I3
+        EndIf
+        ICoord = ICoord + 1
+        NTermA(ICoord) = 1
+        ITVA(ICoord) = 17
+        CoefA(1,ICoord) = 1.0D0
+        IAtomA(1,1,ICoord) = I1
+        IAtomA(2,1,ICoord) = IAt
+        IAtomA(3,1,ICoord) = I2
+        NAng = NAng + 1
+        If(IPrint.gt.0) then
+         Value = ValAng(C(1,I1),C(1,IAt),C(1,I2))*ToDeg
+         Write(IOut,'(I4,6X,''HCAn'',1X,2I4,14X,I2,4X,''Value='',F8.3)')
+     $     IAt,I1,I2,NAng,Value
+        EndIf
+   10   Continue
+   20 Continue
+      Return
+      End
 *Deck C2V4At
       Subroutine C2V4At(IOut,IPrint,MaxAtA,MxTrmA,ICoord,IAt,JAt,KAt,
      $  LAt,MAt,NEq,FrozJ,FrozK,FrozL,FrozM,NTermA,IAtomA,ITVA,CoefA)
