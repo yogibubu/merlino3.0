@@ -11,6 +11,7 @@ from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.topology.covalent_radii import covalent_radius
 from merlino_fit.topology.pipeline import build_topology_objects
+from merlino_fit.topology.ringset import RingSet
 from topology.elements import atomic_number
 
 from .model import (
@@ -23,6 +24,7 @@ from .model import (
 
 
 LINEAR_THRESHOLD_RAD = np.deg2rad(170.0)
+COLLAPSED_BOND_THRESHOLD_ANGSTROM = 0.2
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,8 @@ def build_gicforge_python_model(
         raise ValueError(f"Expected coordinate shape ({len(atoms)}, 3), got {coords.shape}")
     atomic_numbers = tuple(atomic_number(atom) for atom in atoms)
     _cg, graph, ringset, _synthons, _aromaticity = build_topology_objects(coords, np.asarray(atomic_numbers))
+    if _remove_collapsed_bonds(graph, coords):
+        ringset = RingSet(graph, coords=coords)
     primitive_blocks = _fortran_like_primitive_blocks(
         graph,
         coords,
@@ -209,14 +213,20 @@ def _fortran_like_primitive_blocks(
         neighbors=neighbors,
     )
     atom_ring = _atom_ring_map_from_rings(selected_rings, graph.natoms)
+    ring_counts = _atom_selected_ring_counts(selected_rings, graph.natoms)
     ring_bonds = {
         tuple(sorted((ring[i], ring[(i + 1) % len(ring)])))
         for ring in selected_rings
         for i in range(len(ring))
     }
+    bridge_bonds = _bridge_bonds(selected_rings)
 
     for center in range(graph.natoms):
         neigh = neighbors[center]
+        for first in neigh:
+            if first < center:
+                continue
+            bonds.append(_primitive_coordinate("Stre", len(bonds) + 1, Primitive("bond", (center, first))))
         if len(neigh) == 3:
             bends.extend(
                 _c2v3_angle_coordinates(
@@ -229,10 +239,30 @@ def _fortran_like_primitive_blocks(
                 )
             )
         elif len(neigh) > 1:
-            if len(neigh) > 3:
-                # TODO: port FourAt/HighCoordAt exactly. For now keep primitive
-                # angles so the contract reports the remaining gap explicitly.
-                pass
+            if len(neigh) == 4 and not _has_linear_pair(center, neigh, coords, linear_threshold):
+                bends.extend(
+                    _four_atom_angle_coordinates(
+                        center,
+                        neigh,
+                        effective_atomic_numbers=effective_atomic_numbers,
+                        atom_ring=atom_ring,
+                        coords=coords,
+                        start=len(bends) + 1,
+                    )
+                )
+                continue
+            if len(neigh) > 4:
+                high_bends, high_linears = _high_coord_angle_coordinates(
+                    center,
+                    neigh,
+                    coords=coords,
+                    linear_threshold=linear_threshold,
+                    angle_start=len(bends) + 1,
+                    linear_start=len(linears) + 1,
+                )
+                bends.extend(high_bends)
+                linears.extend(high_linears)
+                continue
             for ib, first_angle in enumerate(neigh[:-1]):
                 for second_angle in neigh[ib + 1 :]:
                     value = angle(first_angle, center, second_angle, coords)
@@ -256,10 +286,6 @@ def _fortran_like_primitive_blocks(
                                 Primitive("linear_bend", (left, center, right), mode=-2),
                             )
                         )
-        for ib, first in enumerate(neigh):
-            if first < center:
-                continue
-            bonds.append(_primitive_coordinate("Stre", len(bonds) + 1, Primitive("bond", (center, first))))
 
     for ring in selected_rings:
         if _all_atoms_in_three_selected_rings(ring, selected_rings):
@@ -273,21 +299,39 @@ def _fortran_like_primitive_blocks(
             continue
         if len(neighbors[center]) == 1 or len(neighbors[right]) == 1:
             continue
-        for left in neighbors[center]:
-            if left == right:
-                continue
-            if angle(left, center, right, coords) > linear_threshold:
-                continue
-            for far in neighbors[right]:
-                if far == center:
-                    continue
-                if angle(center, right, far, coords) > linear_threshold:
-                    continue
-                if far == left:
-                    continue
-                torsions.append(
-                    _primitive_coordinate("Tors", len(torsions) + 1, Primitive("dihedral", (left, center, right, far)))
-                )
+        torsion = _priority_torsion_coordinate(
+            center,
+            right,
+            neighbors=neighbors,
+            atomic_numbers=atomic_numbers,
+            effective_atomic_numbers=effective_atomic_numbers,
+            atom_ring=atom_ring,
+            coords=coords,
+            linear_threshold=linear_threshold,
+            index=len(torsions) + 1,
+        )
+        if torsion is not None:
+            torsions.append(torsion)
+
+    for bond in bonds:
+        _coef, primitive = bond.terms[0]
+        center, right = primitive.atoms
+        if tuple(sorted((center, right))) not in bridge_bonds:
+            continue
+        if ring_counts[center] >= 3 or ring_counts[right] >= 3:
+            continue
+        butterfly = _butterfly_coordinate(
+            center,
+            right,
+            neighbors=neighbors,
+            atom_ring=atom_ring,
+            selected_rings=selected_rings,
+            coords=coords,
+            linear_threshold=linear_threshold,
+            index=len(torsions) + 1,
+        )
+        if butterfly is not None:
+            torsions.append(butterfly)
 
     for ring in selected_rings:
         if _all_atoms_in_three_selected_rings(ring, selected_rings):
@@ -307,6 +351,30 @@ def _fortran_like_primitive_blocks(
         oops.append(_primitive_coordinate(oop_prefix, len(oops) + 1, primitive))
 
     return bonds, bends, linears, torsions, oops
+
+
+def _has_linear_pair(center: int, neigh: list[int], coords: np.ndarray, linear_threshold: float) -> bool:
+    for ib, first in enumerate(neigh[:-1]):
+        for second in neigh[ib + 1 :]:
+            if angle(first, center, second, coords) >= linear_threshold:
+                return True
+    return False
+
+
+def _remove_collapsed_bonds(graph, coords: np.ndarray) -> bool:
+    removed = False
+    kept_bonds = []
+    for first, second in graph.bonds:
+        distance = float(np.linalg.norm(coords[first] - coords[second]))
+        if distance < COLLAPSED_BOND_THRESHOLD_ANGSTROM:
+            graph.adjacency[first].discard(second)
+            graph.adjacency[second].discard(first)
+            removed = True
+        else:
+            kept_bonds.append((first, second))
+    if removed:
+        graph.bonds = kept_bonds
+    return removed
 
 
 def _minimum_cycle_basis(
@@ -499,6 +567,122 @@ def _all_atoms_in_three_selected_rings(ring: tuple[int, ...], rings: list[tuple[
     return all(count >= 3 for count in counts.values())
 
 
+def _bridge_bonds(rings: list[tuple[int, ...]]) -> set[tuple[int, int]]:
+    counts: dict[tuple[int, int], int] = {}
+    for ring in rings:
+        for index, atom in enumerate(ring):
+            edge = tuple(sorted((atom, ring[(index + 1) % len(ring)])))
+            counts[edge] = counts.get(edge, 0) + 1
+    return {edge for edge, count in counts.items() if count >= 2}
+
+
+def _butterfly_coordinate(
+    center: int,
+    right: int,
+    *,
+    neighbors: list[list[int]],
+    atom_ring: list[int],
+    selected_rings: list[tuple[int, ...]],
+    coords: np.ndarray,
+    linear_threshold: float,
+    index: int,
+) -> GICForgePythonCoordinate | None:
+    terms: list[tuple[float, Primitive]] = []
+    for left in neighbors[center]:
+        if left == right:
+            continue
+        if angle(left, center, right, coords) > linear_threshold:
+            continue
+        if atom_ring[left] == 0:
+            continue
+        for far in neighbors[right]:
+            if far == center or far == left:
+                continue
+            if angle(center, right, far, coords) > linear_threshold:
+                continue
+            if atom_ring[far] == 0:
+                continue
+            if _atoms_share_selected_ring(left, far, selected_rings):
+                continue
+            coefficient = 1.0 if not terms else -1.0
+            terms.append((coefficient, Primitive("dihedral", (left, center, right, far))))
+    if not terms:
+        return None
+    norm = np.sqrt(float(len(terms)))
+    return GICForgePythonCoordinate(
+        name=f"BtFl{index:04d}",
+        block="BtFl",
+        type_index=2,
+        terms=tuple((coefficient / norm, primitive) for coefficient, primitive in terms),
+    )
+
+
+def _atoms_share_selected_ring(first: int, second: int, rings: list[tuple[int, ...]]) -> bool:
+    for ring in rings:
+        if first in ring and second in ring:
+            return True
+    return False
+
+
+def _priority_torsion_coordinate(
+    center: int,
+    right: int,
+    *,
+    neighbors: list[list[int]],
+    atomic_numbers: tuple[int, ...],
+    effective_atomic_numbers: tuple[float, ...],
+    atom_ring: list[int],
+    coords: np.ndarray,
+    linear_threshold: float,
+    index: int,
+) -> GICForgePythonCoordinate | None:
+    candidates: list[tuple[int, int]] = []
+    for left in neighbors[center]:
+        if left == right:
+            continue
+        if angle(left, center, right, coords) > linear_threshold:
+            continue
+        for far in neighbors[right]:
+            if far == center or far == left:
+                continue
+            if angle(center, right, far, coords) > linear_threshold:
+                continue
+            candidates.append((left, far))
+    if not candidates:
+        return None
+
+    selected_left, selected_far = max(
+        candidates,
+        key=lambda pair: (
+            round(effective_atomic_numbers[pair[0]], 12),
+            round(effective_atomic_numbers[pair[1]], 12),
+            len(neighbors[pair[0]]),
+            len(neighbors[pair[1]]),
+            -pair[0],
+            -pair[1],
+        ),
+    )
+    orbit = [
+        (left, far)
+        for left, far in candidates
+        if atom_ring[left] == atom_ring[selected_left]
+        and atomic_numbers[left] == atomic_numbers[selected_left]
+        and len(neighbors[left]) == len(neighbors[selected_left])
+        and atom_ring[far] == atom_ring[selected_far]
+        and atomic_numbers[far] == atomic_numbers[selected_far]
+        and len(neighbors[far]) == len(neighbors[selected_far])
+    ]
+    if not orbit:
+        orbit = [(selected_left, selected_far)]
+    coefficient = 1.0 / np.sqrt(float(len(orbit)))
+    return GICForgePythonCoordinate(
+        name=f"Tors{index:04d}",
+        block="Tors",
+        type_index=-1,
+        terms=tuple((coefficient, Primitive("dihedral", (left, center, right, far))) for left, far in orbit),
+    )
+
+
 def _cyclic_coordinates(
     ring: tuple[int, ...],
     *,
@@ -654,12 +838,363 @@ def _c2v3_angle_coordinates(
     return coords
 
 
+def _four_atom_angle_coordinates(
+    center: int,
+    neigh: list[int],
+    *,
+    effective_atomic_numbers: tuple[float, ...],
+    atom_ring: list[int],
+    coords: np.ndarray,
+    start: int,
+) -> list[GICForgePythonCoordinate]:
+    first, second, third, fourth = _order_four_atom_neighbors(
+        tuple(neigh),
+        center=center,
+        effective_atomic_numbers=effective_atomic_numbers,
+        atom_ring=atom_ring,
+    )
+    frozen = {
+        atom: atom_ring[atom] != 0 and atom_ring[center] != 0
+        for atom in (first, second, third, fourth)
+    }
+    equal_count = _four_atom_equal_count((first, second, third, fourth), effective_atomic_numbers)
+    pivot_count = sum(1 for atom in (first, second, third, fourth) if frozen[atom])
+    if equal_count == 4:
+        return _td_four_atom_coordinates(
+            center,
+            first,
+            second,
+            third,
+            fourth,
+            frozen=frozen,
+            start=start,
+        )
+    if equal_count == 3 or pivot_count in {1, 3}:
+        return _wxy3_coordinates(
+            center,
+            first,
+            second,
+            third,
+            fourth,
+            frozen=frozen,
+            start=start,
+        )
+    return _w2xy2_coordinates(
+        center,
+        first,
+        second,
+        third,
+        fourth,
+        equal_count=equal_count,
+        frozen=frozen,
+        start=start,
+    )
+
+
+def _order_four_atom_neighbors(
+    atoms: tuple[int, int, int, int],
+    *,
+    center: int,
+    effective_atomic_numbers: tuple[float, ...],
+    atom_ring: list[int],
+) -> tuple[int, int, int, int]:
+    jat, kat, lat, mat = atoms
+    j1, k1, l1, m1 = atoms
+    threshold = 5.0e-4
+
+    def equivalent(first: int, second: int) -> bool:
+        return abs(effective_atomic_numbers[first] - effective_atomic_numbers[second]) < threshold
+
+    if equivalent(j1, k1):
+        if equivalent(j1, l1):
+            if not equivalent(j1, m1):
+                pass
+        elif equivalent(j1, m1):
+            lat, mat = m1, l1
+        elif equivalent(l1, m1):
+            pass
+    elif equivalent(j1, l1):
+        jat, kat, lat, mat = j1, l1, k1, m1
+        if equivalent(j1, m1):
+            jat, kat, lat, mat = j1, l1, m1, k1
+        elif equivalent(k1, m1):
+            jat, kat, lat, mat = j1, l1, k1, m1
+    elif equivalent(j1, m1):
+        jat, kat, lat, mat = j1, m1, k1, l1
+    elif equivalent(k1, l1):
+        jat, kat, lat, mat = k1, l1, j1, m1
+        if equivalent(l1, m1):
+            jat, kat, lat, mat = k1, l1, m1, j1
+    elif equivalent(k1, m1):
+        jat, kat, lat, mat = k1, m1, j1, l1
+    elif equivalent(l1, m1):
+        jat, kat, lat, mat = l1, m1, j1, k1
+
+    pivot_count = 0
+    if atom_ring[center] != 0:
+        pivot_count = sum(1 for atom in (jat, kat, lat, mat) if atom_ring[atom] != 0)
+    if pivot_count == 1:
+        if atom_ring[jat] != 0:
+            return jat, kat, lat, mat
+        if atom_ring[kat] != 0:
+            return kat, jat, lat, mat
+        if atom_ring[lat] != 0:
+            return lat, kat, jat, mat
+        if atom_ring[mat] != 0:
+            return mat, kat, lat, jat
+    if pivot_count == 3:
+        if atom_ring[jat] == 0:
+            ordered = (jat, kat, lat, mat)
+        elif atom_ring[kat] == 0:
+            ordered = (kat, jat, lat, mat)
+        elif atom_ring[lat] == 0:
+            ordered = (lat, kat, jat, mat)
+        else:
+            ordered = (mat, kat, lat, jat)
+        jat, kat, lat, mat = ordered
+        if abs(effective_atomic_numbers[kat] - effective_atomic_numbers[lat]) < threshold:
+            if abs(effective_atomic_numbers[lat] - effective_atomic_numbers[mat]) >= threshold:
+                kat, mat = mat, kat
+        elif abs(effective_atomic_numbers[lat] - effective_atomic_numbers[mat]) >= threshold:
+            kat, lat = lat, kat
+    return jat, kat, lat, mat
+
+
+def _four_atom_equal_count(atoms: tuple[int, int, int, int], effective_atomic_numbers: tuple[float, ...]) -> int:
+    jat, kat, lat, mat = atoms
+    threshold = 5.0e-4
+
+    def equivalent(first: int, second: int) -> bool:
+        return abs(effective_atomic_numbers[first] - effective_atomic_numbers[second]) < threshold
+
+    neq = 0
+    if equivalent(jat, kat):
+        neq += 1
+        if equivalent(jat, lat):
+            neq += 2
+            if equivalent(jat, mat):
+                neq += 1
+        elif equivalent(jat, mat):
+            neq += 2
+        elif equivalent(lat, mat):
+            neq += 1
+    elif equivalent(jat, lat):
+        neq += 1
+        if equivalent(jat, mat):
+            neq += 2
+        elif equivalent(kat, mat):
+            neq += 1
+    elif equivalent(jat, mat):
+        neq += 1
+        if equivalent(kat, lat):
+            neq += 1
+    elif equivalent(kat, lat):
+        neq += 1
+        if equivalent(lat, mat):
+            neq += 2
+    elif equivalent(kat, mat):
+        neq += 1
+    elif equivalent(lat, mat):
+        neq += 1
+    return neq
+
+
+def _w2xy2_coordinates(
+    center: int,
+    jat: int,
+    kat: int,
+    lat: int,
+    mat: int,
+    *,
+    equal_count: int,
+    frozen: dict[int, bool],
+    start: int,
+) -> list[GICForgePythonCoordinate]:
+    if all(frozen[atom] for atom in (jat, kat, lat, mat)):
+        return []
+    inot1, inot2 = jat, kat
+    iyes1, iyes2 = lat, mat
+    if frozen[jat] and frozen[lat]:
+        inot1, inot2 = jat, lat
+        iyes1, iyes2 = kat, mat
+    elif frozen[jat] and frozen[mat]:
+        inot1, inot2 = jat, mat
+        iyes1, iyes2 = kat, lat
+    elif frozen[kat] and frozen[lat]:
+        inot1, inot2 = kat, lat
+        iyes1, iyes2 = jat, mat
+    elif frozen[kat] and frozen[mat]:
+        inot1, inot2 = kat, mat
+        iyes1, iyes2 = jat, lat
+    elif frozen[lat] and frozen[mat]:
+        inot1, inot2 = lat, mat
+        iyes1, iyes2 = jat, kat
+
+    den_sym = np.sqrt(6.0)
+    den_rock = np.sqrt(2.0)
+    coordinates = [
+        GICForgePythonCoordinate(
+            name=f"SymD{start:04d}",
+            block="SymD",
+            type_index=1,
+            terms=(
+                (2.0 / den_sym, Primitive("angle", (iyes1, center, iyes2))),
+                (-1.0 / den_sym, Primitive("angle", (inot1, center, iyes1))),
+                (-1.0 / den_sym, Primitive("angle", (inot1, center, iyes2))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"Rock{start + 1:04d}",
+            block="Rock",
+            type_index=2,
+            terms=(
+                (1.0 / den_rock, Primitive("angle", (inot1, center, iyes1))),
+                (-1.0 / den_rock, Primitive("angle", (inot1, center, iyes2))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"SymD{start + 2:04d}",
+            block="SymD",
+            type_index=1,
+            terms=(
+                (2.0 / den_sym, Primitive("angle", (iyes1, center, iyes2))),
+                (-1.0 / den_sym, Primitive("angle", (inot2, center, iyes1))),
+                (-1.0 / den_sym, Primitive("angle", (inot2, center, iyes2))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"Rock{start + 3:04d}",
+            block="Rock",
+            type_index=2,
+            terms=(
+                (1.0 / den_rock, Primitive("angle", (inot2, center, iyes1))),
+                (-1.0 / den_rock, Primitive("angle", (inot2, center, iyes2))),
+            ),
+        ),
+    ]
+    if not any(frozen.values()):
+        coordinates.append(
+            _primitive_coordinate("Bend" if equal_count != 2 else "Bend", start + 4, Primitive("angle", (inot1, center, inot2)))
+        )
+    return coordinates
+
+
+def _wxy3_coordinates(
+    center: int,
+    jat: int,
+    kat: int,
+    lat: int,
+    mat: int,
+    *,
+    frozen: dict[int, bool],
+    start: int,
+) -> list[GICForgePythonCoordinate]:
+    if all(frozen[atom] for atom in (jat, kat, lat, mat)):
+        return []
+    den = np.sqrt(2.0)
+    coordinates = [
+        GICForgePythonCoordinate(
+            name=f"Rock{start:04d}",
+            block="Rock",
+            type_index=2,
+            terms=(
+                (0.5, Primitive("angle", (jat, center, kat))),
+                (-0.25, Primitive("angle", (jat, center, lat))),
+                (-0.25, Primitive("angle", (jat, center, mat))),
+            ),
+        ),
+        GICForgePythonCoordinate(
+            name=f"Rock{start + 1:04d}",
+            block="Rock",
+            type_index=2,
+            terms=(
+                (1.0 / den, Primitive("angle", (jat, center, lat))),
+                (-1.0 / den, Primitive("angle", (jat, center, mat))),
+            ),
+        ),
+    ]
+    if sum(1 for value in frozen.values() if value) == 3:
+        return coordinates
+    coordinates.append(_primitive_coordinate("Bend", start + 2, Primitive("angle", (lat, center, mat))))
+    if sum(1 for value in frozen.values() if value) == 2:
+        return coordinates
+    coordinates.append(_primitive_coordinate("Bend", start + 3, Primitive("angle", (kat, center, lat))))
+    coordinates.append(_primitive_coordinate("Bend", start + 4, Primitive("angle", (kat, center, mat))))
+    return coordinates
+
+
+def _td_four_atom_coordinates(
+    center: int,
+    jat: int,
+    kat: int,
+    lat: int,
+    mat: int,
+    *,
+    frozen: dict[int, bool],
+    start: int,
+) -> list[GICForgePythonCoordinate]:
+    return _wxy3_coordinates(
+        center,
+        jat,
+        kat,
+        lat,
+        mat,
+        frozen=frozen,
+        start=start,
+    )
+
+
+def _high_coord_angle_coordinates(
+    center: int,
+    neigh: list[int],
+    *,
+    coords: np.ndarray,
+    linear_threshold: float,
+    angle_start: int,
+    linear_start: int,
+) -> tuple[list[GICForgePythonCoordinate], list[GICForgePythonCoordinate]]:
+    coordinates: list[GICForgePythonCoordinate] = []
+    linears: list[GICForgePythonCoordinate] = []
+    for ib, first in enumerate(neigh[:-1]):
+        for second in neigh[ib + 1 :]:
+            left, right = sorted((first, second))
+            value = angle(left, center, right, coords)
+            if value < linear_threshold:
+                coordinates.append(
+                    _primitive_coordinate("HCAn", angle_start + len(coordinates), Primitive("angle", (left, center, right)))
+                )
+            else:
+                linears.append(
+                    _primitive_coordinate(
+                        "LAng",
+                        linear_start + len(linears),
+                        Primitive("linear_bend", (left, center, right), mode=-1),
+                    )
+                )
+                linears.append(
+                    _primitive_coordinate(
+                        "LAng",
+                        linear_start + len(linears),
+                        Primitive("linear_bend", (left, center, right), mode=-2),
+                    )
+                )
+    return coordinates, linears
+
+
 def _atom_ring_map_from_rings(rings: list[tuple[int, ...]], natoms: int) -> list[int]:
     atom_ring = [0 for _ in range(natoms)]
     for index, ring in enumerate(rings, start=1):
         for atom in ring:
             atom_ring[int(atom)] = index
     return atom_ring
+
+
+def _atom_selected_ring_counts(rings: list[tuple[int, ...]], natoms: int) -> list[int]:
+    counts = [0 for _ in range(natoms)]
+    for ring in rings:
+        for atom in ring:
+            counts[int(atom)] += 1
+    return counts
 
 
 def _primitive_coordinate(prefix: str, index: int, primitive: Primitive) -> GICForgePythonCoordinate:

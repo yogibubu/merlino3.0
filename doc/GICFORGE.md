@@ -145,9 +145,11 @@ for routine user-facing diagnostics.
 
 The current port is intentionally incremental. It already matches Fortran for
 primitive stretches, two-coordinate bends, linear bends, C2v three-coordinate
-angle SALCs, G16 improper orientation, fused-ring `CyGNA/CyGND` valence-angle
-and puckering coordinates, and type-local Gram-Schmidt pruning. Coronene is
-covered as a regression target for the fused-ring path: Python and Fortran must
+angle SALCs, the main four-coordinate `FourAt/W2XY2` path, G16 improper
+orientation, orbit-closed `ONEDIH` torsions, fused-ring `BtFl` butterfly
+coordinates, fused-ring `CyGNA/CyGND` valence-angle and puckering coordinates,
+and type-local Gram-Schmidt pruning. Nitrobenzene, saccharine, naphthalene,
+pyrene and coronene are covered as regression targets: Python and Fortran must
 agree on final counts, ordered primitive signatures and the resulting B-matrix.
 
 The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
