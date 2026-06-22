@@ -1,215 +1,56 @@
-This document describes the internal architecture of Merlino 3.0.
+# Merlino 3.0 Developer Map
 
-# Merlino 3.0
+Merlino is organized as a set of independent scientific packages that exchange
+state through a common `xyzin` molecular container.  New workflows should avoid
+private side channels: geometry, topology, rotational, vibrational and
+isotopologue data belong in explicit `xyzin` sections or in run manifests.
 
-Merlino 3.0 è un framework minimale e modulare per la preparazione,
-visualizzazione e manipolazione di strutture molecolari,
-basato su un **unico canale di comunicazione**: il file `xyzin`.
+## Runtime Packages
 
-Il progetto è pensato per sviluppo incrementale, robustezza
-e separazione rigorosa delle responsabilità.
+- `merlino_core`: shared configuration, manifests, `xyzin` section handling,
+  isotopologue records and numerical helpers.
+- `merlino_gic`: GIC definition, symmetry assignment and reusable B-matrix
+  evaluation.
+- `merlino_semiexp`: SEfit preprocessing, constraints, least-squares solver,
+  diagnostics and reports.
+- `merlino_gf`: Cartesian Hessian reading, GIC/GF transformation, frequencies,
+  normal modes and potential-energy distributions.
+- `merlino_dvr`: DVR execution helpers for completed Gaussian scans/paths.
+- `merlino_vpt2_vci`: normal-mode quartic force-field VPT2/VCI utilities.
+- `merlino_gui`: new workflow dashboard and manifest browser.
+- `gui` and `advanced`: compatibility GUI panels still used during migration.
+- `fortran`: active Fortran77-compatible numerical backends.
 
----
+## `xyzin` Contract
 
-## 📁 Struttura delle directory
+`xyzin` starts with a standard XYZ block and then contains uppercase sections
+such as `#BASIC`, `#ROTATIONAL`, `#VIBRATIONAL`, `#TOPOLOGY` and
+`#ISOTOPOLOGUES`.  A module that regenerates a section must preserve unrelated
+sections.  The current section format is documented in
+`doc/XYZIN_FORMAT.md`.
 
-merlino3.0/
-├─ app.py
-├─ manager.py
-├─ working/
-│ └─ xyzin
-├─ gui/
-├─ geometry/
-├─ merlino_fit/
-├─ puckering_dvr/
-├─ projects/
-│ ├─ se_library/
-│ ├─ pcs2_library/
-│ └─ hpcs2_library/
-└─ doc/
+SEfit always runs from `xyzin`.  External CSV/JSON/TOML/MSR inputs are
+preprocessing sources: they are first materialized into the common container and
+then reread from there.
 
+## Runtime And Generated Files
 
-`projects/` qui non è un contenitore di "progetti" nel senso organizzativo.
-È una libreria dati locale usata dai workflow di similarità e frammentazione.
+- `working/` and `tmp/` are runtime-only and ignored by git.
+- `working/xyzin` is a local workspace file, not a versioned source artifact.
+- Build intermediates belong under ignored build directories.
+- Scientific examples and reproducibility inputs belong under `examples/` or
+  `benchmarks/`, not under `working/`.
 
-Le aree operative principali sono:
-- `gui/` per l'interfaccia e i workflow utente
-- `geometry/` per pipeline rotazionali, vibrazionali e termochimiche
-- `merlino_fit/` per similarity, fragment pipeline e delta correction
-- `puckering_dvr/` per il post-processing DVR dei log Gaussian lungo coordinate
-  di puckering
-- `working/` come workspace runtime
+## Current Documentation
 
----
+- `doc/REPOSITORY_LAYOUT.md`: repository map and build policy.
+- `doc/PACKAGE_ARCHITECTURE.md`: package boundaries and data flow.
+- `doc/XYZIN_FORMAT.md`: canonical `xyzin` and isotopologue section format.
+- `doc/GICFORGE.md`: current GICForge behavior.
+- `doc/GICFORGE_HBOND_FRAGMENT_ROADMAP.md`: planned H-bond and fragment
+  coordinate extensions.
+- `doc/SEMIEXPERIMENTAL_FILE_FORMATS.md`: SEfit external compatibility formats.
+- `doc/SEMIEXPERIMENTAL_GEOMETRY.md`: SEfit methodology and outputs.
+- `doc/testing.md`: regression and verification workflow.
 
-## 🔑 Concetti chiave
-
-### `working/`
-- Workspace **effimero**
-- Esiste sempre
-- Viene pulito **a fine sessione**
-- In modalità `DEBUG` non viene pulito
-
-Nota pratica: dal punto di vista architetturale `working/` è runtime-only.
-Se qualche file dentro `working/` risulta tracciato da git, quello è un problema
-di stato del repository, non una scelta di design.
-
-### `xyzin`
-- **Single source of truth**
-- Contiene:
-  - blocco XYZ
-  - sezioni (`#BASIC`, `#SMILES`, `#ROTATIONAL`, `#VIBRATIONAL`, `#ISOTOPOLOGUES`, …)
-- Nessun altro canale di comunicazione è permesso
-- Il formato sezionato completo è descritto in `doc/XYZIN_FORMAT.md`.
-
----
-
-## 🔁 Ciclo di vita
-
-1. `manager.py` crea `working/xyzin` con H₂ e `#BASIC`
-2. La GUI modifica `xyzin` tramite i readers
-3. Il viewer legge **solo** `xyzin`
-4. Alla chiusura:
-   - `working/` viene pulita
-   - se `DEBUG=True`, nulla viene rimosso
-
-Nota: la GUI scrive un log unico in `working/gui.log`. Se un eventuale
-`working/fchkin` ha un numero di atomi diverso da `xyzin`, la parte
-vibrazionale viene saltata con un warning.
-
----
-
-## 🧪 Workflow rovib (CLI Gaussian)
-
-Quando usi `cli_gaussian.py`, oltre al workflow standard viene eseguito
-anche il passo `rovib` se disponibile. Se manca `dos_vib.dat`, il DOS
-vibrazionale viene generato automaticamente con i seguenti default:
-
-- vmax = 6 (tutti i modi)
-- emax = 8000 cm^-1
-- bin = 50 cm^-1
-- ncap = 10
-
-Questo consente di ottenere in automatico:
-- `dos_vib.dat`
-- `dos_rovib.dat`
-- `rovib_qt.dat` (Q(T) rovibrazionale)
-
-## 🧩 Workflow attivi aggiuntivi
-
-### Fragment pipeline e delta correction
-- Fragment-level similarity su librerie `SE`, `PCS2`, `HPCS2`
-- Preparazione bundle di correzione locale
-- Applicazione di correzioni geometriche locali su frammenti
-
-### Bridge DeltaVib da matrice vibro-rotazionale `alpha`
-- Lettura di `alpha` da Gaussian log
-- Somma selettiva per modo
-- inversione opzionale del segno per frequenze immaginarie
-- scrittura di `ΔVib` nella sezione rotazionale di `xyzin`
-
-### Isotopologhi per SEfit
-- Gli isotopologhi sono conservati direttamente in `xyzin` nella sezione unica
-  `#ISOTOPOLOGUES`.
-- Ogni record contiene sempre la definizione isotopica; costanti rotazionali,
-  correzioni vibrazionali/elettroniche ed errori sperimentali sono opzionali.
-- Tutti i moduli devono usare la libreria comune `merlino_core.isotopologues`.
-- SEfit parte sempre da `xyzin`: TOML/JSON/CSV/MSR/job-table sono sorgenti di
-  preprocessing che vengono prima materializzate nel contenitore comune.
-- Se il `xyzin` di progetto manca, il preprocessing lo crea dalla geometria
-  cartesiana/MSR/job fornita e poi il fit riparte da quel file.
-
-### GICForge: H-bond e frammenti
-- La strategia per il prossimo sviluppo GICForge è descritta in
-  `doc/GICFORGE_HBOND_FRAGMENT_ROADMAP.md`.
-- Il punto centrale è separare coordinate intra-frammento, coordinate rigide
-  inter-frammento e contatti non covalenti pesati, usando librerie comuni per
-  Python, Fortran77 e GUI.
-
-Nota di architettura:
-- questa non è più la linea scientifica principale per il problema vibro-rotazionale
-- il lavoro principale vive nella nuova linea `CeDiTT + alpha_resonances`
-- in `Merlino 3.0` il blocco `DeltaVib/alpha` va mantenuto come ponte di compatibilità applicativa
-
-### Path DVR e Puckering Gaussian
-- La GUI Advanced genera input Gaussian con coordinate GIC di anello.
-- Le coordinate `RPck....` sono inattive; `QPck....` e `PhiP....` sono le
-  coordinate effettivamente usate nello scan/ottimizzazione Gaussian.
-- Dopo Gaussian, la finestra toolbar `DVR`
-  legge qualunque log con uno scan/percorsi ottimizzati e avvia
-  `puckering_dvr/scripts/mw_path_dvr.py`.
-- La finestra `DVR` puo selezionare automaticamente il log Gaussian piu
-  recente, fare un preflight, lanciare Gaussian da `gauin.gjf`, concatenare
-  Gaussian -> DVR, mostrare summary/livelli/figure e salvare un manifesto
-  diagnostico `*_dvr_run_manifest.json`.
-- Il backend DVR non dipende dal puckering: usa sempre la distanza cartesiana
-  mass-weighted lungo il percorso ottimizzato.
-- Se sono presenti `QPck....`/`PhiP....`, il profilo conserva le coordinate GIC
-  Gaussian e, se richiesto, scrive il bridge verso componenti Cremer-Pople.
-- La numerazione canonica degli anelli è documentata in
-  `doc/RING_NUMBERING_CONVENTION.md`.
-
----
-
-## 🧩 Readers
-
-Tutti i readers rispettano il contratto:
-
-NPUT → (file, SMILES, ecc.)
-OUTPUT → working/xyzin
-RETURN → None
-
-
-Reader attivi:
-- `smiles_reader.py` → aggiorna XYZ + `#SMILES`
-- `xyz_reader.py` → sostituisce solo XYZ
-
-La gestione del formato `xyzin` è centralizzata in:
-- `xyzin_utils.py`
-
----
-
-## 🖼️ Visualizzazione
-
-- Viewer 2D basato su RDKit (`viewer2d.py`)
-- Fallback automatico al logo se la molecola non è visualizzabile
-
----
-
-## 🧪 Avogadro
-
-- Avogadro (v1) è usato come **default viewer** (macOS via `open`)
-- Avogadro2 è disponibile su richiesta
-- Avogadro lavora **sempre su una copia temporanea**
-- L’import in `xyzin` è **esplicito e controllato**
-
----
-
-## 🐞 DEBUG
-
-Per preservare `working/` dopo la chiusura:
-
-```python
-run(debug=True)
-
-Utile per:
-
-ispezione di xyzin
-
-debug dei readers
-
-test manuali
-
-🎯 Filosofia
-
-minimalismo
-
-zero stato nascosto
-
-nessuna logica duplicata
-
-ogni modulo fa una cosa sola
-
-semplicità > feature premature
-
-Merlino 3.0 è una base solida, non un prodotto finito.
+Historical cleanup, freeze and triage notes are kept under `doc/archive/`.

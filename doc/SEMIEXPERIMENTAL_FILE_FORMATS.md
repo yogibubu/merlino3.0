@@ -455,8 +455,9 @@ Every semiexperimental run writes:
   constraints, parameter classes and the active labels they match.
 - `semiexp_warnings.csv`: non-blocking diagnostic warnings for reduced rank,
   small singular values, ill-conditioned planar component pairs, low robust
-  isotopologue weights and unusually large propagated primitive-coordinate
-  uncertainties.
+  isotopologue weights, large weighted residuals, high leverage observations,
+  strongly correlated parameters, trust-region stagnation and unusually large
+  propagated primitive-coordinate uncertainties.
 - `semiexp_checkpoint.json`: restartable solver state with Cartesian geometry,
   damping/trust radius, labels, active labels and robust weights.
 - `semiexp_leave_one_out.csv`: exact leave-one-isotopologue-out refits, written

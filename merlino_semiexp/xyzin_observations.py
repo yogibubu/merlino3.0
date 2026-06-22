@@ -5,19 +5,29 @@ from pathlib import Path
 from merlino_core.isotopologues import (
     XYZIN_ISOTOPOLOGUES_SCHEMA,
     XyzinIsotopologueRecord,
+    format_xyzin_isotopologue_issues,
     has_xyzin_isotopologues,
     parse_xyzin_isotopologue_records,
     read_xyzin_isotopologue_records,
+    validate_xyzin_isotopologue_records,
     write_xyzin_isotopologue_records,
+    xyzin_isotopologue_validation_errors,
     xyzin_isotopologue_section_lines,
 )
+from merlino_core.xyzin_geometry import read_xyzin_geometry
 
 from .contracts import ElectronicCorrection, IsotopologueObservation, RotationalConstants, VibrationalCorrection
 
 
 def read_xyzin_isotopologues(path: Path) -> tuple[IsotopologueObservation, ...]:
-    records = read_xyzin_isotopologue_records(Path(path))
-    return observations_from_xyzin_records(records)
+    target = Path(path)
+    records = read_xyzin_isotopologue_records(target)
+    atom_count = None
+    try:
+        atom_count = len(read_xyzin_geometry(target).atoms)
+    except Exception:
+        atom_count = None
+    return observations_from_xyzin_records(records, atom_count=atom_count)
 
 
 def write_xyzin_isotopologues(path: Path, observations: tuple[IsotopologueObservation, ...]) -> Path:
@@ -31,7 +41,13 @@ def parse_xyzin_isotopologues_lines(lines: list[str]) -> tuple[IsotopologueObser
 
 def observations_from_xyzin_records(
     records: tuple[XyzinIsotopologueRecord, ...],
+    *,
+    atom_count: int | None = None,
 ) -> tuple[IsotopologueObservation, ...]:
+    issues = validate_xyzin_isotopologue_records(records, atom_count=atom_count, require_rotational=True)
+    errors = xyzin_isotopologue_validation_errors(issues)
+    if errors:
+        raise ValueError(format_xyzin_isotopologue_issues(errors))
     observations: list[IsotopologueObservation] = []
     incomplete = [record.label for record in records if record.rotational_MHz is None]
     if incomplete:

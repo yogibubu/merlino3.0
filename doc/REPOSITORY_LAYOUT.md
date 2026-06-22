@@ -36,9 +36,9 @@ the top-level README. New implementation files should not be added at root.
 
 - `doc/PROJECT_STATUS.md`: current project state.
 - `doc/PACKAGE_ARCHITECTURE.md`: package boundaries and workflow data flow.
-- `doc/FINAL_CLEANUP_STATUS.md`: cleanup and validation history.
 - `doc/RING_NUMBERING_CONVENTION.md`: ring numbering convention shared by
   Python and Fortran.
+- `doc/archive/`: cleanup, freeze and triage history.
 - `doc/reports/`: larger reports and TeX artifacts.
 - Historical Merlino3 notes are not duplicated in Merlino4; use the frozen
   Merlino3.0 tree for that archive.

@@ -68,3 +68,11 @@ always passes its project `xyzin`. If a `xyzin` file does not exist, the
 preprocessing step creates one from the supplied Cartesian/MSR/job geometry and
 appends the isotopologue section. SEfit can run only when the relevant records
 contain complete `ROTATIONAL_MHZ` lines.
+
+Validation is centralized in `merlino_core.isotopologues`.  The shared
+validator checks schema version, duplicate labels, duplicate definitions,
+one-based atom indexes, atom-count compatibility when a geometry is available,
+finite positive rotational constants, finite corrections, positive
+experimental standard deviations and supported correction conventions.  Modules
+that need only isotope definitions can accept definition-only records; SEfit
+calls the same validator with `require_rotational=True`.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 import shlex
 
@@ -25,6 +26,14 @@ class XyzinIsotopologueRecord:
     sigma_MHz: tuple[float, float, float] | None = None
 
 
+@dataclass(frozen=True)
+class XyzinIsotopologueValidationIssue:
+    severity: str
+    code: str
+    message: str
+    context: str = ""
+
+
 def mass_number(value) -> int:
     text = str(value).strip()
     aliases = {"D": 2, "T": 3}
@@ -44,6 +53,8 @@ def parse_substitutions(text: str) -> dict[int, int]:
         isotope_a = mass_number(isotope_text.strip())
         if atom_index < 1:
             raise ValueError("Substitution atom indexes are one-based")
+        if atom_index in result:
+            raise ValueError(f"Duplicate substitution for atom {atom_index}")
         result[atom_index] = isotope_a
     return result
 
@@ -65,6 +76,130 @@ def has_xyzin_isotopologues(path: Path) -> bool:
 def read_xyzin_isotopologue_records(path: Path) -> tuple[XyzinIsotopologueRecord, ...]:
     lines = section_content(read_sectioned_lines(Path(path)), XYZIN_ISOTOPOLOGUES_SECTION)
     return parse_xyzin_isotopologue_records(lines)
+
+
+def validate_xyzin_isotopologue_file(
+    path: Path,
+    *,
+    atom_count: int | None = None,
+    require_rotational: bool = False,
+) -> tuple[XyzinIsotopologueValidationIssue, ...]:
+    return validate_xyzin_isotopologue_records(
+        read_xyzin_isotopologue_records(Path(path)),
+        atom_count=atom_count,
+        require_rotational=require_rotational,
+    )
+
+
+def validate_xyzin_isotopologue_records(
+    records: tuple[XyzinIsotopologueRecord, ...],
+    *,
+    atom_count: int | None = None,
+    require_rotational: bool = False,
+) -> tuple[XyzinIsotopologueValidationIssue, ...]:
+    issues: list[XyzinIsotopologueValidationIssue] = []
+
+    def add(severity: str, code: str, message: str, context: str = "") -> None:
+        issues.append(XyzinIsotopologueValidationIssue(severity, code, message, context))
+
+    if not records:
+        add("error", "empty_isotopologue_section", "#ISOTOPOLOGUES contains no records")
+        return tuple(issues)
+    labels: dict[str, int] = {}
+    definitions: dict[tuple[tuple[int, int], ...], str] = {}
+    for record in records:
+        label = record.label.strip()
+        if not label:
+            add("error", "empty_isotopologue_label", "Isotopologue label cannot be empty")
+        elif label in labels:
+            add(
+                "error",
+                "duplicate_isotopologue_label",
+                "Duplicate isotopologue label in #ISOTOPOLOGUES",
+                f"label={label}",
+            )
+        labels[label] = labels.get(label, 0) + 1
+        normalized_substitutions: dict[int, int] = {}
+        for atom, mass in record.substitutions.items():
+            try:
+                normalized_substitutions[int(atom)] = int(mass)
+            except (TypeError, ValueError):
+                add(
+                    "error",
+                    "invalid_substitution_value",
+                    "Substitution atom indexes and isotope masses must be integers.",
+                    f"label={label};atom={atom};mass={mass}",
+                )
+        definition_key = tuple(sorted(normalized_substitutions.items()))
+        previous = definitions.get(definition_key)
+        if previous is not None and label:
+            add(
+                "warning",
+                "duplicate_isotopologue_definition",
+                "Two isotopologue records use the same substitution definition.",
+                f"labels={previous},{label};definition={format_substitutions(dict(definition_key)) or 'parent'}",
+            )
+        else:
+            definitions[definition_key] = label
+        for atom_index, isotope in sorted(normalized_substitutions.items()):
+            if atom_index < 1:
+                add(
+                    "error",
+                    "invalid_substitution_index",
+                    "Substitution atom indexes are one-based.",
+                    f"label={label};atom={atom_index}",
+                )
+            if atom_count is not None and atom_index > atom_count:
+                add(
+                    "error",
+                    "substitution_index_out_of_range",
+                    "Substitution atom index is outside the parent geometry.",
+                    f"label={label};atom={atom_index};natoms={atom_count}",
+                )
+            if isotope <= 0:
+                add(
+                    "error",
+                    "invalid_isotope_mass",
+                    "Isotope mass number must be positive.",
+                    f"label={label};atom={atom_index};mass={isotope}",
+                )
+        if require_rotational and record.rotational_MHz is None:
+            add(
+                "error",
+                "missing_rotational_constants",
+                "SEfit requires ROTATIONAL_MHZ for every isotopologue.",
+                f"label={label}",
+            )
+        _validate_optional_triple(
+            add,
+            label,
+            "rotational_constants",
+            "ROTATIONAL_MHZ",
+            record.rotational_MHz,
+            positive=True,
+        )
+        _validate_optional_triple(add, label, "deltavib", "DELTAVIB_MHZ", record.deltavib_MHz)
+        _validate_optional_triple(add, label, "deltael", "DELTAEL_MHZ", record.deltael_MHz)
+        _validate_optional_triple(add, label, "sigma", "SIGMA_MHZ", record.sigma_MHz, positive=True)
+        _validate_correction_convention(add, label, "DELTAVIB_MHZ", record.deltavib_convention)
+        _validate_correction_convention(add, label, "DELTAEL_MHZ", record.deltael_convention)
+    return tuple(issues)
+
+
+def xyzin_isotopologue_validation_errors(
+    issues: tuple[XyzinIsotopologueValidationIssue, ...],
+) -> tuple[XyzinIsotopologueValidationIssue, ...]:
+    return tuple(item for item in issues if item.severity == "error")
+
+
+def format_xyzin_isotopologue_issues(
+    issues: tuple[XyzinIsotopologueValidationIssue, ...],
+) -> str:
+    return "; ".join(
+        f"{item.severity}:{item.code}:{item.message}"
+        + (f" ({item.context})" if item.context else "")
+        for item in issues
+    )
 
 
 def write_xyzin_isotopologue_records(path: Path, records: tuple[XyzinIsotopologueRecord, ...]) -> Path:
@@ -273,3 +408,53 @@ def _triple_line(
     if convention is not None:
         line += f" CONVENTION={shlex.quote(convention or 'subtract')}"
     return line
+
+
+def _validate_optional_triple(
+    add,
+    label: str,
+    code: str,
+    keyword: str,
+    values: tuple[float, float, float] | None,
+    *,
+    positive: bool = False,
+) -> None:
+    if values is None:
+        return
+    for component, value in zip(("A", "B", "C"), values):
+        if not math.isfinite(float(value)):
+            add(
+                "error",
+                f"nonfinite_{code}",
+                f"{keyword} values must be finite.",
+                f"label={label};component={component};value={value}",
+            )
+        elif positive and float(value) <= 0.0:
+            add(
+                "error",
+                f"nonpositive_{code}",
+                f"{keyword} values must be positive.",
+                f"label={label};component={component};value={value}",
+            )
+
+
+def _validate_correction_convention(add, label: str, keyword: str, convention: str) -> None:
+    text = str(convention or "subtract").strip().lower().replace("-", "_")
+    allowed = {
+        "subtract",
+        "subtractive",
+        "observed_minus_delta",
+        "b0_minus_delta",
+        "add",
+        "additive",
+        "observed_plus_delta",
+        "b0_plus_delta",
+        "msr",
+    }
+    if text not in allowed:
+        add(
+            "error",
+            "invalid_correction_convention",
+            f"{keyword} correction convention is not supported.",
+            f"label={label};convention={convention}",
+        )

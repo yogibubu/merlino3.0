@@ -53,15 +53,18 @@ from merlino_semiexp import (
 from merlino_vpt2_vci.gaussian_qff import hessian_input_from_gaussian_fchk
 from merlino_core import (
     XyzinIsotopologueRecord,
+    format_xyzin_isotopologue_issues,
     merge_xyzin_isotopologue_records,
     read_xyzin_isotopologue_records,
     repo_root,
+    validate_xyzin_isotopologue_records,
     write_xyzin_isotopologue_records,
 )
 from merlino_semiexp.fit import (
     MeasurementModel,
     SemiexperimentalFitDiagnostics,
     SemiexperimentalGeometryParameter,
+    SemiexperimentalIterationTrace,
     SemiexperimentalParameter,
     _combined_primitive_constraint_b_matrix,
     _atomic_number,
@@ -284,15 +287,95 @@ def test_semiexperimental_diagnostic_warnings_are_machine_readable():
         jac,
         model,
         np.array([0.2, 0.2]),
+        weighted_residual=np.array([6.0, 0.2]),
+        iteration_trace=(
+            SemiexperimentalIterationTrace(
+                1,
+                "rejected",
+                1.0,
+                1.0,
+                0.0,
+                0.1,
+                0.0,
+                0.0,
+                1.0e-6,
+                1.0e-8,
+                1.0e-9,
+                1.0,
+                1,
+                1.0e-12,
+                1.0e-12,
+                0.0,
+                1.0,
+                0,
+                0,
+                0,
+                0.0,
+                "svd",
+            ),
+            SemiexperimentalIterationTrace(
+                2,
+                "rejected",
+                1.0,
+                1.0,
+                0.0,
+                0.1,
+                0.0,
+                0.0,
+                1.0e-6,
+                1.0e-8,
+                1.0e-9,
+                1.0,
+                1,
+                1.0e-12,
+                1.0e-12,
+                0.0,
+                1.0,
+                0,
+                0,
+                0,
+                0.0,
+                "svd",
+            ),
+            SemiexperimentalIterationTrace(
+                3,
+                "rejected",
+                1.0,
+                1.0,
+                0.0,
+                0.1,
+                0.0,
+                0.0,
+                1.0e-6,
+                1.0e-8,
+                1.0e-9,
+                1.0,
+                1,
+                1.0e-12,
+                1.0e-12,
+                0.0,
+                1.0,
+                0,
+                0,
+                0,
+                0.0,
+                "svd",
+            ),
+        ),
+        correlation=np.array([[1.0, 0.99], [0.99, 1.0]]),
     )
     codes = {row.code for row in rows}
     csv_text = _warnings_csv(rows)
 
+    assert "not_converged_max_iter" in codes
     assert "rank_deficient" in codes
     assert "small_singular_value" in codes
     assert "planar_pair_ill_conditioned" in codes
     assert "low_robust_isotopologue_weight" in codes
     assert "large_geometry_uncertainty" in codes
+    assert "large_weighted_residual" in codes
+    assert "high_parameter_correlation" in codes
+    assert "repeated_final_rejections" in codes
     assert "severity,code,message,context" in csv_text
     assert "iso_low" in csv_text
 
@@ -539,6 +622,23 @@ def test_xyzin_isotopologues_allow_definition_only_records(tmp_path):
     assert records[0].rotational_MHz is None
     with pytest.raises(ValueError, match="SEfit requires ROTATIONAL_MHZ"):
         read_observations(xyzin)
+
+
+def test_xyzin_isotopologue_validator_reports_schema_contract_errors():
+    records = (
+        XyzinIsotopologueRecord("parent", rotational_MHz=(1000.0, 800.0, 600.0)),
+        XyzinIsotopologueRecord("bad", substitutions={3: 2}, rotational_MHz=(990.0, 790.0, 590.0)),
+        XyzinIsotopologueRecord("missing", substitutions={1: 13}),
+    )
+
+    issues = validate_xyzin_isotopologue_records(records, atom_count=2, require_rotational=True)
+    codes = {item.code for item in issues}
+    formatted = format_xyzin_isotopologue_issues(issues)
+
+    assert "substitution_index_out_of_range" in codes
+    assert "missing_rotational_constants" in codes
+    assert "bad" in formatted
+    assert "missing" in formatted
 
 
 def test_semiexperimental_geometry_input_accepts_xyzin(tmp_path):

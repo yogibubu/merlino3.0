@@ -102,8 +102,8 @@ File attivi principali
 
 Documenti di triage
 ------------------
-- `doc/REPO_TRIAGE_2026-03-24.md`
-- `doc/WORKTREE_TRIAGE_2026-03-24.md`
+- `doc/archive/REPO_TRIAGE_2026-03-24.md`
+- `doc/archive/WORKTREE_TRIAGE_2026-03-24.md`
 - `doc/ROVIB_COMPATIBILITY_INTERFACE_2026-03-24.md`
 
 Come riprendere

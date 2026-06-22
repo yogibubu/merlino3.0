@@ -61,6 +61,14 @@ DIAGNOSTIC_BOND_SIGMA_WARNING_ANGSTROM = 5.0e-3
 DIAGNOSTIC_ANGLE_SIGMA_WARNING_DEGREE = 0.50
 DIAGNOSTIC_ISOTOPE_SHIFT_WARNING_MHZ = 5.0
 DIAGNOSTIC_ISOTOPE_SHIFT_IMPROVEMENT_RATIO = 0.50
+DIAGNOSTIC_REDUCED_CHI_SQUARE_WARNING = 9.0
+DIAGNOSTIC_REJECTED_STEP_FRACTION_WARNING = 0.50
+DIAGNOSTIC_TRUST_RADIUS_WARNING = 1.0e-7
+DIAGNOSTIC_LINE_SEARCH_SCALE_WARNING = 1.0e-3
+DIAGNOSTIC_PARAMETER_SCALE_RATIO_WARNING = 1.0e6
+DIAGNOSTIC_WEIGHTED_RESIDUAL_WARNING = 5.0
+DIAGNOSTIC_LEVERAGE_WARNING = 0.95
+DIAGNOSTIC_CORRELATION_WARNING = 0.98
 TRUST_REGION_MIN_RADIUS = 1.0e-10
 DAMPING_MIN = 1.0e-14
 DAMPING_MAX = 1.0e12
@@ -1568,6 +1576,8 @@ def write_semiexperimental_outputs(
             measurement_model,
             robust_sqrt_weights,
             weighted_residual,
+            iteration_trace=iteration_trace,
+            correlation=correlation,
         )
     )
     write_xyz(xyz, atoms, coords, comment="Merlino semiexperimental equilibrium geometry")
@@ -3027,6 +3037,9 @@ def _semiexp_warning_rows(
     measurement_model: MeasurementModel | None,
     robust_sqrt_weights: np.ndarray | None,
     weighted_residual: np.ndarray | None = None,
+    *,
+    iteration_trace: tuple[SemiexperimentalIterationTrace, ...] = (),
+    correlation: np.ndarray | None = None,
 ) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
     rows: list[SemiexperimentalDiagnosticWarning] = []
     seen: set[tuple[str, str]] = set()
@@ -3039,6 +3052,13 @@ def _semiexp_warning_rows(
         rows.append(SemiexperimentalDiagnosticWarning(severity, code, message, context))
 
     if diagnostics is not None:
+        if diagnostics.convergence_reason == "max_iter":
+            add(
+                "warning",
+                "not_converged_max_iter",
+                "SEfit reached the maximum number of iterations before a convergence criterion was satisfied.",
+                f"max_iterations={diagnostics.max_iterations};accepted={diagnostics.accepted_steps};rejected={diagnostics.rejected_steps}",
+            )
         if diagnostics.rank < diagnostics.n_optimized_parameters:
             add(
                 "warning",
@@ -3089,6 +3109,53 @@ def _semiexp_warning_rows(
                 "Robust loss downweighted one or more complete isotopologue blocks.",
                 f"count={diagnostics.robust_downweighted_isotopologues};loss={diagnostics.robust_loss}",
             )
+        total_steps = diagnostics.accepted_steps + diagnostics.rejected_steps
+        if total_steps and diagnostics.rejected_steps >= 3:
+            rejected_fraction = diagnostics.rejected_steps / total_steps
+            if rejected_fraction >= DIAGNOSTIC_REJECTED_STEP_FRACTION_WARNING:
+                add(
+                    "warning",
+                    "many_rejected_steps",
+                    "Trust-region globalization rejected a large fraction of proposed steps.",
+                    f"rejected_fraction={rejected_fraction:.6g};accepted={diagnostics.accepted_steps};rejected={diagnostics.rejected_steps}",
+                )
+        if 0.0 < diagnostics.trust_radius < DIAGNOSTIC_TRUST_RADIUS_WARNING:
+            add(
+                "warning",
+                "small_trust_radius",
+                "Final trust radius is close to the numerical lower range.",
+                f"trust_radius={diagnostics.trust_radius:.6g}",
+            )
+        if 0.0 < diagnostics.last_line_search_scale < DIAGNOSTIC_LINE_SEARCH_SCALE_WARNING:
+            add(
+                "warning",
+                "line_search_stagnation",
+                "Final accepted step required a very small line-search scale.",
+                f"line_search_scale={diagnostics.last_line_search_scale:.6g}",
+            )
+        if np.isfinite(diagnostics.reduced_chi_square) and diagnostics.reduced_chi_square > DIAGNOSTIC_REDUCED_CHI_SQUARE_WARNING:
+            add(
+                "warning",
+                "large_reduced_chi_square",
+                "Reduced chi-square is larger than expected for the supplied uncertainties.",
+                f"reduced_chi_square={diagnostics.reduced_chi_square:.6g}",
+            )
+        scale_min = max(float(diagnostics.parameter_scale_min), np.finfo(float).tiny)
+        scale_ratio = float(diagnostics.parameter_scale_max) / scale_min
+        if np.isfinite(scale_ratio) and scale_ratio > DIAGNOSTIC_PARAMETER_SCALE_RATIO_WARNING:
+            add(
+                "info",
+                "large_parameter_scale_range",
+                "Dynamic column scaling spans a very large range.",
+                f"scale_min={diagnostics.parameter_scale_min:.6g};scale_max={diagnostics.parameter_scale_max:.6g};ratio={scale_ratio:.6g}",
+            )
+        if diagnostics.damping >= 0.1 * DAMPING_MAX:
+            add(
+                "warning",
+                "large_lm_damping",
+                "Levenberg-Marquardt damping is close to the configured upper bound.",
+                f"damping={diagnostics.damping:.6g}",
+            )
 
     singular_rows = _svd_diagnostic_rows(active_names, weighted_jacobian)
     near_null = [row for row in singular_rows if row[3]]
@@ -3132,6 +3199,18 @@ def _semiexp_warning_rows(
             f"max_sigma_ratio={sensitivity:.6g}",
         )
 
+    for warning in _weighted_residual_warnings(measurement_model, weighted_residual):
+        add(warning.severity, warning.code, warning.message, warning.context)
+
+    for warning in _leverage_warnings(measurement_model, weighted_jacobian):
+        add(warning.severity, warning.code, warning.message, warning.context)
+
+    for warning in _high_correlation_warnings(active_names, correlation):
+        add(warning.severity, warning.code, warning.message, warning.context)
+
+    for warning in _iteration_trace_warnings(iteration_trace):
+        add(warning.severity, warning.code, warning.message, warning.context)
+
     active_sigmas = [item.sigma for item in parameters if item.active and np.isfinite(item.sigma)]
     if active_sigmas:
         max_sigma = max(active_sigmas)
@@ -3143,6 +3222,113 @@ def _semiexp_warning_rows(
                 "At least one active working coordinate has a much larger uncertainty than the median.",
                 f"max_sigma={max_sigma:.6g};median_sigma={median_sigma:.6g}",
             )
+    return tuple(rows)
+
+
+def _weighted_residual_warnings(
+    measurement_model: MeasurementModel | None,
+    weighted_residual: np.ndarray | None,
+) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
+    if measurement_model is None or weighted_residual is None:
+        return ()
+    residual = np.asarray(weighted_residual, dtype=float)
+    rows: list[SemiexperimentalDiagnosticWarning] = []
+    for idx, value in enumerate(residual[: measurement_model.n_experimental_rows]):
+        if not np.isfinite(value) or abs(float(value)) < DIAGNOSTIC_WEIGHTED_RESIDUAL_WARNING:
+            continue
+        isotopologue, observable = (
+            measurement_model.labels[idx]
+            if idx < len(measurement_model.labels)
+            else (f"row_{idx + 1}", "unknown")
+        )
+        rows.append(
+            SemiexperimentalDiagnosticWarning(
+                "warning",
+                "large_weighted_residual",
+                "A fitted observable has a large normalized residual.",
+                f"row={idx + 1};isotopologue={isotopologue};observable={observable};weighted_residual={float(value):.6g}",
+            )
+        )
+    return tuple(rows)
+
+
+def _leverage_warnings(
+    measurement_model: MeasurementModel | None,
+    weighted_jacobian: np.ndarray | None,
+) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
+    if measurement_model is None or weighted_jacobian is None:
+        return ()
+    leverage = _leverage_values(np.asarray(weighted_jacobian, dtype=float))
+    rows: list[SemiexperimentalDiagnosticWarning] = []
+    for idx, value in enumerate(leverage[: measurement_model.n_experimental_rows]):
+        if not np.isfinite(value) or float(value) < DIAGNOSTIC_LEVERAGE_WARNING:
+            continue
+        isotopologue, observable = (
+            measurement_model.labels[idx]
+            if idx < len(measurement_model.labels)
+            else (f"row_{idx + 1}", "unknown")
+        )
+        rows.append(
+            SemiexperimentalDiagnosticWarning(
+                "info",
+                "high_leverage_observation",
+                "A fitted observable has high statistical leverage in the final linearized model.",
+                f"row={idx + 1};isotopologue={isotopologue};observable={observable};leverage={float(value):.6g}",
+            )
+        )
+    return tuple(rows)
+
+
+def _high_correlation_warnings(
+    labels: tuple[str, ...],
+    correlation: np.ndarray | None,
+) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
+    corr = np.asarray(correlation if correlation is not None else np.zeros((0, 0)), dtype=float)
+    if corr.ndim != 2 or corr.size == 0:
+        return ()
+    rows: list[SemiexperimentalDiagnosticWarning] = []
+    n = min(corr.shape[0], corr.shape[1], len(labels))
+    for i in range(n):
+        for j in range(i + 1, n):
+            value = float(corr[i, j])
+            if np.isfinite(value) and abs(value) >= DIAGNOSTIC_CORRELATION_WARNING:
+                rows.append(
+                    SemiexperimentalDiagnosticWarning(
+                        "info",
+                        "high_parameter_correlation",
+                        "Two fitted parameters are very strongly correlated.",
+                        f"left={labels[i]};right={labels[j]};correlation={value:.6g}",
+                    )
+                )
+    return tuple(rows[:20])
+
+
+def _iteration_trace_warnings(
+    iteration_trace: tuple[SemiexperimentalIterationTrace, ...],
+) -> tuple[SemiexperimentalDiagnosticWarning, ...]:
+    if not iteration_trace:
+        return ()
+    rows: list[SemiexperimentalDiagnosticWarning] = []
+    tail = iteration_trace[-min(5, len(iteration_trace)) :]
+    if len(tail) >= 3 and all(item.status == "rejected" for item in tail[-3:]):
+        rows.append(
+            SemiexperimentalDiagnosticWarning(
+                "warning",
+                "repeated_final_rejections",
+                "The final iterations were rejected by the trust-region acceptance test.",
+                f"iterations={','.join(str(item.iteration) for item in tail[-3:])}",
+            )
+        )
+    last = iteration_trace[-1]
+    if last.gradient_inf_norm > 0.0 and last.step_norm < DIAGNOSTIC_TRUST_RADIUS_WARNING:
+        rows.append(
+            SemiexperimentalDiagnosticWarning(
+                "info",
+                "small_final_step_with_gradient",
+                "The final step is very small while the gradient remains non-zero.",
+                f"gradient_inf_norm={last.gradient_inf_norm:.6g};step_norm={last.step_norm:.6g}",
+            )
+        )
     return tuple(rows)
 
 
