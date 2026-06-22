@@ -10,6 +10,24 @@ is the canonical Cartesian-to-GIC definition engine.  The Python GIC command
 from the Fortran `gauin` file.  The legacy pure-Python local builder is retained
 only behind `--python-local` for diagnostics and low-level numerical tests.
 
+## Single Source Of Truth
+
+There must not be two independent production GIC generators.  In production,
+Fortran77 GICForge is the only component allowed to perform topology
+perception, ring numbering, primitive selection, redundancy removal and initial
+GIC definition.  Python may write canonical inputs, launch GICForge, run the
+deterministic symmetry post-check, parse/freeze the resulting `gauin` or
+`gauin.symm` file, and evaluate the frozen coordinate definition and Wilson B
+matrix on later Cartesian geometries.  It must not silently add, remove,
+renumber or regenerate GIC primitives from topology after the backend has
+written `gauin`.
+
+The regression test
+`test_gic_definition_uses_backend_gauin_as_single_source` enforces this
+contract with a deliberately non-topological backend `gauin`: the Python layer
+must reproduce exactly the one backend coordinate instead of rebuilding the
+expected molecular topology.
+
 ## Cases Checked
 
 | Case | Python result | Fortran result | Notes |

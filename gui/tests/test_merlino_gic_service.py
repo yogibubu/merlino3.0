@@ -123,6 +123,56 @@ def test_gic_definition_can_be_reused_to_build_b_matrix_on_new_geometry(tmp_path
     assert np.isfinite(evaluation.b_matrix).all()
 
 
+def test_gic_definition_uses_backend_gauin_as_single_source(tmp_path):
+    executable = tmp_path / "fake_gicforge.sh"
+    executable.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -e",
+                "printf ' Point Group from symm.f: C1\\n' > provout",
+                "cat > gauin <<'EOF'",
+                "0 1",
+                "",
+                " BackendOnly = R(  1,  3)",
+                "EOF",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    atoms = ("O", "H", "H")
+    coords = np.array(
+        [
+            [0.0000, 0.0000, 0.0000],
+            [0.7570, 0.0000, 0.5860],
+            [-0.7570, 0.0000, 0.5860],
+        ],
+        dtype=float,
+    )
+
+    definition = define_gics_from_cartesian(
+        atoms,
+        coords,
+        workdir=tmp_path / "define",
+        executable=executable,
+        symmetrize=False,
+    )
+    evaluation = evaluate_gic_definition(definition, coords)
+
+    assert definition.source == "gicforge"
+    assert definition.symmetrized is False
+    assert definition.point_group == "C1"
+    assert definition.names == ("BackendOnly",)
+    assert len(definition.primitives) == 1
+    assert definition.primitives[0].kind == "bond"
+    assert definition.primitives[0].atoms == (0, 2)
+    assert definition.u_matrix.shape == (1, 1)
+    assert not (tmp_path / "define" / "gauin.symm").exists()
+    assert np.isclose(evaluation.values[0], np.linalg.norm(coords[0] - coords[2]))
+
+
 def test_gic_symmetry_postcheck_is_byte_deterministic(tmp_path):
     (tmp_path / "xyzin").write_text(
         "\n".join(

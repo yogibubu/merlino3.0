@@ -76,6 +76,14 @@ writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
 pure-Python local coordinate builder is available only with `--python-local`
 for diagnostics and is not an alternative production GIC definition.
 
+This is a strict identity contract.  The Python layer must not create an
+independent production GIC basis from topology after GICForge has run.  Its
+allowed responsibilities are orchestration, deterministic post-check
+symmetrization, schema serialization and analytic evaluation of the frozen
+GIC/B-matrix model on later Cartesian geometries.  If Fortran `gauin` contains
+one coordinate, Python freezes one coordinate; if Fortran changes the
+non-redundant basis, downstream Python programs see that exact basis.
+
 In semiexperimental refinements, `SEfit` calls the definition utility only at
 the beginning of a fresh fit.  All ordinary iterations reuse the same frozen
 GIC schema and rebuild only the B projector when necessary.  A restart is the
