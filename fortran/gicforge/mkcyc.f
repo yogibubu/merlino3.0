@@ -11,16 +11,20 @@
       Dimension IAtomD(MxAtG,MxTrm,*)
       Dimension NatC(*),ICAt(MxAtCy,*),IAtCyc(*),IAN(*)
       Dimension EAN(*)
-      Logical ReNumb,FndCy8
+      Logical ReNumb
 C find cycles
       if(NCyc.lt.NExpCy) call Cy5(IOut,IPrint,MxBnd,MxAtG,MxTrm,NBond,
-     $  IBond,NDih,IAtomD,MxAtCy,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
+     $  IBond,NDih,IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,NAtC,ICAt,
+     $  IAtCyc)
       if(NCyc.lt.NExpCy) call Cy6(IOut,IPrint,MxBnd,MxAtG,MxTrm,NBond,
-     $  IBond,NDih,IAtomD,MxAtCy,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
+     $  IBond,NDih,IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,NAtC,ICAt,
+     $  IAtCyc)
       if(NCyc.lt.NExpCy) call Cy7(IOut,IPrint,MxAtG,MxAtG,MxTrm,MxTrm,
-     $  NAng,NDih,NBond,IAtomA,IAtomD,MxAtCy,NCyc,NAtC,ICAt,IAtCyc)
+     $  NAng,NDih,NBond,IAtomA,IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,
+     $  NAtC,ICAt,IAtCyc)
       if(NCyc.lt.NExpCy) call Cy8(IOut,IPrint,MxBnd,MxAtCy,MxAtG,MxTrm,
-     $  NDih,NBond,IBond,IAtomD,NCyc,NAtC,ICAt,IAtCyc)
+     $  NDih,NBond,IBond,IAtomD,MxCyc,NCyc,NExpCy,NAtC,ICAt,
+     $  IAtCyc)
       If(IPrint.gt.0) write(IOut,'(/,'' The Molecule has'',I3,
      $  '' Cycles'')')NCyc
 C Set canonical atom numbering.
@@ -65,11 +69,11 @@ C find bonds, angles and dihedrals common to 2 Cycles
       end
 *Deck Cy5 
       Subroutine Cy5(IOut,IPrint,MxBnd,MaxAtD,MxTrmD,NBond,IBond,NDih,
-     $  IAtomD,MxAtCy,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
+     $  IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
       Implicit None
 C
 C     Dimensions
-      Integer MxBnd,MaxAtD,MxTrmD,MxAtCy
+      Integer MxBnd,MaxAtD,MxTrmD,MxAtCy,MxCyc
 C     Input
       Integer IOut,IPrint,NDih,NExpCy,NCyc
       Integer IBond(MxBnd,*), NBond(*)
@@ -100,6 +104,12 @@ C Find five term cycles using the informations on the dihedral angles
            IC5(4) = LAt
            IC5(5) = MAt
            If(.not.EqCyc(MxAtCy,NCyc,NatC,ICAt,N5,IC5)) then
+            If(NCyc.ge.NExpCy) Return
+            If(NCyc.ge.MxCyc) then
+             write(IOut,'('' WARNING: maximum number of cycles ('',I3,
+     $       '') reached in Cy5; remaining cycles ignored'')') MxCyc
+             Return
+            EndIf
             NCyc=NCyc+1
             NAtC(NCyc) = N5
             Call IMove(5,IC5,ICAt(1,NCyc))
@@ -119,11 +129,11 @@ C Find five term cycles using the informations on the dihedral angles
       End
 *Deck Cy6 
       Subroutine Cy6(IOut,IPrint,MxBnd,MaxAtD,MxTrmD,NBond,IBond,NDih,
-     $  IAtomD,MxAtCy,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
+     $  IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
       Implicit None
 C
 C     Dimensions
-      Integer MxBnd,MaxAtD,MxTrmD,MxAtCy
+      Integer MxBnd,MaxAtD,MxTrmD,MxAtCy,MxCyc
 C     Input
       Integer IOut,IPrint,NDih,NExpCy,NCyc
       Integer IBond(MxBnd,*),NBond(*)
@@ -158,6 +168,13 @@ C Find Six term cycles using the informations on the dihedral angles
              IC6(5) = l
              IC6(6) = m  
              If(.not.EqCyc(MxAtCy,NCyc,NatC,ICAt,N6,IC6)) then
+              If(NCyc.ge.NExpCy) return
+              If(NCyc.ge.MxCyc) then
+               write(IOut,'('' WARNING: maximum number of cycles ('',
+     $         I3,'') reached in Cy6; remaining cycles ignored'')')
+     $         MxCyc
+               return
+              EndIf
               NCyc=NCyc+1
               NAtC(NCyc)=N6
               Call IMove(6,IC6,ICAt(1,NCyc))
@@ -180,25 +197,24 @@ C Find Six term cycles using the informations on the dihedral angles
       End
 *Deck Cy7        
       Subroutine Cy7(IOut,IPrint,MaxAtA,MaxAtD,MxTrmA,MxTrmD,
-     $  NAng,NDih,NBond,IAtomA,IAtomD,MxAtCy,NCyc,NAtC,ICAt,IAtCyc)
+     $  NAng,NDih,NBond,IAtomA,IAtomD,MxAtCy,MxCyc,NCyc,NExpCy,
+     $  NAtC,ICAt,IAtCyc)
       Implicit None 
 C               
 C     Dimensions
-      Integer MaxAtA, MaxAtD, MxTrmA, MxTrmD, MxAtCy
+      Integer MaxAtA, MaxAtD, MxTrmA, MxTrmD, MxAtCy,MxCyc
 C     Input
-      Integer IOut, IPrint, NAng, NDih, NCyc 
+      Integer IOut, IPrint, NAng, NDih, NCyc,NExpCy
       Integer NBond(*),IAtomA(MAxAtA,MxTrmA,*),IAtomD(MaxAtD,MxTrmD,*)
+      Logical EqCyc
 C     Output
       Integer IAtCyc(*), ICAt(MxAtCy,*), NAtC(*)
 C     Local 
       Integer i, i1, i2, i3, i4, j, j1, j2, j3, j4, k, l, inew
-      Integer i1at, i7at, i17at, ic7(7)
-      Logical FndCy7,Found
+      Integer i1at, i7at, i17at, ic7(7),N7
 C
-      FndCy7=.false.
-      Found=.false.
       do 10 i=1,NAng
-       if(Found) go to 10 
+       if(NCyc.ge.NExpCy) return
        i1at=IAtomA(3,1,i)
        i7at=IAtomA(1,1,i)
        i17at=IAtomA(2,1,i)
@@ -210,7 +226,6 @@ c    $   i,i7at,i17at,i1at
         i2=IAtomD(2,1,j) 
         i3=IAtomD(3,1,j)
         i4=IAtomD(4,1,j)
-        if(Found) go to 20
         if(NBond(I1).eq.1.or.NBond(I4).eq.1) go to 20
         if(i1.ne.i1at) go to 20
 c        if(IPrint.eq.3) write(IOut,'('' First dihedral ('',I5,'')'',
@@ -220,7 +235,6 @@ c    $    4I5)')  j,i1,i2,i3,i4
          j2=IAtomD(2,1,k)
          j3=IAtomD(3,1,k) 
          j4=IAtomD(4,1,k)
-         if(Found) go to 30
          if(j.eq.k) go to 30
          if(NBond(j1).eq.1.or.NBond(j4).eq.1) go to 30 
          if(j1.ne.i4) go to 30
@@ -237,8 +251,14 @@ c    $     4I5)') k,j1,j2,j3,j4
          IC7(5)=j2 
          IC7(6)=j3  
          IC7(7)=j4  
-         Found=.true.
-         FndCy7=.true.
+         N7=7
+         If(EqCyc(MxAtCy,NCyc,NAtC,ICAt,N7,IC7)) go to 30
+         If(NCyc.ge.NExpCy) return
+         If(NCyc.ge.MxCyc) then
+          write(IOut,'('' WARNING: maximum number of cycles ('',I3,
+     $    '') reached in Cy7; remaining cycles ignored'')') MxCyc
+          return
+         EndIf
          NCyc=NCyc+1
          NAtC(NCyc)=7
          Call IMove(7,IC7,ICAt(1,NCyc))
@@ -256,31 +276,32 @@ c    $     4I5)') k,j1,j2,j3,j4
       end
 *Deck Cy8        
       Subroutine Cy8(IOut,IPrint,MxBnd,MxAtCy,MxAtD,MxTrmD,NDih,NBond,
-     $  IBond,IAtomD,NCyc,NAtC,ICAt,IAtCyc)
+     $  IBond,IAtomD,MxCyc,NCyc,NExpCy,NAtC,ICAt,IAtCyc)
       Implicit None 
 C               
 C     Dimensions
-      Integer MxBnd,MxAtCy,MxAtD,MxTrmD
+      Integer MxBnd,MxAtCy,MxAtD,MxTrmD,MxCyc
 C     Input
-      Integer IOut,IPrint,NDih,NCyc 
+      Integer IOut,IPrint,NDih,NCyc,NExpCy
       Integer NBond(*),IBond(MxBnd,*),IAtomD(MxAtD,MxTrmD,*)
+      Logical EqCyc
 C     Output
       Integer IAtCyc(*),ICAt(MxAtCy,*),NAtC(*)
 C     Local 
       Integer i,i1,i2,i3,i4,j,j1,j2,j3,j4,k,l,kk,ll,k1,l1,inew
       Integer i1at, i8at, i18at, i28at, ic8(8)
-      Logical FndCy8,Found1,Found2,Revers
+      Integer N8
+      Logical Found1,Found2,Revers
 C
-      FndCy8=.false.
       if(NDih.le.2) return
       do 20 j=2,NDih
+       if(NCyc.ge.NExpCy) return
        i1=IAtomD(1,1,j)
        i2=IAtomD(2,1,j) 
        i3=IAtomD(3,1,j)
        i4=IAtomD(4,1,j)
        if(NBond(I1).eq.1.or.NBond(I4).eq.1) go to 20
        do 30 k=1,j-1 
-        if(FndCy8) go to 30
         j1=IAtomD(1,1,k)
         j2=IAtomD(2,1,k)
         j3=IAtomD(3,1,k) 
@@ -314,7 +335,6 @@ C
          endif
    45   continue 
         if(.not.Found2) go to 30
-        FndCy8=.true.
         IC8(1)=i1 
         IC8(2)=i2 
         IC8(3)=i3  
@@ -330,6 +350,14 @@ C
          IC8(7)=j3  
          IC8(8)=j4
         endif  
+        N8=8
+        If(EqCyc(MxAtCy,NCyc,NAtC,ICAt,N8,IC8)) go to 30
+        If(NCyc.ge.NExpCy) return
+        If(NCyc.ge.MxCyc) then
+         write(IOut,'('' WARNING: maximum number of cycles ('',I3,
+     $   '') reached in Cy8; remaining cycles ignored'')') MxCyc
+         return
+        EndIf
         NCyc=NCyc+1
         NAtC(NCyc)=8
         Call IMove(8,IC8,ICAt(1,NCyc))

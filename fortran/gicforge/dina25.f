@@ -22,7 +22,7 @@ C MxAtCy = Maximum Number of Atoms in a Cycle
 C MxPot  = Max Terms in Potential Fitting
       Parameter(MaxEl=200)
       Parameter(MxScr=100000,MxAt=1000,MxBnd=10,MxKwd=50,LenPhy=30)
-      Parameter(MxGNIC=1000,MxTrm=45,MxAtP=4,MxCyc=10,MxAtCy=10)
+      Parameter(MxGNIC=1000,MxTrm=45,MxAtP=4,MxCyc=20,MxAtCy=10)
       Parameter(MxFrg=100,MxAtFr=30,MxAtB=100,MaxNZ=1000,MxBox=1000)
       Parameter(MxPot=20)  
       Character*80 FilNam,InFil,OutFil,GauKwd,Title,React,LinScr
