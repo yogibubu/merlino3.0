@@ -284,7 +284,7 @@ C Print summary of internal primitives
 C Compute B matrix (not for G16)
       If(DoBPCS) then
        If(DoG16) then
-        write(IOut,'('' BDPCS3 not available for Gaussian input'')')
+        write(IOut,'('' BDPCS3 not available for G16'')')
         Stop
        EndIf
 C      Call DrvBG(IOut,IPrint,Linear,DoBPCS,DoneC,MxAtP,MxTrm,NAtoms,
@@ -599,7 +599,7 @@ C rDSD
   999 Continue
       write(*,'('' Normal Termination of DiNa25'')')
       write(*,'('' DiNa25   output on file xxx.out'')')
-      If(DoG16)  write(*,'('' Gaussian input on file xxx.gjf'')')
+      If(DoG16)  write(*,'('' G16-C01  input  on file xxx.gjf'')')
       If(DoGDV)  write(*,'('' GDV-J28  input  on file xxx.gjf'')')
       End
 C===============================================================
@@ -676,9 +676,6 @@ C the default is to normalize GNICs
        Call LinUpC(CLine(I1:I2),Test)
        If(Test(1:5).eq.'PRINT') then
         IPrint=1
-       ElseIf(Test(1:5).eq.'GAUSS') then
-        Kwd(2)=.True.
-        Kwd(7)=.True.
        ElseIf(Test(1:3).eq.'G16') then
         Kwd(2)=.True.
         Kwd(7)=.True.
@@ -747,7 +744,7 @@ C      write(IOut,'(A80)') CLine
         Kwd(i)=.true.
    20  continue
       EndIf
-      If(Kwd(2))  write(IOut,'('' GAUSS     : Make Gaussian Input'')')
+      If(Kwd(2))  write(IOut,'('' G16       : Make G16 Input'')')
       If(Kwd(3))  write(IOut,'('' GDV       : Make GDV Input'')')
       If(Kwd(4))  write(IOut,'('' CUBIC     : Freq=Cubic(GDV) and'',
      $ '' Vibr=Gauconv MSR'')')

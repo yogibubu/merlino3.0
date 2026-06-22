@@ -1,6 +1,6 @@
    List of Merlino Keywords                                                     
 
- GAUSS     : Make Gaussian Input
+ G16       : Make G16 Input
  GDV       : Make GDV Input
  CUBIC     : Freq=Cubic(GDV) and Vibr=Gauconv MSR
  NATURAL   : Natural Isotopic Abundance 
