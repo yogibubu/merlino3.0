@@ -1126,24 +1126,62 @@ C Clean values close to n*pi
       Call IntoCh(IVar,S1,L1)
       Call IntoCh(JVar,S2,L2)
       Call IntoCh(IPair,SP,LP)
-      I1a=IAtom(1,1,IVar)
-      I2a=IAtom(2,1,IVar)
-      I3a=IAtom(3,1,IVar)
-      I4a=IAtom(4,1,IVar)
-      J1a=IAtom(1,1,JVar)
-      J2a=IAtom(2,1,JVar)
-      J3a=IAtom(3,1,JVar)
-      J4a=IAtom(4,1,JVar)
+      Call PickPckAtoms(IAtom,NTerm,IVar,I1a,I2a,I3a,I4a)
+      Call PickPckAtoms(IAtom,NTerm,JVar,J1a,J2a,J3a,J4a)
       QPck=DSqrt(ValTot(IVar)*ValTot(IVar)+
      $           ValTot(JVar)*ValTot(JVar))
       PhiP=DAtan2(ValTot(JVar),ValTot(IVar))
-      Write(IOut,1000) SP,S1,S2,I1a,I2a,I3a,I4a,J1a,J2a,J3a,J4a,
-     $  QPck,PhiP,PhiP*ToDeg
+      If(I1a.eq.0.and.I2a.eq.0.and.I3a.eq.0.and.I4a.eq.0.and.
+     $   J1a.eq.0.and.J2a.eq.0.and.J3a.eq.0.and.J4a.eq.0) then
+       Write(IOut,1001) SP,S1,S2,QPck,PhiP,PhiP*ToDeg
+      ElseIf(J1a.eq.0.and.J2a.eq.0.and.J3a.eq.0.and.J4a.eq.0) then
+       Write(IOut,1002) SP,S1,S2,I1a,I2a,I3a,I4a,QPck,PhiP,PhiP*ToDeg
+      ElseIf(I1a.eq.0.and.I2a.eq.0.and.I3a.eq.0.and.I4a.eq.0) then
+       Write(IOut,1003) SP,S1,S2,J1a,J2a,J3a,J4a,QPck,PhiP,PhiP*ToDeg
+      Else
+       Write(IOut,1000) SP,S1,S2,I1a,I2a,I3a,I4a,J1a,J2a,J3a,J4a,
+     $   QPck,PhiP,PhiP*ToDeg
+      EndIf
       IVar=IVar+2
       Go To 10
  1000 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
-     $ '  D(',I3,',',I3,',',I3,',',I3,') and D(',I3,',',I3,',',
+     $ '  atoms (',I3,',',I3,',',I3,',',I3,') and (',I3,',',I3,',',
      $ I3,',',I3,') Q=',F12.6,' rad Phi=',F12.6,' rad =',F12.6,' deg')
+ 1001 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
+     $ '  Q=',F12.6,' rad Phi=',F12.6,' rad =',F12.6,' deg')
+ 1002 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
+     $ '  atoms (',I3,',',I3,',',I3,',',I3,') Q=',F12.6,' rad Phi=',
+     $ F12.6,' rad =',F12.6,' deg')
+ 1003 Format(6X,'QPck',A4,' from RPck',A4,' and RPck',A4,
+     $ '  atoms (',I3,',',I3,',',I3,',',I3,') Q=',F12.6,' rad Phi=',
+     $ F12.6,' rad =',F12.6,' deg')
+      End
+*Deck PickPckAtoms
+      Subroutine PickPckAtoms(IAtom,NTerm,IVar,I1,I2,I3,I4)
+      Implicit Integer (A-Z)
+      Integer IAtom(4,15,*),NTerm(*)
+      I1=0
+      I2=0
+      I3=0
+      I4=0
+      NTrm=NTerm(IVar)
+      Do 10 ITr=1,NTrm
+       If(IAtom(1,ITr,IVar).ne.0.or.IAtom(2,ITr,IVar).ne.0.or.
+     $    IAtom(3,ITr,IVar).ne.0.or.IAtom(4,ITr,IVar).ne.0) then
+        I1=IAtom(1,ITr,IVar)
+        I2=IAtom(2,ITr,IVar)
+        I3=IAtom(3,ITr,IVar)
+        I4=IAtom(4,ITr,IVar)
+        Return
+       EndIf
+   10 Continue
+      If(NTrm.gt.0) then
+       I1=IAtom(1,NTrm,IVar)
+       I2=IAtom(2,NTrm,IVar)
+       I3=IAtom(3,NTrm,IVar)
+       I4=IAtom(4,NTrm,IVar)
+      EndIf
+      Return
       End
 *Deck FndRed
       Subroutine FndRed(MxIAt,MaxTer,IAt,JAt,KAt,LAt,NVar,IJKL,NTerm,

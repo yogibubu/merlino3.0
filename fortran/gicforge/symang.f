@@ -6,26 +6,10 @@
       Dimension NBond(*),IBond(MxBnd,*),IAn(*),IAtCyc(*)
       Dimension NTermA(*),IAtomA(MaxAtA,MxTerA,*),ITVA(*) 
       Dimension C(3,*),CoefA(MxTerA,*),EAN(*)
-C
-C IAn(NAtoms) atomic numbers
-C IAtCyc(NAtoms) number of cycles to which each atom belongs
-C NBond(NAtoms) = number of bonds for each atom
-C IBond(MxBnd,NAtoms) = atoms bonded to each atom
-C MxGICA = max. number of angle GICS; 
-C MaxAtA = Maximum Number of Atoms in primitives for Angle GICs 
-C MxTerA = Maximum number of primitives in Angle GICS
-C NTermA(MxGICA) = number of terms in Angle GIC
-C NGICA = number of Angle GICs 
-C NTermA(NGicA) = number of components for each angle GIC
-C CoefA(MxTerA,NGicA) = coefficients of components for each angle GIC
-C IAtomA(MaxAtA,MxTerA,NGicA) = atoms defining each component of each angle GIC
-C
       pi = dacos(-1.d0)
       ToDeg=1.80d+2/pi
 C     NGicA=0
 C Build Valence Angles 
-      write(IOut,'('' Center  Equal Substituents   Frozen Atoms'',      
-     $  ''      Free Atoms      Free Angles'')')
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
        if(NBJ.eq.1) go to 30

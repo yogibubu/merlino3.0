@@ -520,12 +520,6 @@ C===============================================================
       CHARACTER*2 IAnEl2,SK,SI,SJ,SL,SYI,SYJ
       INTEGER NHI,NYI,NHJ,NYJ,IAnYI,IAnYJ
 
-      WRITE(IOut,'(/,'' Exocyclic Torsions (Dihedrals in Radians and'',
-     $  '' V in Kcal/mol)'')')
-      Write(IOut,'(''     Atoms       NS      V0'',
-     $   ''      V1      V2      V3      V6        Type'')')
-
-
       DO 100 L = 1, NLen
          IAt = IAtom(1, L)
          JAt = IAtom(2, L)
@@ -614,4 +608,3 @@ C===============================================================
    20 Continue 
       Return
       End
-
