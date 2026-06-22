@@ -1096,7 +1096,6 @@ C Clean values close to n*pi
      $  ValTot(IGic)
        write(IOut,'(100(''-''))')
   10  continue
-      If(ITp.eq.4) Call PrtPckVal(IOut,NVar,NTerm,IAtom,ITPV,ValTot)
       return
       end
 

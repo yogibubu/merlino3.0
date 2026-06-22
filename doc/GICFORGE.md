@@ -44,7 +44,10 @@ The Merlino4 GIC layer is split into reusable utilities.
    the primitive coordinates, the GIC coefficient matrix, labels, irreducible
    representations, point group, a `symmetrized` flag and the
    Gaussian-readable GIC block. Use `--no-symmetry` when raw non-redundant GICs
-   must be frozen without symmetry adaptation.
+   must be frozen without symmetry adaptation. Use `--explain-out` or
+   `--explain-csv` to write an auditable summary of the final GIC labels,
+   irreducible representations, coordinate kinds, atom indexes and dominant
+   primitive contributions.
 2. `gic-bmatrix` receives a frozen GIC schema plus a current Cartesian
    geometry and atomic symbols/numbers, and evaluates GIC values and the Wilson
    B matrix.  It also propagates the frozen GIC names, irreps, point group and
@@ -83,6 +86,13 @@ schema that the Fortran file represents, typically the raw post-pruning
 symmetry-adapted B matrix is evaluated from that frozen schema on the Python
 side.
 
+The reusable `gic-contract` check is intentionally stricter than a coordinate
+count comparison.  Its JSON output records raw and symmetrized names, labels,
+primitive signatures, complete irrep order and the number of totally
+symmetric coordinates in addition to the Python/Fortran B-matrix difference.
+These fields are part of the regression contract because BSR and Gaussian GIC
+generation depend on deterministic ordering and exact symmetry labels.
+
 The Python ReadGIC command in `survibfit` uses the same canonical definition:
 `python -m survibfit.cli gic --xyz in.xyz --out gic.txt` runs GICForge and
 writes the exact GIC lines extracted from the Fortran `gauin` file.  The old
@@ -104,7 +114,7 @@ manifest and, when available, the Git commit and dirty-worktree flag.  This
 metadata makes restarts auditable: a reused schema can be checked against the
 exact coordinate definition and backend that generated it.
 
-In semiexperimental refinements, `SEfit` calls the definition utility only at
+In semiexperimental refinements, `BSR` calls the definition utility only at
 the beginning of a fresh fit.  All ordinary iterations reuse the same frozen
 GIC schema and rebuild only the B projector when necessary.  A restart is the
 explicit boundary at which the GIC schema may be regenerated.

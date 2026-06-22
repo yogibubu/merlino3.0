@@ -163,6 +163,46 @@ class GICBMatrixComparison:
         }
 
 
+@dataclass(frozen=True)
+class GICForgePythonFortranContract:
+    passed: bool
+    raw_b_matrix: GICBMatrixComparison
+    raw_gic_count: int
+    sym_gic_count: int
+    sym_primitive_count: int
+    point_group: str
+    irreps: tuple[str, ...]
+    raw_workdir: str
+    sym_workdir: str
+    raw_names: tuple[str, ...] = ()
+    sym_names: tuple[str, ...] = ()
+    raw_labels: tuple[str, ...] = ()
+    sym_labels: tuple[str, ...] = ()
+    raw_primitive_signatures: tuple[str, ...] = ()
+    sym_primitive_signatures: tuple[str, ...] = ()
+    totally_symmetric_count: int = 0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "passed": self.passed,
+            "raw_b_matrix": self.raw_b_matrix.to_dict(),
+            "raw_gic_count": self.raw_gic_count,
+            "sym_gic_count": self.sym_gic_count,
+            "sym_primitive_count": self.sym_primitive_count,
+            "point_group": self.point_group,
+            "irreps": list(self.irreps),
+            "raw_names": list(self.raw_names),
+            "sym_names": list(self.sym_names),
+            "raw_labels": list(self.raw_labels),
+            "sym_labels": list(self.sym_labels),
+            "raw_primitive_signatures": list(self.raw_primitive_signatures),
+            "sym_primitive_signatures": list(self.sym_primitive_signatures),
+            "totally_symmetric_count": self.totally_symmetric_count,
+            "raw_workdir": self.raw_workdir,
+            "sym_workdir": self.sym_workdir,
+        }
+
+
 RunGICForge = Callable[[Path], GICForgeResult]
 
 
@@ -430,6 +470,86 @@ def compare_gic_b_matrix_to_fortran(
     )
 
 
+def run_gicforge_python_fortran_contract(
+    atom_symbols: tuple[str, ...] | list[str],
+    coordinates_angstrom: np.ndarray,
+    *,
+    workdir: Path,
+    executable: Path | None = None,
+    atol: float = 1.0e-6,
+    rtol: float = 1.0e-6,
+) -> GICForgePythonFortranContract:
+    """Run the reusable Python/Fortran GICForge consistency contract.
+
+    The raw run compares the Fortran `bmat.out` with Python analytic B rows in
+    the same oriented Cartesian frame written by GICForge.  The symmetrized run
+    verifies deterministic point-group and irrep assignment in the frozen
+    schema.  `bmat.out` is intentionally not used for the symmetrized numerical
+    comparison because it is produced before the Python post-symmetry block is
+    written to `gauin.symm`.
+    """
+    root = Path(workdir)
+    raw_dir = root / "raw"
+    sym_dir = root / "sym"
+    raw_definition = define_gics_from_cartesian(
+        tuple(atom_symbols),
+        coordinates_angstrom,
+        workdir=raw_dir,
+        executable=executable,
+        symmetrize=False,
+    )
+    raw_coords = _gicforge_cartesian_from_gauin(raw_dir / "gauin", len(raw_definition.atom_symbols))
+    raw_comparison = compare_gic_b_matrix_to_fortran(
+        raw_definition,
+        raw_coords,
+        raw_dir / "bmat.out",
+        atol=atol,
+        rtol=rtol,
+    )
+    sym_definition = define_gics_from_cartesian(
+        tuple(atom_symbols),
+        coordinates_angstrom,
+        workdir=sym_dir,
+        executable=executable,
+        symmetrize=True,
+    )
+    sym_ok = (
+        sym_definition.symmetrized
+        and sym_definition.point_group != "UNKNOWN"
+        and len(sym_definition.labels) == int(np.asarray(sym_definition.u_matrix).shape[1])
+        and len(sym_definition.irreps) == len(sym_definition.labels)
+        and all(irrep and irrep != "UNK" for irrep in sym_definition.irreps)
+    )
+    totally_symmetric_count = sum(1 for irrep in sym_definition.irreps if irrep in {"A1", "A'", "Ag", "A"})
+    schema_ok = (
+        len(raw_definition.names) == len(raw_definition.labels)
+        and len(sym_definition.names) == len(sym_definition.labels)
+        and len(set(raw_definition.names)) == len(raw_definition.names)
+        and len(set(sym_definition.names)) == len(sym_definition.names)
+        and raw_comparison.python_shape[0] == len(raw_definition.labels)
+        and raw_comparison.python_shape[1] == 3 * len(raw_definition.atom_symbols)
+        and totally_symmetric_count > 0
+    )
+    return GICForgePythonFortranContract(
+        passed=bool(raw_comparison.passed and sym_ok and schema_ok),
+        raw_b_matrix=raw_comparison,
+        raw_gic_count=len(raw_definition.labels),
+        sym_gic_count=len(sym_definition.labels),
+        sym_primitive_count=len(sym_definition.primitives),
+        point_group=sym_definition.point_group,
+        irreps=sym_definition.irreps,
+        raw_workdir=str(raw_dir),
+        sym_workdir=str(sym_dir),
+        raw_names=raw_definition.names,
+        sym_names=sym_definition.names,
+        raw_labels=raw_definition.labels,
+        sym_labels=sym_definition.labels,
+        raw_primitive_signatures=tuple(_primitive_signature(primitive) for primitive in raw_definition.primitives),
+        sym_primitive_signatures=tuple(_primitive_signature(primitive) for primitive in sym_definition.primitives),
+        totally_symmetric_count=totally_symmetric_count,
+    )
+
+
 def write_gaussian_gic_input(definition: GICDefinition, path: Path) -> Path:
     """Write the Gaussian-readable GIC block stored in a definition."""
     target = Path(path)
@@ -437,6 +557,13 @@ def write_gaussian_gic_input(definition: GICDefinition, path: Path) -> Path:
     text = definition.gaussian_input or _gaussian_input_from_definition(definition)
     target.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
     return target
+
+
+def _primitive_signature(primitive: Primitive) -> str:
+    atoms = ",".join(str(int(idx) + 1) for idx in primitive.atoms)
+    ref = ",".join(str(int(idx) + 1) for idx in getattr(primitive, "ref", ()))
+    suffix = f":ref={ref}" if ref else ""
+    return f"{primitive.kind}:mode={int(getattr(primitive, 'mode', 0))}:atoms={atoms}{suffix}"
 
 
 def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], str] | None:
@@ -449,11 +576,11 @@ def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], 
     number = r"[+-]?\s*(?:\d+(?:\.\d*)?|\.\d+)(?:[EDed][+-]?\d+)?"
     for match in re.finditer(rf"({number})\s*\*\s*([RADLU])\(([^)]*)\)", rhs):
         coeff = float(match.group(1).replace(" ", "").replace("D", "E").replace("d", "e"))
-        terms.append((coeff, _gicforge_primitive(match.group(2), match.group(3))))
+        terms.append((coeff, _gicforge_primitive(match.group(2), match.group(3), out_of_plane=name.startswith("ImpD"))))
     if not terms:
         simple = re.search(r"\b([RADLU])\(([^)]*)\)", rhs)
         if simple:
-            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2))))
+            terms.append((1.0, _gicforge_primitive(simple.group(1), simple.group(2), out_of_plane=name.startswith("ImpD"))))
     if not terms:
         return None
     return name, terms, rhs
@@ -480,6 +607,27 @@ def _validated_coordinates(coordinates: np.ndarray, natoms: int) -> np.ndarray:
     return coords
 
 
+def _gicforge_cartesian_from_gauin(gauin: Path, natoms: int) -> np.ndarray:
+    lines = Path(gauin).read_text(encoding="utf-8", errors="replace").splitlines()
+    for idx, raw in enumerate(lines):
+        parts = raw.split()
+        if len(parts) == 2 and all(part.lstrip("+-").isdigit() for part in parts):
+            coords: list[tuple[float, float, float]] = []
+            for coord_line in lines[idx + 1 :]:
+                fields = coord_line.split()
+                if not fields:
+                    break
+                if len(fields) < 4 or not fields[0].lstrip("+-").isdigit():
+                    break
+                coords.append((float(fields[1]), float(fields[2]), float(fields[3])))
+                if len(coords) == natoms:
+                    break
+            array = np.asarray(coords, dtype=float)
+            if array.shape == (natoms, 3):
+                return array
+    raise GICDefinitionError(f"Cannot read oriented Cartesian block from {gauin}")
+
+
 def _read_gicforge_irreps(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
@@ -499,13 +647,15 @@ def _gicforge_point_group(provout: Path) -> str:
     return match.group(1) if match else "UNKNOWN"
 
 
-def _gicforge_primitive(kind: str, atoms_text: str) -> Primitive:
+def _gicforge_primitive(kind: str, atoms_text: str, *, out_of_plane: bool = False) -> Primitive:
     values = tuple(int(item.strip()) for item in atoms_text.split(",") if item.strip())
     atoms = tuple(value - 1 for value in values)
     if kind == "R" and len(atoms) == 2:
         return Primitive("bond", atoms)
     if kind == "A" and len(atoms) == 3:
         return Primitive("angle", atoms)
+    if kind == "D" and len(atoms) == 4 and out_of_plane:
+        return Primitive("out_of_plane", atoms)
     if kind == "D" and len(atoms) == 4:
         return Primitive("dihedral", atoms)
     if kind == "U" and len(atoms) == 4:

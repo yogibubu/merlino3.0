@@ -14,8 +14,10 @@ from merlino_gic import (
     define_gics_from_cartesian,
     evaluate_gic_definition,
     read_gicforge_b_matrix,
+    run_gicforge_python_fortran_contract,
     run_gicforge,
 )
+from merlino_fortran import resolve_backend
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.cli import _python_local_gic_allowed
@@ -235,6 +237,42 @@ def test_gicforge_b_matrix_triplets_match_python_evaluation(tmp_path):
     assert comparison.max_abs_diff == 0.0
     assert comparison.python_shape == python_b.shape
     assert comparison.fortran_shape == python_b.shape
+
+
+def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+    atoms = ("O", "H", "H")
+    coords = np.array(
+        [
+            [0.000000, 0.000000, 0.000000],
+            [0.757000, 0.000000, 0.586000],
+            [-0.757000, 0.000000, 0.586000],
+        ],
+        dtype=float,
+    )
+
+    contract = run_gicforge_python_fortran_contract(
+        atoms,
+        coords,
+        workdir=tmp_path / "contract",
+        executable=executable,
+    )
+
+    assert contract.passed is True
+    assert contract.raw_b_matrix.passed is True
+    assert contract.point_group == "C2v"
+    assert "A1" in contract.irreps
+    assert contract.raw_gic_count == 3
+    assert contract.sym_gic_count == 3
+    assert contract.totally_symmetric_count == 2
+    assert len(contract.raw_names) == contract.raw_gic_count
+    assert len(contract.sym_names) == contract.sym_gic_count
+    assert len(contract.raw_labels) == contract.raw_gic_count
+    assert len(contract.sym_labels) == contract.sym_gic_count
+    assert all(signature.startswith(("bond:", "angle:")) for signature in contract.raw_primitive_signatures)
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

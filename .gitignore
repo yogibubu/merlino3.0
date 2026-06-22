@@ -20,6 +20,8 @@ venv/
 *.log
 *.out
 *.err
+*.aux
+*.toc
 build/
 fortran/*/build/
 fortran/dvr/path_dvr
@@ -36,6 +38,7 @@ archives/freezes/
 tmp/
 work/
 working/
+benchmarks/semiexp_msr/results/
 *.egg-info/
 projects/se_library/
 projects/pcs2_library/

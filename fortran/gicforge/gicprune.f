@@ -40,6 +40,7 @@ C=======================================================================
       If(NAtoms.le.0) return
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.le.0) return
+      NVib=3*NAtoms-6
 
       DoB1=.False.
       Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,
@@ -53,31 +54,53 @@ C=======================================================================
       Write(IOut,'(''   Stretch: kept all '',I5,
      $ '' primitive coordinates.'')') NLen
 
+      If(NTot.le.NVib) then
+       Write(IOut,'(''   Current GIC count='',I5,
+     $ '' target vibrational rank='',I5)') NTot,NVib
+       Write(IOut,'(''   No pruning performed: the set is already '',
+     $ ''minimal or below the vibrational rank.'')')
+       Write(IOut,'(''   Final active GIC counts:'')')
+       Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,
+     $ '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
+     $ NLen,NAng,NLAng,NDih,NOupl
+       If(DoBMat) then
+        Call WriteGICBMat(NAtoms,NTot,BMat)
+        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
+       EndIf
+       Return
+      EndIf
+
+      NBasis=0
+      Call SeedGICBasis(IOut,NAtoms,NLen,0,BMat,Scr,NBasis)
+      NAng0=NAng
+      NLang0=NLAng
+      NDih0=NDih
+
       Label='Bend'
       IOff=NLen
-      Call PruneOneBlock(IOut,Label,NAtoms,NAng,IOff,BMat,Keep,Scr,
-     $ NKeep)
+      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NAng,IOff,BMat,Keep,
+     $ Scr,NBasis,NVib,NKeep)
       If(NKeep.lt.NAng) Call PackGICBlock(MxAtP,MxTrm,NAng,Keep,
      $ NTermA,IAtomA,IPrimA,ITVA,IFixA,CoefA,ValTA)
 
       Label='Linear bend'
-      IOff=NLen+NAng
-      Call PruneOneBlock(IOut,Label,NAtoms,NLAng,IOff,BMat,Keep,Scr,
-     $ NKeep)
+      IOff=NLen+NAng0
+      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NLAng,IOff,BMat,Keep,
+     $ Scr,NBasis,NVib,NKeep)
       If(NKeep.lt.NLAng) Call PackGICBlock(MxAtP,MxTrm,NLAng,Keep,
      $ NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
 
       Label='Torsion'
-      IOff=NLen+NAng+NLAng
-      Call PruneOneBlock(IOut,Label,NAtoms,NDih,IOff,BMat,Keep,Scr,
-     $ NKeep)
+      IOff=NLen+NAng0+NLang0
+      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NDih,IOff,BMat,Keep,
+     $ Scr,NBasis,NVib,NKeep)
       If(NKeep.lt.NDih) Call PackGICBlock(MxAtP,MxTrm,NDih,Keep,
      $ NTermD,IAtomD,IPrimD,ITVD,IFixD,CoefD,ValTD)
 
       Label='Out-of-plane'
-      IOff=NLen+NAng+NLAng+NDih
-      Call PruneOneBlock(IOut,Label,NAtoms,NOupl,IOff,BMat,Keep,Scr,
-     $ NKeep)
+      IOff=NLen+NAng0+NLang0+NDih0
+      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NOupl,IOff,BMat,Keep,
+     $ Scr,NBasis,NVib,NKeep)
       If(NKeep.lt.NOupl) Call PackGICBlock(MxAtP,MxTrm,NOupl,Keep,
      $ NTermO,IAtomO,IPrimO,ITVO,IFixO,CoefO,ValTO)
 
@@ -92,6 +115,124 @@ C=======================================================================
      $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat)
        Call WriteGICBMat(NAtoms,NTot,BMat)
        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
+      EndIf
+      Return
+      End
+
+*Deck SeedGICBasis
+      Subroutine SeedGICBasis(IOut,NAtoms,NVar,IOff,BMat,Scr,NBasis)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,NAtoms,NVar,IOff,NBasis
+      Dimension BMat(3*NAtoms,*),Scr(3*NAtoms,*)
+      Real*8 Norm,Norm0,Dot,TAbs,TRel
+      Data TAbs/1.0D-10/, TRel/1.0D-08/
+
+      NCart=3*NAtoms
+      Do 100 I=1,NVar
+       Row=IOff+I
+       Norm0=0.0D0
+       Do 10 K=1,NCart
+        Scr(K,NBasis+1)=BMat(K,Row)
+        Norm0=Norm0+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+   10  Continue
+       Norm0=DSqrt(Norm0)
+       If(Norm0.le.TAbs) go to 100
+       Do 30 J=1,NBasis
+        Dot=0.0D0
+        Do 20 K=1,NCart
+         Dot=Dot+Scr(K,NBasis+1)*Scr(K,J)
+   20   Continue
+        Do 25 K=1,NCart
+         Scr(K,NBasis+1)=Scr(K,NBasis+1)-Dot*Scr(K,J)
+   25   Continue
+   30  Continue
+       Norm=0.0D0
+       Do 40 K=1,NCart
+        Norm=Norm+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+   40  Continue
+       Norm=DSqrt(Norm)
+       If(Norm.gt.TAbs.and.Norm.gt.TRel*Norm0) then
+        NBasis=NBasis+1
+        Do 50 K=1,NCart
+         Scr(K,NBasis)=Scr(K,NBasis)/Norm
+   50   Continue
+       EndIf
+  100 Continue
+      Return
+      End
+
+*Deck PruneOneBlockAgainst
+      Subroutine PruneOneBlockAgainst(IOut,Label,NAtoms,NVar,IOff,BMat,
+     $ Keep,Scr,NBasis,NTarget,NKeep)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,NAtoms,NVar,IOff,NBasis,NTarget,NKeep
+      Character*(*) Label
+      Dimension BMat(3*NAtoms,*),Scr(3*NAtoms,*)
+      Logical Keep(*)
+      Logical AnyRem
+      Real*8 Norm,Norm0,Dot,TAbs,TRel
+      Data TAbs/1.0D-10/, TRel/1.0D-08/
+
+      NCart=3*NAtoms
+      NKeep=0
+      If(NVar.le.0) return
+
+      Do 10 I=1,NVar
+       Keep(I)=.False.
+   10 Continue
+
+      Do 100 I=1,NVar
+       If(NBasis.ge.NTarget) go to 100
+       Row=IOff+I
+       Norm0=0.0D0
+       Do 110 K=1,NCart
+        Scr(K,NBasis+1)=BMat(K,Row)
+        Norm0=Norm0+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+  110  Continue
+       Norm0=DSqrt(Norm0)
+       If(Norm0.le.TAbs) go to 100
+
+       Do 130 J=1,NBasis
+        Dot=0.0D0
+        Do 120 K=1,NCart
+         Dot=Dot+Scr(K,NBasis+1)*Scr(K,J)
+  120   Continue
+        Do 125 K=1,NCart
+         Scr(K,NBasis+1)=Scr(K,NBasis+1)-Dot*Scr(K,J)
+  125   Continue
+  130  Continue
+
+       Norm=0.0D0
+       Do 140 K=1,NCart
+        Norm=Norm+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+  140  Continue
+       Norm=DSqrt(Norm)
+       If(Norm.gt.TAbs.and.Norm.gt.TRel*Norm0) then
+        NKeep=NKeep+1
+        NBasis=NBasis+1
+        Keep(I)=.True.
+        Do 150 K=1,NCart
+         Scr(K,NBasis)=Scr(K,NBasis)/Norm
+  150   Continue
+       EndIf
+  100 Continue
+
+      If(NKeep.lt.NVar) then
+       Write(IOut,'(''   '',A,'': kept '',I5,'' of '',I5,
+     $ '' coordinates; removed '',I5,'' residual redundant.'')')
+     $ Label,NKeep,NVar,NVar-NKeep
+       Write(IOut,'(''     Removed local indices:'')')
+       AnyRem=.False.
+       Do 210 I=1,NVar
+        If(.not.Keep(I)) then
+         Write(IOut,'(I6)',advance='no') I
+         AnyRem=.True.
+        EndIf
+  210  Continue
+       If(AnyRem) Write(IOut,'('' '')')
+      Else
+       Write(IOut,'(''   '',A,'': kept all '',I5,
+     $ '' coordinates.'')') Label,NVar
       EndIf
       Return
       End

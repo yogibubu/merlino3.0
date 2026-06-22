@@ -121,7 +121,7 @@ same shared topology/contact library when absent.
 2. **Common topology/contact library**
    - Move fragment detection, H-bond detection, and smooth contact weights into
      `merlino_core`.
-   - Make Python GICForge, BDPCS3, SEfit, and GUI modules call this one library.
+   - Make Python GICForge, BDPCS3, BSR, and GUI modules call this one library.
    - Export the same parameters to Fortran77 include files.
 
 3. **Python GICForge reference behavior**
@@ -159,5 +159,5 @@ same shared topology/contact library when absent.
 - Redundancy removal is block-aware and cannot substitute one coordinate type
   for another.
 - Symmetry labels must be assigned to all final coordinates, not only A1.
-- SEfit and Gaussian optimizations may select only the totally symmetric active
+- BSR and Gaussian optimizations may select only the totally symmetric active
   subset, but reports must show all coordinates and their symmetries.
