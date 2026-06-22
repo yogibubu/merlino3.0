@@ -482,6 +482,7 @@ def test_gicforge_python_port_matches_fortran_for_fused_and_substituted_rings(tm
         ("saccharine", Path("merlino_fit/tests/data/polycyclics/saccharine.xyz")),
         ("naphthalene", Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz")),
         ("pyrene", Path("merlino_fit/tests/data/polycyclics/pyrene.xyz")),
+        ("sf6", Path("merlino_fit/tests/data/sf6.xyz")),
     ]
     for name, path in cases:
         geometry = read_geometry_input(path)

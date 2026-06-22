@@ -1217,7 +1217,13 @@ def _prune_type_local(
         "dihedral": [coord for coord in coordinates if coord.dominant_kind == "dihedral"],
         "out_of_plane": [coord for coord in coordinates if coord.dominant_kind == "out_of_plane"],
     }
-    ordered = by_kind["bond"] + by_kind["angle"] + by_kind["linear_bend"] + by_kind["dihedral"] + by_kind["out_of_plane"]
+    linear_bends = by_kind["linear_bend"]
+    forced_linear_atoms: tuple[int, ...] | None = None
+    if any(coord.block == "HCAn" for coord in by_kind["angle"]):
+        linear_bends = _high_coord_linear_pruning_order(linear_bends)
+        if linear_bends:
+            forced_linear_atoms = linear_bends[0].terms[0][1].atoms
+    ordered = by_kind["bond"] + by_kind["angle"] + linear_bends + by_kind["dihedral"] + by_kind["out_of_plane"]
     if len(ordered) <= target_rank:
         return tuple(ordered)
     primitive_basis = _primitive_basis(ordered)
@@ -1240,11 +1246,44 @@ def _prune_type_local(
         for index, coordinate in enumerate(ordered):
             if coordinate.dominant_kind != kind:
                 continue
-            if len(basis) >= target_rank:
+            if len(basis) >= target_rank or len(keep) >= target_rank:
                 continue
+            force_keep = (
+                kind == "linear_bend"
+                and forced_linear_atoms is not None
+                and coordinate.terms[0][1].atoms == forced_linear_atoms
+            )
             if _seed_basis_row(b_rows[index], basis):
                 keep.append(coordinate)
+            elif force_keep:
+                keep.append(coordinate)
     return tuple(keep)
+
+
+def _high_coord_linear_pruning_order(
+    coordinates: list[GICForgePythonCoordinate],
+) -> list[GICForgePythonCoordinate]:
+    groups: list[list[GICForgePythonCoordinate]] = []
+    index_by_atoms: dict[tuple[int, ...], int] = {}
+    for coordinate in coordinates:
+        _coefficient, primitive = coordinate.terms[0]
+        atoms = primitive.atoms
+        if atoms not in index_by_atoms:
+            index_by_atoms[atoms] = len(groups)
+            groups.append([])
+        groups[index_by_atoms[atoms]].append(coordinate)
+    if not groups:
+        return []
+
+    ordered: list[GICForgePythonCoordinate] = []
+    ordered.extend(groups[0])
+    for group in groups[1:]:
+        ordered.extend(coord for coord in group if coord.terms[0][1].mode == -2)
+    for group in groups[1:]:
+        ordered.extend(coord for coord in group if coord.terms[0][1].mode != -2)
+    seen: set[GICForgePythonCoordinate] = set(ordered)
+    ordered.extend(coord for coord in coordinates if coord not in seen)
+    return ordered
 
 
 def _seed_basis_row(row: np.ndarray, basis: list[np.ndarray]) -> bool:

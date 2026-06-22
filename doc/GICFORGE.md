@@ -150,10 +150,9 @@ orientation, orbit-closed `ONEDIH` torsions, fused-ring `BtFl` butterfly
 coordinates, fused-ring `CyGNA/CyGND` valence-angle and puckering coordinates,
 high-coordination `HCAn` candidate generation, and type-local Gram-Schmidt
 pruning. Nitrobenzene, saccharine, naphthalene, pyrene and coronene are covered
-as regression targets: Python and Fortran must agree on final counts, ordered
-primitive signatures and the resulting B-matrix. Highly symmetric
-coordination-six cases with exactly linear pairs, such as idealized SF6, still
-need a pruning-order port for exact Python/Fortran identity.
+as regression targets, along with idealized SF6 for the high-coordination path:
+Python and Fortran must agree on final counts, ordered primitive signatures and
+the resulting B-matrix.
 
 The frozen `merlino.gic.definition.v1` schema stores provenance hashes for
 `xyzin`, `provin`, `gauin`/`gauin.symm`, the GICForge executable, the GICForge
