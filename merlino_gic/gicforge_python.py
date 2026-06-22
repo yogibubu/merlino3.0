@@ -1159,11 +1159,10 @@ def _high_coord_angle_coordinates(
         for second in neigh[ib + 1 :]:
             left, right = sorted((first, second))
             value = angle(left, center, right, coords)
-            if value < linear_threshold:
-                coordinates.append(
-                    _primitive_coordinate("HCAn", angle_start + len(coordinates), Primitive("angle", (left, center, right)))
-                )
-            else:
+            coordinates.append(
+                _primitive_coordinate("HCAn", angle_start + len(coordinates), Primitive("angle", (left, center, right)))
+            )
+            if value >= linear_threshold:
                 linears.append(
                     _primitive_coordinate(
                         "LAng",

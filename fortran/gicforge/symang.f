@@ -327,7 +327,7 @@ C Dimensions
       Real*8 CoefA(MxTrmA,*),C(3,*)
       Double Precision ValAng
 C Local
-      Integer II,KK,I1,I2,I3,NAng
+      Integer II,KK,I1,I2,ILeft,IRight,NAng
       Real*8 Value,ToDeg,Pi
       Pi = Dacos(-1.D0)
       ToDeg = 1.80D+2 / Pi
@@ -336,23 +336,24 @@ C Local
        I1 = IBond(II,IAt)
        Do 10 KK=II+1,NBond(IAt)
         I2 = IBond(KK,IAt)
-        If(I1.gt.I2) then
-         I3 = I1
-         I1 = I2
-         I2 = I3
+        ILeft = I1
+        IRight = I2
+        If(ILeft.gt.IRight) then
+         ILeft = I2
+         IRight = I1
         EndIf
         ICoord = ICoord + 1
         NTermA(ICoord) = 1
         ITVA(ICoord) = 17
         CoefA(1,ICoord) = 1.0D0
-        IAtomA(1,1,ICoord) = I1
+        IAtomA(1,1,ICoord) = ILeft
         IAtomA(2,1,ICoord) = IAt
-        IAtomA(3,1,ICoord) = I2
+        IAtomA(3,1,ICoord) = IRight
         NAng = NAng + 1
         If(IPrint.gt.0) then
-         Value = ValAng(C(1,I1),C(1,IAt),C(1,I2))*ToDeg
+         Value = ValAng(C(1,ILeft),C(1,IAt),C(1,IRight))*ToDeg
          Write(IOut,'(I4,6X,''HCAn'',1X,2I4,14X,I2,4X,''Value='',F8.3)')
-     $     IAt,I1,I2,NAng,Value
+     $     IAt,ILeft,IRight,NAng,Value
         EndIf
    10   Continue
    20 Continue
