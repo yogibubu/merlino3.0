@@ -329,12 +329,46 @@ def test_gicforge_provout_final_summary_includes_ring_dihedral_coordinates(tmp_p
 
     assert contract.passed is True
     assert "Endocyclic Valence Angles" in provout
+    assert "Exocyclic Dihedral Angles:" in provout
     assert "Endocyclic Dihedral Angles" in provout
     assert "RDef000" in final_summary
     assert "RPck000" in final_summary
     assert "QPck000" in final_summary
     assert provout.index("Endocyclic Valence Angles") < provout.index("Endocyclic Dihedral Angles")
     assert final_summary.index("RPck000") < final_summary.index("QPck000")
+
+
+def test_gicforge_provout_reports_exocyclic_dihedral_count_before_butterfly(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+    repo = Path(__file__).resolve().parents[2]
+    xyz = repo / "merlino_fit/tests/data/polycyclics/saccharine.xyz"
+    lines = xyz.read_text(encoding="utf-8").splitlines()
+    natoms = int(lines[0].strip())
+    atoms: list[str] = []
+    coords: list[list[float]] = []
+    for raw in lines[2 : 2 + natoms]:
+        fields = raw.split()
+        atoms.append(fields[0])
+        coords.append([float(value) for value in fields[1:4]])
+
+    contract = run_gicforge_python_fortran_contract(
+        atoms,
+        np.asarray(coords, dtype=float),
+        workdir=tmp_path / "contract",
+        executable=executable,
+    )
+    provout = (tmp_path / "contract" / "raw" / "provout").read_text(encoding="utf-8", errors="replace")
+    provout_lines = provout.splitlines()
+    butterfly_line = next(index for index, line in enumerate(provout_lines) if "Butterfly GNIC Around Bond" in line)
+
+    assert contract.passed is True
+    assert "Exocyclic Dihedral Angles:    0" in provout
+    assert provout.index("Exocyclic Dihedral Angles:") < provout.index("Endocyclic Dihedral Angles")
+    assert provout.index("Endocyclic Dihedral Angles") < provout.index("Butterfly GNIC Around Bond")
+    assert provout_lines[butterfly_line - 1].strip()
 
 
 def test_gicforge_parser_distinguishes_improper_dihedral_and_out_of_plane():

@@ -421,9 +421,15 @@ C Make dihedral GNICs
      $  Do1Dih,NAtoms,IAn,NBond,NLenR,NDih,NTot,NCyc,IBond,NTermD,
      $  IAtmBR,IAtomD,IBr,NAtC,ICAt,IAtCyc,ITVD,IPerD,NEqAt,CoefD,C,
      $  EAN,TreshL,DoNorm)
+      NButD=0
+      Do 25 IDih=1,NDih
+       If(ITVD(IDih).eq.2) NButD=NButD+1
+   25 Continue
+      NExoD=NDih-NButD
 C Make ring coordinates for dihedra angles
       If(NCyc.gt.0) then
-       Write(IOut,'(/,'' Endocyclic Dihedral Angles'')')
+       Write(IOut,'(/,'' Exocyclic Dihedral Angles:'',I5)') NExoD
+       Write(IOut,'('' Endocyclic Dihedral Angles'')')
        NDihCh=NDih
        IPrtCD=0
        do 30 ICyc=1,NCyc
@@ -462,8 +468,7 @@ C Make ring coordinates for dihedra angles
      $     NDih-NDih0,' Dihedral angles'
         EndIf
    30  continue
-       If(NBrL.gt.0) then
-        Write(IOut,'('' '')')
+       If(NButD.gt.0) then
         Do 35 IBrid=1,NBrL
          write(IOut,'('' Butterfly GNIC Around Bond'',
      $    I5,''  -'',I5,'' Joining Rings'',2I3)')
