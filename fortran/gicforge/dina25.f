@@ -40,6 +40,7 @@ CENZO
       Logical DoBMat,DoMW,Inv1,DoScan,DoRig,RIgB,RigA,RigL,RigD,RigO
       Logical DoneC,DoB1,DoGNIC,RdIsot
       Logical DoG16
+      Logical UsedPrim
       Logical TstAng,TTest,Error,PrtVal
       Dimension IEl(0:MaxEl)
       Dimension IScr(MxScr) 
@@ -179,7 +180,7 @@ C Read charge and multiplicity
       If(NValue.ne.2) then
        write(IOut,'(A20)') Strinp
        write(IOut,'(''Wrong Charge or Multiplicity'')')
-       Stop
+        Stop
       EndIf
       ICharg=St2Int(StrInp(IStart(1):IStart(2)-1),-999)
       If(ICharg.eq.-999) then
@@ -483,6 +484,7 @@ C Make Out-of-Plane GNICs
 C
       NTot=NLen+NAng+NLAng+NDih+NOUPl
       NTarget=3*NAtoms-NTRot
+      UsedPrim=.False.
       If(NTot.lt.NTarget) then
        Write(IOut,'(/,'' GNIC candidate count below vibrational rank;'',
      $ '' expanding to primitive candidates before pruning.'')')
@@ -499,8 +501,9 @@ C
        If(NTot.lt.NTarget) then
         Write(IOut,'('' ERROR: primitive GIC candidates='',I5,
      $ '' below target vibrational rank='',I5)') NTot,NTarget
-        Stop
+       Stop
        EndIf
+       UsedPrim=.True.
       EndIf
 CENZO Print Information on Torsions
       Indd=0
@@ -620,6 +623,34 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
      $  ValTO,C,DoBMat,BMat,Scr,ImpDih)
+      NTot=NLen+NAng+NLAng+NDih+NOupl
+      If(NTot.lt.NTarget.and..not.UsedPrim) then
+       Write(IOut,'(/,'' Post-pruning GIC count below vibrational '',
+     $ ''rank; retrying with primitive candidates.'')')
+       Write(IOut,'(''   Current pruned GICs='',I5,
+     $ '' target='',I5,'' primitive candidates='',I5)')
+     $ NTot,NTarget,NTotR
+       Call UsePrimitiveGICs(IOut,MxAtP,MxTrm,NLenR,NAngR,NLAngR,
+     $ NDihR,NOuplR,NLen,NAng,NLAng,NDih,NOupl,IAtmBR,IAtmAR,
+     $ IAtmLR,IAtmDR,IAtmOR,NTermB,NTermA,NTermL,NTermD,NTermO,
+     $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,ITVB,ITVA,ITVLA,ITVD,
+     $ ITVO,IFixB,IFixA,IFixL,IFixD,IFixO,CoefB,CoefA,CoefL,
+     $ CoefD,CoefO)
+       UsedPrim=.True.
+       call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
+     $  NAng,
+     $  NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,IAtomB,
+     $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
+     $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
+     $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
+     $  ValTO,C,DoBMat,BMat,Scr,ImpDih)
+      EndIf
+      NTot=NLen+NAng+NLAng+NDih+NOupl
+      If(NTot.ne.NTarget) then
+       Write(IOut,'('' ERROR: final GIC count='',I5,
+     $ '' differs from target vibrational rank='',I5)') NTot,NTarget
+       Stop
+      EndIf
       NTTsav=NTT
       Write(IOut,'(/,'' Final GIC summary (Gaussian syntax)'')')
       PrtVal=.True.

@@ -120,9 +120,9 @@ C=======================================================================
      $ NOupl
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.ne.NVib) then
-       Write(IOut,'('' ERROR: final GIC count='',I5,
+       Write(IOut,'('' WARNING: final GIC count='',I5,
      $ '' differs from target vibrational rank='',I5)') NTot,NVib
-       Stop 1
+       Return
       EndIf
       If(DoBMat) then
        Call MkBNew(IOut,0,DoB1,MxAtP,MxTrm,NAtoms,NLen,NAng,NLAng,

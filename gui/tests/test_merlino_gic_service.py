@@ -407,6 +407,43 @@ def test_gicforge_python_port_matches_fortran_for_small_reference_molecules(tmp_
         assert report["passed"], report
 
 
+def test_gicforge_handles_square_planar_tetracoordinate_center(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    atoms = ("C", "H", "H", "H", "H")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.1, 0.0, 0.0],
+            [-1.1, 0.0, 0.0],
+            [0.0, 1.1, 0.0],
+            [0.0, -1.1, 0.0],
+        ],
+        dtype=float,
+    )
+
+    contract = run_gicforge_python_fortran_contract(
+        atoms,
+        coords,
+        workdir=tmp_path / "fortran_contract",
+        executable=executable,
+    )
+    assert contract.passed, contract.to_dict()
+    assert contract.raw_gic_count == 9
+    assert contract.raw_coordinate_kind_counts == {"angle": 3, "bond": 4, "linear_bend": 2}
+
+    report = compare_gicforge_python_to_fortran(
+        atoms,
+        coords,
+        workdir=tmp_path / "python_port_contract",
+        executable=executable,
+    )
+    assert report["passed"], report
+
+
 def test_gicforge_python_port_reports_ring_gap_for_coronene(tmp_path):
     try:
         executable = resolve_backend("gicforge")
