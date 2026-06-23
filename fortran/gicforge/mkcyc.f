@@ -777,7 +777,9 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
       Dimension Coeff(MxTrm,*),C(3,*)
       Dimension BLoc(MxCart,MxLoc),G(MxLoc,MxLoc),EVal(MxLoc)
       Dimension EVec(MxLoc,MxLoc),B(3,4),DB(3,4,3,4),IB(4)
-      Integer Rank,RankUse
+      Dimension Ref(MxLoc,MxLoc),EKeep(MxLoc,MxLoc)
+      Dimension Used(MxLoc)
+      Integer Rank,RankUse,Used
 
       NCyc=NAtC(ICyc)
       If(NCyc.le.3) Return
@@ -792,15 +794,24 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
      $  NAtoms
        Return
       EndIf
+      If(ValAng) then
+       IStart=3
+       If(NCyc.eq.6) IStart=2
+       If(NCyc.eq.7) IStart=4
+       If(NCyc.eq.8) IStart=2
+      Else
+       IStart=NCyc
+      EndIf
 
       Call AClear(MxCart*MxLoc,BLoc)
       Do 30 ITerm=1,NCyc
-       I1=ITerm-1
-       If(I1.le.0) I1=I1+NCyc
-       I2=ITerm
-       I3=ITerm+1
+       I1=ITerm+IStart-1
+       If(I1.gt.NCyc) I1=I1-NCyc
+       I2=I1+1
+       If(I2.gt.NCyc) I2=I2-NCyc
+       I3=I2+1
        If(I3.gt.NCyc) I3=I3-NCyc
-       I4=ITerm+2
+       I4=I3+1
        If(I4.gt.NCyc) I4=I4-NCyc
        IAt=IAtomC(I1,ICyc)
        JAt=IAtomC(I2,ICyc)
@@ -821,6 +832,31 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
    20  Continue
    30 Continue
 
+      Call AClear(MxLoc*MxLoc,Ref)
+      Pi=4.0D0*DATan(1.0D0)
+      DNC=DFloat(NCyc)
+      VNorm=DSqrt(2.0D0/DNC)
+      VNorm1=DSqrt(1.0D0/DNC)
+      Do 45 IVar=1,NCyc-3
+       IVar2=IVar/2
+       IVar1=IVar
+       If(IVar.eq.1) IVar1=IVar+1
+       If(IVar.eq.4) IVar1=IVar-1
+       If(IVar.eq.5) IVar1=IVar-1
+       If(IVar.eq.6) IVar1=IVar-2
+       Do 44 ITerm=1,NCyc
+        SNum=DFloat(2*IVar1*(ITerm-1))
+        Val=Pi*SNum/DNC
+        If(IVar.eq.2*IVar2) then
+         Ref(ITerm,IVar)=VNorm*DSin(Val)
+        ElseIf(IVar.lt.NCyc-3) then
+         Ref(ITerm,IVar)=VNorm*DCos(Val)
+        Else
+         Ref(ITerm,IVar)=VNorm1*DCos(DFloat(ITerm-1)*Pi)
+        EndIf
+   44  Continue
+   45 Continue
+
       Do 60 I=1,NCyc
        Do 50 J=1,NCyc
         Sum=0.0D0
@@ -834,6 +870,39 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
       Call LocSVDJacobi(MxLoc,NCyc,G,EVal,EVec,Rank)
       RankUse=Rank
       If(RankUse.gt.NCyc-3) RankUse=NCyc-3
+      Call IClear(MxLoc,Used)
+      Call AClear(MxLoc*MxLoc,EKeep)
+      Do 80 IM=1,RankUse
+       Best=-1.0D0
+       DotBest=0.0D0
+       JBest=1
+       Do 72 JM=1,Rank
+        If(Used(JM).ne.0) GoTo 72
+        Dot=0.0D0
+        Do 70 ITerm=1,NCyc
+         Dot=Dot+Ref(ITerm,IM)*EVec(ITerm,JM)
+   70   Continue
+        Score=DAbs(Dot)
+        If(Score.gt.Best) then
+         Best=Score
+         DotBest=Dot
+         JBest=JM
+        EndIf
+   72  Continue
+       Used(JBest)=1
+       Sgn=1.0D0
+       If(DotBest.lt.0.0D0) Sgn=-1.0D0
+       Do 74 ITerm=1,NCyc
+        EKeep(ITerm,IM)=Sgn*EVec(ITerm,JBest)
+   74  Continue
+       If(Best.lt.5.0D-1) Write(IOut,'('' WARNING: LOCSVD ring '',
+     $ ''mode weakly matches CycAng'',3I5,F10.5)') ICyc,IM,JBest,Best
+   80 Continue
+      Do 84 IM=1,RankUse
+       Do 82 ITerm=1,NCyc
+        EVec(ITerm,IM)=EKeep(ITerm,IM)
+   82  Continue
+   84 Continue
       If(IPrint.gt.0) then
        If(ValAng) then
         Write(IOut,'('' LOCSVD ring angle modes'',2I5)') ICyc,RankUse
@@ -849,12 +918,13 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
        ITV(IGnic)=14
        If(.not.ValAng) ITV(IGnic)=1
        Do 90 ITerm=1,NCyc
-        I1=ITerm-1
-        If(I1.le.0) I1=I1+NCyc
-        I2=ITerm
-        I3=ITerm+1
+        I1=ITerm+IStart-1
+        If(I1.gt.NCyc) I1=I1-NCyc
+        I2=I1+1
+        If(I2.gt.NCyc) I2=I2-NCyc
+        I3=I2+1
         If(I3.gt.NCyc) I3=I3-NCyc
-        I4=ITerm+2
+        I4=I3+1
         If(I4.gt.NCyc) I4=I4-NCyc
         IAtomG(1,ITerm,IGnic)=IAtomC(I1,ICyc)
         IAtomG(2,ITerm,IGnic)=IAtomC(I2,ICyc)
