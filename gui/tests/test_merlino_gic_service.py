@@ -538,7 +538,7 @@ def test_gicforge_python_onedih_matches_fortran_keyword(tmp_path):
         assert report["b_max_abs_diff"] <= 5.0e-8
 
 
-def test_gicforge_python_svd_local_reaches_target_rank():
+def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
     from merlino_semiexp.geometry_input import read_geometry_input
 
     cases = [
@@ -557,7 +557,7 @@ def test_gicforge_python_svd_local_reaches_target_rank():
             onedih=True,
             svd_local=True,
         )
-        definition = model.to_definition()
+        definition = model.to_definition(workdir=tmp_path / path.stem)
         b_matrix = definition.u_matrix.T @ b_matrix_analytic(
             definition.primitives,
             np.asarray(definition.reference_coordinates_angstrom),
@@ -568,8 +568,14 @@ def test_gicforge_python_svd_local_reaches_target_rank():
 
         assert len(model.coordinates) == model.target_rank
         assert rank == model.target_rank
+        diagnostics = json.loads((tmp_path / path.stem / "gicforge_python_diagnostics.json").read_text())
+        assert diagnostics["target_rank"] == model.target_rank
+        assert diagnostics["final_count"] == model.target_rank
+        assert diagnostics["final_rank"] == model.target_rank
+        assert diagnostics["rank_complete"] is True
         if path.name == "sf6.xyz":
             assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 4
+            assert diagnostics["final_counts_by_block"]["LAng"] == 4
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

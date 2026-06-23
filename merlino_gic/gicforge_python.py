@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -48,6 +49,7 @@ class GICForgePythonModel:
     coordinates: tuple[GICForgePythonCoordinate, ...]
     target_rank: int
     primitive_fallback: bool
+    diagnostics: dict[str, object]
 
     def to_definition(self, *, workdir: Path | None = None) -> GICDefinition:
         primitive_basis = _primitive_basis(self.coordinates)
@@ -83,8 +85,15 @@ class GICForgePythonModel:
                 "backend": "gicforge-python",
                 "target_vibrational_rank": str(self.target_rank),
                 "primitive_fallback": str(self.primitive_fallback).lower(),
+                "svd_local": str(self.diagnostics.get("svd_local", False)).lower(),
             },
         )
+        if workdir is not None:
+            Path(workdir).mkdir(parents=True, exist_ok=True)
+            (Path(workdir) / "gicforge_python_diagnostics.json").write_text(
+                json.dumps(self.diagnostics, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         return definition
 
 
@@ -126,6 +135,15 @@ def build_gicforge_python_model(
     if len(candidates) < target:
         raise ValueError(f"Primitive candidates below vibrational rank ({len(candidates)} < {target})")
     coordinates = _prune_type_local(candidates, coords, target_rank=target, block_pruning=svd_local)
+    diagnostics = _python_model_diagnostics(
+        candidates,
+        coordinates,
+        coords,
+        target_rank=target,
+        svd_local=svd_local,
+        onedih=onedih,
+        max_linear_angle_pairs_per_center=max_linear_angle_pairs_per_center,
+    )
     return GICForgePythonModel(
         atom_symbols=atoms,
         atomic_numbers=atomic_numbers,
@@ -134,6 +152,7 @@ def build_gicforge_python_model(
         coordinates=coordinates,
         target_rank=target,
         primitive_fallback=True,
+        diagnostics=diagnostics,
     )
 
 
@@ -1495,6 +1514,65 @@ def _primitive_coordinate(prefix: str, index: int, primitive: Primitive) -> GICF
         block=prefix,
         terms=((1.0, primitive),),
     )
+
+
+def _python_model_diagnostics(
+    candidates: tuple[GICForgePythonCoordinate, ...],
+    coordinates: tuple[GICForgePythonCoordinate, ...],
+    coords: np.ndarray,
+    *,
+    target_rank: int,
+    svd_local: bool,
+    onedih: bool,
+    max_linear_angle_pairs_per_center: int,
+) -> dict[str, object]:
+    candidate_counts = _coordinate_block_counts(candidates)
+    kept_counts = _coordinate_block_counts(coordinates)
+    removed_counts = {
+        block: int(candidate_counts.get(block, 0) - kept_counts.get(block, 0))
+        for block in sorted(set(candidate_counts) | set(kept_counts))
+    }
+    candidate_rank = _coordinate_b_rank(candidates, coords)
+    final_rank = _coordinate_b_rank(coordinates, coords)
+    return {
+        "backend": "gicforge-python",
+        "svd_local": bool(svd_local),
+        "onedih": bool(onedih),
+        "target_rank": int(target_rank),
+        "candidate_count": int(len(candidates)),
+        "final_count": int(len(coordinates)),
+        "candidate_rank": int(candidate_rank),
+        "final_rank": int(final_rank),
+        "rank_complete": bool(final_rank == target_rank),
+        "count_complete": bool(len(coordinates) == target_rank),
+        "max_linear_angle_pairs_per_center": int(max_linear_angle_pairs_per_center),
+        "candidate_counts_by_block": candidate_counts,
+        "final_counts_by_block": kept_counts,
+        "removed_counts_by_block": removed_counts,
+    }
+
+
+def _coordinate_block_counts(coordinates: tuple[GICForgePythonCoordinate, ...]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for coordinate in coordinates:
+        counts[coordinate.block] = counts.get(coordinate.block, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _coordinate_b_rank(coordinates: tuple[GICForgePythonCoordinate, ...], coords: np.ndarray) -> int:
+    if not coordinates:
+        return 0
+    primitive_basis = _primitive_basis(coordinates)
+    row_index = {primitive: index for index, primitive in enumerate(primitive_basis)}
+    primitive_b = b_matrix_analytic(primitive_basis, coords)
+    b_rows = []
+    for coordinate in coordinates:
+        row = np.zeros(primitive_b.shape[1], dtype=float)
+        for coefficient, primitive in coordinate.terms:
+            row += coefficient * primitive_b[row_index[primitive]]
+        b_rows.append(row)
+    singular_values = np.linalg.svd(np.vstack(b_rows), compute_uv=False)
+    return _svd_rank(singular_values)
 
 
 def _prune_type_local(
