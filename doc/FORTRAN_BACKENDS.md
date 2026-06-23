@@ -27,7 +27,11 @@ ignored by git.
 
 GICForge receives only Cartesian XYZ input from Merlino, builds redundant and
 non-redundant GICs, emits a readable report, and creates Gaussian-readable GIC
-input. Merlino wraps this as the `gic-define` utility, which writes a frozen
+input. The report includes the pre-pruning candidate count by family, including
+out-of-plane coordinates. If that count is not the target vibrational rank
+(`3N-6`, or `3N-5` for linear molecules), coordinate definitions are suppressed
+until after pruning so `provout` exposes only the final active basis. Merlino
+wraps this as the `gic-define` utility, which writes a frozen
 `merlino.gic.definition.v1` schema containing primitives, GIC coefficients,
 labels, irreducible representations and the Gaussian block.
 
@@ -55,6 +59,13 @@ against Python analytic B rows evaluated in the same oriented Cartesian frame
 written by GICForge.  The symmetrized run checks the frozen schema, point group
 and irreducible-representation labels.  This separates the numerical B-matrix
 contract from the post-GICForge symmetry-adaptation contract.
+
+`GICSYM` is handled as a post-GICForge symmetry adaptation: the final pruned
+GICs are symmetry-adapted, `gauin` is replaced by the symmetrized Gaussian
+block, `gicsym` records names/irreps, and `provout` reports symmetrized counts
+for stretches, bends, linear bends, torsions and out-of-plane coordinates.
+`SYCART` uses the same public API to provide symmetrized Cartesian coordinates
+to SEfit without embedding symmetry logic in SEfit itself.
 
 ## Active DVR Backend
 

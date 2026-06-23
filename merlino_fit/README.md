@@ -102,6 +102,10 @@ GICForge working files.  The legacy pure-Python local builder is available only
 for diagnostics through `--python-local`; it requires
 `MERLINO_ALLOW_PYTHON_LOCAL_GIC=1` and production workflows should not use it
 when Python/Fortran identity is required.
+The canonical GICForge report may list pre-pruning candidate counts separately;
+only the post-pruning coordinates in `gauin`/`gauin.symm` are part of the
+production ReadGIC definition. With `GICSYM`, the promoted `gauin` file contains
+symmetry-adapted coordinates and `gicsym` records their irreps.
 
 ## Gaussian puckering scan input
 Generate a multi-link Gaussian input that defines ring puckering GICs directly

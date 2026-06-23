@@ -25,6 +25,8 @@ GICForge is intentionally narrow:
 - write a readable geometry/GIC report
 - write Gaussian input with inactive `RPck....` puckering components and active
   `QPck....`/`PhiP....` coordinates
+- report the pre-pruning candidate counts, including out-of-plane candidates,
+  before any coordinate definitions are printed
 
 Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
@@ -118,6 +120,11 @@ type-local rank pruning.  The primitive expansion is capped by the number of
 available primitives, so the number of pre-pruning attempts never exceeds the
 primitive coordinate count.  If even the primitive candidate set is below the
 vibrational rank, GICForge stops instead of letting Python repair the basis.
+When the pre-pruning count differs from the vibrational rank in either
+direction, `provout` prints only the count summary before pruning; the actual
+coordinate definitions are written only after `PruneGICBlocks` has produced the
+final non-redundant set. This prevents discarded redundant coordinates from
+appearing as if they were part of the usable GIC basis.
 
 This is a strict identity contract.  The Python layer must not create an
 independent production GIC basis from topology after a rank-complete GICForge
@@ -179,6 +186,12 @@ semiexperimental refinement and Gaussian input writers only evaluate, filter
 or order the frozen coordinates. If a different symmetry tolerance, geometry
 or coordinate policy is required, the correct operation is a new `gic-define`
 run or an explicit restart that creates a new schema.
+
+With `GICSYM`, the Python post-check promotes `gauin.symm` to `gauin`, writes
+`gicsym`, appends a symmetrized coordinate block to `provout`, and records the
+symmetrized coordinate counts by family, including out-of-plane coordinates.
+With `SYCART`, GICForge writes symmetrized Cartesian coordinates without
+rotations/translations for SEfit and future geometry optimizers.
 
 Pulay scaling files accepted by `gic-gf` are line-oriented text or CSV files:
 

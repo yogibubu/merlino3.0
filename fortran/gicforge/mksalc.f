@@ -29,7 +29,7 @@ C Build Stretchings
 C Cycles NYI
 C         If(DoSymm) then
 C          If(IAtCyc(JAt).ne.0.and.IAtCyc(IAt).ne.0) go to 20
-C         EndIf 
+C         EndIf
          ILen=ILen+1
          NTermB(ILen)=1
          If(InvDst) then
@@ -38,7 +38,7 @@ C         EndIf
           ITVB(ILen)=0
          EndIf
          IAtomB(1,1,ILen)=JAt
-         IAtomB(2,1,ILen)=IAt 
+         IAtomB(2,1,ILen)=IAt
          CoefB(1,ILen)=1.0d0
         EndIf
    20  continue
@@ -51,7 +51,7 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
          ITVB(ILen)=9
         Else
          ITVB(ILen)=0
-        EndIf 
+        EndIf
         IAtomB(1,1,ILen)=Min0(JAt,ITest(1))
         IAtomB(2,1,ILen)=Max0(JAt,ITest(1))
         CoefB(1,ILen)=1.0d0
@@ -87,7 +87,7 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
      $  NTermB,ITVB,CoefB)
       Implicit Real*8 (A-H,O-Z)
       Logical InvDst
-      Dimension ITest(4),IAnT(4) 
+      Dimension ITest(4),IAnT(4)
       Dimension IAtomB(MxAtP,MxTrm,*),NTermB(*),ITVB(*)
       Dimension CoefB(MxTrm,*)
       If(IAnT(1).eq.IAnT(2)) then
@@ -109,7 +109,7 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
        IAtomB(2,2,ILen)=Max0(JAt,ITest(2))
        CoefB(1,ILen)=1.0d0/sqrt(2.0d0)
        CoefB(2,ILen)=-1.0d0/sqrt(2.0d0)
-      Else 
+      Else
        ILen=ILen+1
        NTermB(ILen)=1
        If(InvDst) then
@@ -132,13 +132,13 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
        IAtomB(2,2,ILen)=Max0(JAt,ITest(2))
       EndIf
       Return
-      End 
+      End
 *Deck BLAX3
       Subroutine BLAX3(MxAtP,MxTrm,InvDst,JAt,ILen,ITest,IAnT,IAtomB,
      $  NTermB,ITVB,CoefB)
       Implicit Real*8 (A-H,O-Z)
       Logical InvDst
-      Dimension ITest(4),IAnT(4) 
+      Dimension ITest(4),IAnT(4)
       Dimension IAtomB(MxAtP,MxTrm,*),NTermB(*),ITVB(*)
       Dimension CoefB(MxTrm,*)
       SD2=1.0d0/Sqrt(2.0d0)
@@ -230,24 +230,24 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
         CoefB(1,ILen)=1.0d0
         IAtomB(1,1,ILen)=Min0(JAt,ITest(ii))
         IAtomB(2,1,ILen)=Max0(JAt,ITest(ii))
-  20   continue    
+  20   continue
       EndIf
       Return
-      End 
-*Deck MkGNLA 
+      End
+*Deck MkGNLA
       Subroutine MkGNLA(IOut,IPrint,MxBond,MxGIcL,MxTerL,MaxAtL,
      $  NAtoms,NBond,NGICL,Linear,IBond,NTermL,IAtomL,IAn,CoefL,
      $  C,TreshL,DoLocSVD)
       Implicit Real*8 (A-H,O-Z)
       Dimension C(3,*)
       Dimension NBond(*),IBond(MxBond,*),IAn(*)
-      Dimension NTermL(MxGICL),IAtomL(MaxAtL,MxTerL,MxGICL) 
+      Dimension NTermL(MxGICL),IAtomL(MaxAtL,MxTerL,MxGICL)
       Dimension CoefL(MxTerL,MxGICL)
       Logical Linear,DoLocSVD
       pi = dacos(-1.d0)
       ToDeg=1.80d+2/pi
       NGicL=0
-C Build Valence Angles 
+C Build Valence Angles
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
        NLPair=0
@@ -261,7 +261,7 @@ C Build Valence Angles
           KAt=LAt
          EndIf
          Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
-         If(Value.lt.TreshL) go to 50 
+         If(Value.lt.TreshL) go to 50
          If(DoLocSVD.and.NBJ.gt.2) go to 50
          If(DoLocSVD.and.NLPair.ge.3) go to 50
          NLPair=NLPair+1
@@ -269,7 +269,7 @@ C Build Valence Angles
          NTermL(NGicL)=1
          IAtomL(1,1,NGicL)=IAt
          IAtomL(2,1,NGicL)=JAt
-         IAtomL(3,1,NGicL)=KAt 
+         IAtomL(3,1,NGicL)=KAt
          IAtomL(4,1,NGIcL)=-1
          CoefL(1,NGicL)=1.0d0
          NGicL=NGicL+1
@@ -287,19 +287,19 @@ C Build Valence Angles
        if(NGICL.eq.0) return
        Do 60 IGICL=1,NGICL
         write(IOut,'('' LAngGNC('',I3,'')'')') IGICL
-        I1=IAtomL(1,1,IGICL) 
+        I1=IAtomL(1,1,IGICL)
         I2=IAtomL(2,1,IGICL)
         I3=IAtomL(3,1,IGICL)
         I4=IAtomL(4,1,IGICL)
         Coef=CoefL(1,IGICL)
         Value=ValAng(C(1,I1),C(1,I2),C(1,I3))
         write (IOUT,'(F8.4,'' LA('',3(I3,'',''),I3,'')'',2X,
-     $     ''Value: '',F8.3)') Coef,I1,I2,I3,I4,Value*ToDeg 
+     $     ''Value: '',F8.3)') Coef,I1,I2,I3,I4,Value*ToDeg
   60   continue
       endif
       return
       End
-*Deck MkGNCD  
+*Deck MkGNCD
       Subroutine MkGNCD(IOut,IPrint,MxBnd,MxTrmB,MxTrmD,MxAtB,MxAtD,
      $  MxAtCy,Do1Dih,NAtoms,IAn,NBond,NLen,NDih,NTot,NCyc,IBond,NTermD,
      $  IAtomB,IAtomD,IBr,NAtC,ICAt,IAtCyc,ITVD,IPerD,NEqAt,CoefD,C,EAN,
@@ -317,7 +317,7 @@ C Build Valence Angles
       ToDeg=1.80d+2/pi
 C Build Dihedral GNICs
       ISoft=0
-      Do 10 ILen=1,NLen 
+      Do 10 ILen=1,NLen
        Join2C=.False.
        Koin2C=.False.
        Join3C=.False.
@@ -342,7 +342,7 @@ C Build Dihedral GNICs
        NBJ=NBond(JAt)
        NBK=NBond(KAt)
        if(NBJ.eq.1.or.NBK.eq.1) go to 10
-       ITerm=0 
+       ITerm=0
        If(IBut.ne.0) then
         call BtFly(IOut,IPrint,MxBnd,MxAtCy,MxAtD,MxTrmD,NDih,JAt,KAt,
      $    NCyc,NBond,IBond,NAtC,ICAt,IAtCyc,ITVD,NTermD,IAtomD,CoefD,C,
@@ -371,13 +371,13 @@ CENZO
         Else
          ITVD(NDIH)=-1
          IPerd(NDih)=1
-        EndIf 
+        EndIf
 CENZO
        Else
         Call AllDih(IOut,IPrint,MxBnd,MxAtD,MxTrmD,NDih,JAt,KAt,
      $  NBond,IBond,ITVD,NTermD,IAtomD,CoefD,C,TreshL,DoNorm)
        EndIf
-   10 continue 
+   10 continue
       return
       End
 *Deck PickDih
@@ -607,7 +607,7 @@ C Stable tie-breakers: prefer more substituted ends, then lower atom labels.
         If(LAt.eq.JAt) go to 30
         Value=ValAng(C(1,JAt),C(1,KAt),C(1,LAt))
         If(Value.gt.TreshL) go to 30
-        If(LAt.eq.IAt) go to 30 
+        If(LAt.eq.IAt) go to 30
         Join2C=.false.
         If(N2Cyc.gt.0) then
          do 40 jm=1,N2Cyc
@@ -637,18 +637,18 @@ C Stable tie-breakers: prefer more substituted ends, then lower atom labels.
      $  NAtoms,NCyc,NBond,NGICO,IBond,NTermO,IAtomO,IAn,IAtCyc,CoefO,C,
      $  ImpDih)
       Implicit Real*8 (A-H,O-Z)
-      Logical DoGNIC,ImpDih 
+      Logical DoGNIC,ImpDih
       Dimension IAn(*),IAtCyc(*),NBond(*),IBond(MxBond,*)
-      Dimension NTermO(MxGICO),IAtomO(MaxAtO,MxTrmO,MxGICO) 
+      Dimension NTermO(MxGICO),IAtomO(MaxAtO,MxTrmO,MxGICO)
       Dimension CoefO(MxTrmO,MxGICO),C(3,*)
 C
 C NBond(NAtoms) = number of bonds for each atom
 C IBond(MxBond,NAtoms) = atoms bonded to each atom
-C MxGICO = max. number of OUPL GICS; 
-C MaxAtO = Maximum Number of Atoms in primitives for OUPL GICs 
+C MxGICO = max. number of OUPL GICS;
+C MaxAtO = Maximum Number of Atoms in primitives for OUPL GICs
 C MxTrmO = Maximum number of primitives in OUPL GICS
 C NTermO(MxGICO) = number of terms in OUPL GIC
-C NGICO = number of OUPL GICs 
+C NGICO = number of OUPL GICs
 C NTermO(NGICO) = number of components for each OUPL GIC
 C CoefO(MxTrmO,NGICO) = coefficients of components for each OUPL GIC
 C IAtomO(MaxAtO,MxTrmO,NGICO) = atoms defining the components of each OUPL GIC
@@ -659,7 +659,7 @@ C
 C Build Out-of-Plane Angles
       Do 10 IAt=1,NAtoms
        If(NBond(IAt).ne.3) go to 10
-       IC1=IAtCyc(IAt) 
+       IC1=IAtCyc(IAt)
        JAt=IBond(1,IAt)
        IC2=IAtCyc(JAt)
        KAt=IBond(2,IAt)
@@ -678,15 +678,15 @@ C Build Out-of-Plane Angles
        IAtomO(3,1,NGicO)=KAt
        IAtomO(4,1,NGicO)=LAt
        CoefO(1,NGICO)=1.0d0
-   10 continue  
-      if(IPrint.gt.0) write(IOut,'(/,I5,'' Out-of-Plane GNICS'')') 
+   10 continue
+      if(IPrint.gt.0) write(IOut,'(/,I5,'' Out-of-Plane GNICS'')')
      $  NGICO
       if(NGICO.eq.0) return
       Do 20 IGICO=1,NGICO
        NREDO=NTermO(IGICO)
        Do 30 IREDO=1,NREDO
         I1=IAtomO(1,IRedO,IGICO)
-        I2=IAtomO(2,IRedO,IGICO) 
+        I2=IAtomO(2,IRedO,IGICO)
         I3=IAtomO(3,IRedO,IGICO)
         I4=IAtomO(4,IRedO,IGICO)
         Coef=CoefO(IRedO,IGICO)
@@ -713,7 +713,7 @@ C IO
       Real*8 BndOrd,EAn(*)
 C Local
       Integer I1,J1,K1,L1,JI,JJ,KK,KL,IMnI,IAvI,IMxI,IMnL,IAvL,IMxL
-      Integer IBJ(3),IBL(3) 
+      Integer IBJ(3),IBL(3)
       Real*8 ArMax1,ArMin1,EMnI,EAvI,EMxI,EMnL,EAvL,EMxL,Tresh
       Real*8 ETJ(3),ETK(3)
 C IAt is the atom bonded to JAt with the largest EAn
@@ -730,7 +730,7 @@ C If JAt (KAt) has three bonds and two bonded atoms are equal IAt (LAt) is the t
       Call AClear(3,ETK)
       I1=IBond(1,J1)
       If(I1.eq.K1) I1=IBond(2,J1)
-      If(NBJ.gt.2) then 
+      If(NBJ.gt.2) then
        ji=0
        do 10 jj=1,NBJ
         I1=IBond(jj,J1)
@@ -750,7 +750,7 @@ C If JAt (KAt) has three bonds and two bonded atoms are equal IAt (LAt) is the t
          NEqAt(1,ILen)=3
         ElseIf(Abs(EMnI-EAvI).lt.tresh) then
          NEqAt(1,ILen)=2
-        ElseIf(Abs(EMxI-EAvI).lt.tresh) then 
+        ElseIf(Abs(EMxI-EAvI).lt.tresh) then
          NEqAt(1,ILen)=2
          I1=IBJ(IMnI)
         EndIf
@@ -793,18 +793,18 @@ C If JAt (KAt) has three bonds and two bonded atoms are equal IAt (LAt) is the t
       Subroutine Gen3At(Iout,IPrint,MxBond,MaxAtA,MxTrmA,ICoord,IAt,
      $  IAn,NBond,IBond,IatCyc,NTermA,IAtomA,CoefA)
       Implicit None
-C               
+C
 C Dimensions
       Integer MxBond, MaxAtA, MxTrmA
 C Input
-      Integer IOut,IPrint,NAng,ICoord,IAt,IAn(*),NBond(*) 
-      Integer IBond(MxBond,*),IAtCyc(*) 
+      Integer IOut,IPrint,NAng,ICoord,IAt,IAn(*),NBond(*)
+      Integer IBond(MxBond,*),IAtCyc(*)
 C Output
       Integer NTermA(*),IAtomA(MaxAtA,MxTrmA,*)
       Real*8 CoefA(MxTrmA,*)
 C Local
-      Integer JAt,KAt,LAt,ICycI,ICycJ,ICycK,ICycL,IProd,IAB,IBC 
-      Integer I1,I2,I3,I4,IMom1,IMom2,IMom3,IRMax1,IRMin1 
+      Integer JAt,KAt,LAt,ICycI,ICycJ,ICycK,ICycL,IProd,IAB,IBC
+      Integer I1,I2,I3,I4,IMom1,IMom2,IMom3,IRMax1,IRMin1
       Integer Mom(3),IM(3)
       Real*8 Den1,Den2
 C
@@ -818,8 +818,8 @@ C
       ICycL=IAtCyc(LAt)
       If(ICycI.ne.0.and.ICycJ.ne.0.and.ICycK.ne.0.and.ICycL.ne.0) return
       Mom(1)=IAn(JAt)
-      Mom(2)=IAn(KAt) 
-      Mom(3)=IAn(LAt) 
+      Mom(2)=IAn(KAt)
+      Mom(3)=IAn(LAt)
       IProd = Mom(1)*Mom(2)*Mom(3)
       IMom1  = IrMin1(Mom,3,.True.,IM(1))
       IMom3  = IrMax1(Mom,3,.True.,IM(3))
@@ -827,16 +827,16 @@ C
       IMom2  = Mom(IM(2))
       IAB = Abs(IMom1-IMom2)
       IBC = Abs(IMom2-IMom3)
-      If(IProd.eq.0) then 
+      If(IProd.eq.0) then
         Write(IOut,9999)
         Stop
       elseIf((IMom3-IMom1).eq.0) then
 C 3 equal substituents: use 1 different from 2 and 3
        I1=JAt
        I2=IAt
-       I3=KAt 
+       I3=KAt
        I4=LAt
-C 2 equal substituents (for 3 different consider equal the most similar) 
+C 2 equal substituents (for 3 different consider equal the most similar)
       elseif(IAB.lt.IBC) then
        I1=im(3)
        I2=IAt
@@ -864,8 +864,8 @@ C 2 equal substituents (for 3 different consider equal the most similar)
        IAtomA(1,3,ICoord)=LAt
        IAtomA(2,3,ICoord)=IAt
        IAtomA(3,3,ICoord)=KAt
-      endIf 
-      Icoord=ICoord+1 
+      endIf
+      Icoord=ICoord+1
       NTermA(ICoord)=2
       Den2=Sqrt(2.0d0)
       CoefA(1,ICoord)=1.0D0/Den2
@@ -884,7 +884,7 @@ C 2 equal substituents (for 3 different consider equal the most similar)
      $  ValTot,C,ImpDih,Clean)
 C the variables with a final P refer to primitives
       Implicit Real*8 (A-H,O-Z)
-      Logical DoBPCS,InvDst,ImpDih,Clean 
+      Logical DoBPCS,InvDst,ImpDih,Clean,PrtOrd
       Dimension NTerm(*),IAtom(MaxAtG,MaxTer,*),IPrim(MaxTer,*),ITPV(*)
       Dimension IAn(*),IFixG(*)
       Dimension Coef(MaxTer,*),ValTot(*),C(3,*)
@@ -892,17 +892,24 @@ C the variables with a final P refer to primitives
       Character CT*1,CType*5,LbVb*52,Lbl*9,Lbl1*6
       Data CType/'BALDO'/
       DAta LbVb/'SymDRockScisSciLWaggTwstAsyDEEeeT2xxT2yyT2zz B1GEEUU'/
-      Data NatG/2,3,4,4,4/      
+      Data NatG/2,3,4,4,4/
       pi = dacos(-1.d0)
-      ToDeg=1.80d+2/pi 
+      ToDeg=1.80d+2/pi
       If(NVar.lt.1) return
+      PrtOrd=IPrint.ge.0
+      IOutW=IOut
+      If(.not.PrtOrd) Then
+       IOutW=98
+       Open(IOutW,File='ordred.tmp',Status='Unknown')
+       Rewind(IOutW)
+      EndIf
       NAT=NAtG(Itp)
       CT=CType(ITp:ITp)
       IValP=0
       IJKL=0
       I3=0
-      I4=0 
-      Do 10 IGIC=1,NVar 
+      I4=0
+      Do 10 IGIC=1,NVar
        ValTot(IGic)=0.0d0
        Call LLinCl(Lbl)
        IValG=IGIC+Ini-1
@@ -914,7 +921,7 @@ C the variables with a final P refer to primitives
         If(ITLab.eq.0.or.ITLab.gt.10) then
          Lbl(1:7)='Stretch'
         ElseIf(ITLab.eq.1) then
-         Lbl(1:9)='XY2 S.Str' 
+         Lbl(1:9)='XY2 S.Str'
         ElseIf(ITLab.eq.2) then
          Lbl(1:9)='XY2 A.Str'
         ElseIf(ITLab.eq.3) then
@@ -930,11 +937,11 @@ C the variables with a final P refer to primitives
         ElseIf(ITLab.eq.8) then
          Lbl(1:9)='Ring BDef'
         ElseIf(ITLab.eq.9) then
-         Lbl(1:)=' 1/R' 
+         Lbl(1:)=' 1/R'
         ElseIf(ITLab.eq.10) then
          Lbl(1:6)='H-bond'
         EndIf
-       EndIf 
+       EndIf
        If(ITp.eq.2) then
         If(ITLab.eq.0.or.ITLab.gt.16) then
          Lbl(1:4)='Bend'
@@ -972,7 +979,7 @@ C the variables with a final P refer to primitives
          Lbl(1:9)='Butterfly'
         EndIf
        EndIf
-C       write(IOut,'('' '')') 
+C       write(IOut,'('' '')')
        Do 20 IRED=1,NRED
         I1=IAtom(1,IRed,IGIC)
         I2=IAtom(2,IRed,IGIC)
@@ -981,10 +988,10 @@ C       write(IOut,'('' '')')
         If(IGIC.eq.1) then
          IValP=IRed
          IJKL=IValP
-        else 
+        else
          call FndRed(MaxAtG,MaxTer,I1,I2,I3,I4,IGIC,IJKL,NTerm,IPrim,
      $    IAtom)
-        endif 
+        endif
 C       Write(IOut,'(''IJKL='',I3)') IJKL
         If(IJKL.eq.0) then
          IValP=IValP+1
@@ -994,54 +1001,54 @@ C       Write(IOut,'(''IJKL='',I3)') IJKL
         CoefP=Coef(IRed,IGIC)
         IValR=IJKL+IniP-1
         if(IPunch.ne.0) Write(IPunch,'(2I4,F10.5)') IValG,IValR,CoefP
-        If(Itp.eq.1) then 
-         Value=Distan(C,I1,I2,0) 
+        If(Itp.eq.1) then
+         Value=Distan(C,I1,I2,0)
          ValTot(IGIC)=ValTot(IGIC)+Value
          if(IRed.eq.1) then
-          write (IOUT,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
      $     2I4,12X,''Value='',F8.4,4X,'' Coeff.='',F8.3,3X,A6)')IValG,
      $     Lbl(1:9),IValR,I1,I2,Value,CoefP,Lbl1
          Else
-          write (IOUT,'(18X,'' Prim:'',I3,4X,''Atoms'',2I4,12X,
+          write (IOutW,'(18X,'' Prim:'',I3,4X,''Atoms'',2I4,12X,
      $      ''Value='',F8.4,4X,'' Coeff.='',F8.3)')IValR,I1,I2,
      $      Value,CoefP
          EndIf
         ElseIf(ITp.eq.2) then
          ValRad=ValAng(C(1,I1),C(1,I2),C(1,I3))
-         ValTot(IGIC)=ValTot(IGIC)+CoefP*ValRad 
+         ValTot(IGIC)=ValTot(IGIC)+CoefP*ValRad
          Value=ValRad*ToDeg
          if(IRed.eq.1) then
-          write (IOUT,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
      $      3I4,8X,''Value='',F8.3,4X,'' Coeff.='',F8.3,3X,A6)')
      $      IValG,Lbl(1:9),IValR,I1,I2,I3,Value,CoefP,LBL1
          Else
-          write (IOUT,'(18X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(18X,'' Prim:'',I3,4X,''Atoms'',
      $      3I4,8X,''Value='',F8.3,4X,'' Coeff.='',F8.3)') IValR,I1,
      $      I2,I3,Value,CoefP
          EndIf
-        ElseIf(ITp.eq.3) then 
+        ElseIf(ITp.eq.3) then
          ValRad=ValAng(C(1,I1),C(1,I2),C(1,I3))
          ValTot(IGIC)=ValTot(IGIC)+CoefP*ValRad
          Value=ValRad*ToDeg
          if(IRed.eq.1) then
-          write (IOUT,'(I3,'' Lin.Bending   '','' Prim:'',I3,4X,
+          write (IOutW,'(I3,'' Lin.Bending   '','' Prim:'',I3,4X,
      $     ''Atoms'',4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3,
      $     3X,A6)') IValG,IValR,I1,I2,I3,I4,Value,CoefP,LBL1
         Else
-          write (IOUT,'(18X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(18X,'' Prim:'',I3,4X,''Atoms'',
      $      4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3)')IValR,
      $      I1,I2,I3,I4,Value,CoefP
          EndIf
-        ElseIf(ITp.eq.4) then 
+        ElseIf(ITp.eq.4) then
          ValRad=Dihed(C(1,I1),C(1,I2),C(1,I3),C(1,I4))
          ValTot(IGIC)=ValTot(IGIC)+CoefP*ValRad
          Value=ValRad*ToDeg
          if(IRed.eq.1) then
-          write (IOUT,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(I3,3X,A9,3X,'' Prim:'',I3,4X,''Atoms'',
      $      4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3,3X,A6)')
      $      IValG,Lbl(1:9),IValR,I1,I2,I3,I4,Value,CoefP,LBL1
          else
-          write (IOUT,'(18X,'' Prim:'',I3,4X,''Atoms'',
+          write (IOutW,'(18X,'' Prim:'',I3,4X,''Atoms'',
      $     4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3)')IValR,
      $     I1,I2,I3,I4,Value,CoefP
          EndIf
@@ -1052,20 +1059,20 @@ C       Write(IOut,'(''IJKL='',I3)') IJKL
          Value=ValRad*ToDeg
          if(IREd.eq.1) then
           If(ImpDih) then
-           write (IOUT,'(I3,'' Improper Dih. '','' Prim:'',I3,4X,
+           write (IOutW,'(I3,'' Improper Dih. '','' Prim:'',I3,4X,
      $      ''Atoms'',4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3,
      $      3X,A6)') IValG,IValR,I2,I1,I4,I3,Value,CoefP,LBL1
           Else
-           write (IOUT,'(I3,'' Out-of-Plane  '','' Prim:'',I3,4X,
+           write (IOutW,'(I3,'' Out-of-Plane  '','' Prim:'',I3,4X,
      $      ''Atoms'',4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3,
      $      3X,A6)') IValG,IValR,I1,I2,I3,I4,Value,CoefP,LBL1
-          EndIf 
+          EndIf
          Else
           If(ImpDih) then
            write(IOut,'('' Combinations of Improper Dihedrals NYI'')')
            Stop
           Else
-           write (IOUT,'(18X,'' Prim:'',I3,4X,
+           write (IOutW,'(18X,'' Prim:'',I3,4X,
      $      ''Atoms'',4I4,4X,''Value='',F8.3,4X,'' Coeff.='',F8.3)')
      $      IValR,I1,I2,I3,I4,Value,CoefP
           EndIf
@@ -1076,7 +1083,7 @@ C       Write(IOut,'(''IJKL='',I3)') IJKL
         EndIf
   20   continue
 C Clean values close to n*pi
-       If(ITp.ne.1.and.Clean) then 
+       If(ITp.ne.1.and.Clean) then
         ThrAng=2.0d-3
         ValT1=Abs(ValTot(IGIC))
         Test0=ValT1
@@ -1084,19 +1091,20 @@ C Clean values close to n*pi
         Test2=Abs(ValT1-2.0*pi)
         If(Test0.lt.ThrAng) then
          Valt0=0.0d0
-        ElseIf(Test1.lt.ThrAng) then 
+        ElseIf(Test1.lt.ThrAng) then
          ValT0=Pi
-        ElseIf(Test2.lt.ThrAng) then 
+        ElseIf(Test2.lt.ThrAng) then
          ValT0=0.0d0
         Else
          ValT0=ValTot(IGIC)
         EndIf
         ValTot(IGic)=ValT0
        EndIf
-       If(NRed.gt.1)Write(IOut,'(6X,''Normalized GIC Value ='',F8.3)')
+       If(NRed.gt.1)Write(IOutW,'(6X,''Normalized GIC Value ='',F8.3)')
      $  ValTot(IGic)
-       write(IOut,'(100(''-''))')
+       write(IOutW,'(100(''-''))')
   10  continue
+      If(.not.PrtOrd) Close(IOutW,Status='Delete')
       return
       end
 
@@ -1194,7 +1202,7 @@ C Clean values close to n*pi
       end
 *Deck CySalc
       Subroutine CySalc(IOut,IPrint,MxAt,MxAtCy,MxTrm,NAtoms,NLen,
-     $  NLenR,NatC,ICAt,IAtCyc,IAtmBr,IAtomB,NTermB,ITVB,CoefB,EAn,C) 
+     $  NLenR,NatC,ICAt,IAtCyc,IAtmBr,IAtomB,NTermB,ITVB,CoefB,EAn,C)
       Implicit Real*8 (A-H,O-Z)
       Logical DoJac
       Dimension NatC(*),ICAt(MxAtCy,*)
@@ -1241,7 +1249,7 @@ C V(I4)=WA or Scratch
 C V(I5)=Scr
        I5=I4+6*NBCyc
        I6=I5+NBCyc*(NBCyc+1)/2+1
-      EndIf 
+      EndIf
       If(I6.gt.1000) then
        write(IOut,'('' Outside Memory in CySalc: I6='',I10)') I6
        Stop
@@ -1255,7 +1263,7 @@ C Build nearest neighbour matrix (Square for Jacobi and Lower Triangle for HQRII
        I2At=JBb(INN)
        Do 30 JNN=1,INN
         J1At=IBb(JNN)
-        J2At=JBb(JNN) 
+        J2At=JBb(JNN)
         LInd1=(INN-1)*NBCyc+JNN
         Lind2=(JNN-1)*NBCyc+INN
         If(.not.DoJac)LInd1=(INN-1)*INN/2+JNN
@@ -1266,8 +1274,8 @@ C Build nearest neighbour matrix (Square for Jacobi and Lower Triangle for HQRII
         If(I1At.ne.J1At.and.I1At.ne.J2At) then
          If(I2At.ne.J1At.and.I2At.ne.J2At) go to 30
         EndIf
-        V(LInd1)=2.0d-01            
-        If(DoJac) V(LInd2)=2.0d-01  
+        V(LInd1)=2.0d-01
+        If(DoJac) V(LInd2)=2.0d-01
    30  continue
    20 continue
       If(IPrint.gt.1) then
@@ -1276,18 +1284,18 @@ C Build nearest neighbour matrix (Square for Jacobi and Lower Triangle for HQRII
         If(DoJac) then
          Ini=(I-1)*NBCyc+1
          Iend=Ini+NBCyc-1
-        Else  
+        Else
          Ini=(I-1)*I/2+1
          Iend=ini+i-1
         EndIf
-        Write(IOut,'(6F10.5)') (V(J),J=ini,iend) 
-  110  continue       
+        Write(IOut,'(6F10.5)') (V(J),J=ini,iend)
+  110  continue
       EndIf
       If(DoJac) then
        ThrDgn=0.0d0
 C      call Jacobi(IOut,IPrint,.true.,.true.,0,-1,ThrDgn,NBCyc,0,NBCyc,
 C    $   V(I1),V(I2),NBCyc,NBCyc,V(I3))
-C      call Eigen(V(I1),V(I3),NBCyc,0) 
+C      call Eigen(V(I1),V(I3),NBCyc,0)
        do 120 ii=1,NBCyc
         Lind=ii*NBCyc
         V(I2+ii-1)=V(I1+Lind-1)
@@ -1302,7 +1310,7 @@ C      call Eigen(V(I1),V(I3),NBCyc,0)
       EndIf
       If(IPrint.gt.1) then
        do 100 I=1,NBCyc
-        Write(IOut,'(/,'' EigenValue:'',F12.5)') V(I2+I-1) 
+        Write(IOut,'(/,'' EigenValue:'',F12.5)') V(I2+I-1)
         Ini=(I-1)*NBCyc
         IEnd=Ini+NBCyc-1
         Write(IOut,'(6F10.5)') (V(I3+ii),ii=Ini,IEnd)
@@ -1312,17 +1320,17 @@ C      call Eigen(V(I1),V(I3),NBCyc,0)
        ILen=IH+NLen
        NTermB(ILen)=NBCyc
        ITVB(ILen)=7
-       Ini=(IH-1)*NBCyc 
+       Ini=(IH-1)*NBCyc
        If(IPrint.gt.0) write(IOut,'(/,''Ring Breath'',I3,''('',I3,
      $   '')'')') IH,ILen
        Do 50 JH=1,NBCyc
         IEVec=I3+Ini+JH-1
         CoefB(JH,ILen)=V(IEVec)
         IAtomB(1,JH,ILen)=IBb(JH)
-        IAtomB(2,JH,ILen)=JBb(JH) 
+        IAtomB(2,JH,ILen)=JBb(JH)
         If(IPrint.gt.0) write(IOut,'('' Term'',I2,'' Atoms'',2I3,
      $    '' Coeff.'',F10.5)') JH,IBB(JH),JBB(JH),V(IEVec)
-   50  Continue       
+   50  Continue
    40 Continue
       NLen=NLen+NBCyc
       Return
@@ -1402,7 +1410,7 @@ C     First check the off-diagonal elements:
       Do 50 J = JSt, N
        Do 55 I = 1, Min(J-1,IEnd)
         ATop = Max(ATop,Abs(A(I,J)))
-   55  Continue 
+   55  Continue
    50 Continue
       OffTop = ATop
       Done = Small / Float(10)
@@ -1473,13 +1481,13 @@ C
                  U = A(I,JCol)
                  A(I,IRow) = C*T-S*U
                  A(I,JCol) = S*T+C*U
-  150           Continue 
+  150           Continue
                 Do 170 I = (IRow+2), JCol
                  T = A(I-1,JCol)
                  U = A(IRow,I-1)
                  A(I-1,JCol) = S*U+C*T
                  A(IRow,I-1) = C*U-S*T
-  170           Continue 
+  170           Continue
                 A(JCol,JCol) = S*AIJ+C*AJJ
                 A(IRow,IRow) = C*A(IRow,IRow)-S*(C*AIJ-S*AJJ)
                 Do 190 J = JCol, N
@@ -1487,7 +1495,7 @@ C
                  U = A(JCol,J)
                  A(IRow,J) = C*T-S*U
                  A(JCol,J) = S*T+C*U
-  190           Continue 
+  190           Continue
 C
 C               Rotation completed.
 C
@@ -1539,7 +1547,7 @@ C
      $  Write(IOut,1010) N, NO, IConv, OffTop, ATop, Done, NSweep, NTot
       Return
       End
-*Deck TstHuk 
+*Deck TstHuk
       Subroutine TstHuk(IOut)
       Implicit Real*8 (A-H,O-Z)
       Dimension H(6,6),EVec(6,6),EVal(6)
@@ -1553,8 +1561,8 @@ C
         H(I,6)=0.2d0
         H(6,I)=0.2d0
        endif
-   10 continue   
-      write(IOut,'(/''Puffo: H matrix'')') 
+   10 continue
+      write(IOut,'(/''Puffo: H matrix'')')
       do 15 i=1,6
        write(IOut,'(6F10.5)') (H(I,J),J=1,6)
    15 continue
@@ -1562,13 +1570,13 @@ C
         IConv = 8
         Zero = 0.0d0
         Call Jacobi(IOut,IPrint,.True.,.True.,IConv,0,Zero,6,0,6,H,
-     $    EVal,6,6,EVec) 
+     $    EVal,6,6,EVec)
       do 20 I=1,6
        write(IOut,'(''Eigenvalue'',F10.5)') EVal(i)
        write(IOut,'(6F10.5)') (EVec(J,I),J=1,6)
    20 continue
       return
-      end   
+      end
 *Deck PrtOut
       Subroutine PrtOut(IOut,MaxAtG,MaxTer,NVar,NTT,NTerm,IAtom,ITPV,
      $  IFixO,Coef,ValTot,C,ImpDih,PrtVal)
@@ -1589,7 +1597,7 @@ C
         IAt2=IAtom(2,1,IVar)
         IAt3=IAtom(3,1,IVar)
         IAt4=IAtom(4,1,IVar)
-C       Value1=OutAngOLd(C(1,IAt2),C(1,IAt1),C(1,IAt3),C(1,IAt4))*ToDeg  
+C       Value1=OutAngOLd(C(1,IAt2),C(1,IAt1),C(1,IAt3),C(1,IAt4))*ToDeg
         If(ImpDih) then
          Value=Dihed(C(1,IAt2),C(1,IAt1),C(1,IAt4),C(1,IAt3))*ToDeg
          If(IFixO(IVar).eq.0) then
@@ -1706,16 +1714,16 @@ C
  1030 Format(' PhiP',A4,'=ATAN2(RPck',A4,',RPck',A4,
      $ ')')
       End
-*Deck PrtBnd 
+*Deck PrtBnd
       Subroutine PrtBnd(IOut,MaxAtG,MaxTer,InvDst,NVar,NTT,NTerm,IAtom,
      $  ITPV,IFixB,IAn,Coef,Valtot,C,PrtVal)
       Implicit Real*8 (A-H,O-Z)
       Logical InvDst,PrtVal
-      Character StrVar*4 
+      Character StrVar*4
       Dimension NTerm(*),IAtom(MaxAtG,MaxTer,*),ITPV(*),IAn(*),IFixB(*)
       Dimension Coef(MaxTer,*),ValTot(*),C(3,*)
 C Set for MxVar=999
-      If(NVar.eq.0) return 
+      If(NVar.eq.0) return
       do 100 IVar=1,NVar
        Call IntoCh(IVar,StrVar(1:4),Len4)
        Value=ValTot(IVar)
@@ -1728,7 +1736,7 @@ C Set for MxVar=999
          If(.not.InvDst) then
           If(PrtVal) then
           write(IOut,'('' Stre'',A4,''(Value='',F7.4,'')=R('',I3,'','',
-     $      I3,'')'')') StrVar(1:4),Value,IAt,JAt       
+     $      I3,'')'')') StrVar(1:4),Value,IAt,JAt
           Else
            write(IOut,'('' Stre'',A4,'' =R('',I3,'','',
      $       I3,'')'')') StrVar(1:4),IAt,JAt
@@ -1763,7 +1771,7 @@ C      EndIf
        write(IOut,'('' Stre'',A4,''=['',F7.4,''*R('',I3,'','',I3,
      $    '')'')',advance='no') StrVar(1:4),Coef(1,IVar),
      $    (IAtom(ii,1,IVar),ii=1,2)
-       if(NTrmI.gt.2) then 
+       if(NTrmI.gt.2) then
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
           write(IOut,'(''+'',F6.4,''*R('',I3,'','',I3,'')'')',
@@ -1781,7 +1789,7 @@ C      EndIf
         write(IOut,'(''-'',F6.4,''*R('',I3,'','',I3,'')]'')')
      $     DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,2)
        endif
-  100 continue    
+  100 continue
       return
       end
 *Deck PrtAng
@@ -1796,7 +1804,7 @@ C      EndIf
       pi=4.0d0*ATan(1.0d0)
       ToDeg=1.80d+2/pi
 C Set for MxVar=999
-      If(NVar.eq.0) return 
+      If(NVar.eq.0) return
       do 100 IVar=1,NVar
        Call IntoCh(IVar,StrVar(1:4),Len4)
        If(ITPV(IVar).eq.0) then
@@ -1807,9 +1815,9 @@ C Set for MxVar=999
         Lbl(1:4)='RDef'
        ElseIf(ITPV(IVAr).eq.15) then
         Lbl(1:4)='ByBr'
-       ElseIf(ITPV(IVAr).eq.16) then 
+       ElseIf(ITPV(IVAr).eq.16) then
         Lbl(1:4)='Spir'
-       Else 
+       Else
         InLb=(ITPV(IVAR)-1)*4+1
         Lbl(1:4)=LbVb(InLb:InLb+3)
        EndIf
@@ -1817,17 +1825,17 @@ C Set for MxVar=999
        NTrmI=NTerm(IVar)
        Value=ValTot(IVar)
        If(NTrmI.eq.1) then
-        Value=ValTot(IVar)*ToDeg       
+        Value=ValTot(IVar)*ToDeg
         IAt1=IAtom(1,1,IVar)
        IAt2=IAtom(2,1,IVar)
        IAt3=IAtom(3,1,IVar)
-C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg                
+C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
         If(ITPV(IVar).gt.16) then
          Lbl(1:4)='HCAn'
         Else
          Lbl(1:4)='Bend'
         EndIf
-        If(IFixA(IVar).eq.0) then 
+        If(IFixA(IVar).eq.0) then
          If(PrtVal) then
            write(IOut,'(1X,A4,A4,''(Value='',F10.5,'') = A('',I3,
      $     '','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),Value,
@@ -1847,7 +1855,7 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
      $     I3,'','',I3,'','',I3,'')'')') Lbl(1:4),StrVar(1:4),
      $     IAt1,IAt2,IAt3
          EndIf
-        EndIf 
+        EndIf
        go to 100
        EndIf
        If(IFixA(IVar).eq.0) then
@@ -1864,14 +1872,14 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
         If(PrtVal) then
          write(IOut,'(1X,A4,A4,''(Frozen,Value='',F8.5,'')=['',F8.5,
      $    ''*A('',2(I3,'',''),I3,'')'')',advance='no')LBl(1:4),
-     $    StrVar(1:4),Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3)   
+     $    StrVar(1:4),Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3)
         Else
          write(IOut,'(1X,A4,A4,''(Frozen)=['',F8.5,
      $    ''*A('',2(I3,'',''),I3,'')'')',advance='no')LBl(1:4),
      $    StrVar(1:4),Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3)
-        EndIf 
+        EndIf
        EndIf
-       if(NTrmI.gt.2) then 
+       if(NTrmI.gt.2) then
         do 110 i4=2,NTrmI-1
          if(Coef(i4,IVar).gt.0.d0) then
           write(IOut,'(''+'',F12.8,''*A('',2(I3,'',''),I3,'')'')',
@@ -1889,7 +1897,7 @@ C       Value=ValAng(C(1,IAt1),C(1,IAt2),C(1,IAt3))*ToDeg
         write(IOut,'(''-'',F12.8,''*A('',2(I3,'',''),I3,'')]'')')
      $     DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3)
        endif
-  100 continue    
+  100 continue
       return
       end
 *Deck PrtLAn
@@ -1940,7 +1948,7 @@ C Set for MxVar=999
        EndIf
        If(PrtVal) then
         write(IOut,'('' LGIC'',A4,''(Value='',F7.4,'') =['',F12.8,
-     $   ''*L('',4(I3,'',''),I3,'')'')',advance='no')StrVar(1:4), 
+     $   ''*L('',4(I3,'',''),I3,'')'')',advance='no')StrVar(1:4),
      $   Value,Coef(1,IVar),(IAtom(ii,1,IVar),ii=1,3),I4,I5
        Else
         write(IOut,'('' LGIC'',A4,'' =['',F12.8,
@@ -1970,7 +1978,7 @@ C Set for MxVar=999
      $    DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,3),
      $    I4,I5
        endif
-  100 continue   
+  100 continue
       return
       end
 *Deck PrtDih
@@ -1997,7 +2005,7 @@ CENZO
        ElseIf(ITpV(IVar).eq.-2) then
         If(IPerD(IVar).eq.1) then
          NStep=1
-        EndIf       
+        EndIf
        ElseIf(ITpV(IVar).eq.-3) then
         Step=120.0D0
         If(IPerD(IVar).eq.2) then
@@ -2005,7 +2013,7 @@ CENZO
         ElseIf(IPerD(IVar).eq.1) then
          NStep=2
         EndIf
-       EndIf 
+       EndIf
        If(.not.Clean) ValRef=Value
        If(ITpV(IVar).eq.1) then
         If(.not.PrtRingInt) go to 100
@@ -2035,8 +2043,8 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
      $     3('','',I3),'')'')')StrVar(1:4),IAt1,IAt2,IAt3,IAt4
          EndIf
         Else
-         If(DoScan.and.NStep.gt.0) then  
-          IScan=IScan+1       
+         If(DoScan.and.NStep.gt.0) then
+          IScan=IScan+1
           write(IOut,'('' Scan'',A4,''(Value='',F10.5,'', NSteps='',
      $      I2,'', StepSize='',F5.1,'') = D('',I3,3('','',I3),'')'')')
      $      StrVar(1:4),ValRef,NStep,Step,IAt1,IAt2,IAt3,IAt4

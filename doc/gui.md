@@ -17,9 +17,9 @@ steps receive this metadata from the schema rather than reassigning symmetry.
 
 The semiexperimental dashboard exposes the same coordinate-model choice as the
 CLI. `gic` is the default and uses GICForge-generated totally symmetric GICs.
-`cartesian_symmetry` needs no Hessian and no GIC B matrix: it removes
-translations/rotations from the Cartesian displacement space, symmetry-adapts
-it, and fits only totally symmetric Cartesian directions. The final report
+`cartesian_symmetry` calls GICForge `SYCART`, removes translations/rotations
+from that symmetrized Cartesian displacement space, and fits only totally
+symmetric Cartesian directions. The final report
 still writes primitive bond lengths, angles and dihedrals with propagated
 errors.
 

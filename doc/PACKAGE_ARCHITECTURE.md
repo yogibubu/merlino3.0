@@ -83,6 +83,7 @@ Default GIC model:
 ```text
 Cartesian parent geometry
   -> merlino_gic.define_gics_from_cartesian(symmetrize=True)
+  -> GICForge post-pruning GICSYM schema/manifest
   -> totally symmetric frozen GIC subspace
   -> analytic B / Cartesian projector as needed
   -> semiexperimental least-squares refinement
@@ -93,6 +94,7 @@ Optional symmetry-Cartesian model:
 
 ```text
 Cartesian parent geometry
+  -> GICForge SYCART symmetrized Cartesian coordinates
   -> translations/rotations projected out
   -> Cartesian displacement basis with assigned irreps
   -> totally symmetric symmetry-Cartesian subspace
@@ -103,6 +105,8 @@ Cartesian parent geometry
 The two SEfit coordinate models share observations, correction conventions,
 parameter classes, primitive constraints, covariance analysis and reporting.
 Only the working-coordinate basis and Cartesian update map differ.
+Neither model regenerates coordinates inside SEfit: both call the public
+GICForge API and consume the frozen post-pruning schema or SYCART coordinates.
 
 Reusable SEfit submodules:
 

@@ -1145,6 +1145,7 @@ def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
 
         assert len(definition.names) == definition.u_matrix.shape[1]
         assert "Initial GNIC coordinate summary (pre-pruning)" in provout
+        assert "Out-of-plane candidates before pruning:" in provout
         assert "Out-Pl." in provout
         if "RPck" in final_summary:
             assert "QPck" in final_summary
@@ -1180,6 +1181,9 @@ def test_gicforge_gicsym_symmetrizes_anthracene_oop_coordinates(tmp_path):
     assert "Symmetrized GIC summary from GICSYM" in provout
     assert "Symmetrized coordinate counts:" in provout
     assert "Out-of-plane=" in provout
+    pre_pruning = provout.split("Type-local residual GIC redundancy pruning", 1)[0]
+    assert "Coordinate definitions are printed after pruning only." in pre_pruning
+    assert " Prim:" not in pre_pruning
     assert any(marker in gauin for marker in ("AgStr", "B1g", "B2u", "B3u"))
     assert set(definition.irreps) <= {"Ag", "B1g", "B2g", "B3g", "Au", "B1u", "B2u", "B3u"}
     assert "UNK" not in definition.irreps

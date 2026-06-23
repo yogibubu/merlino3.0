@@ -10,7 +10,7 @@ C MaxEl  = Number of different elements
 C MxScr  = Dimension of Scratch Array
 C MxAt   = Maximum Number of Atoms
 C MaxNZ  = Maximum Number of ZMatrix Elements
-C MxBnd  = Maximum coordination 
+C MxBnd  = Maximum coordination
 C MxBox  = Maximum number of boxes for new connectivity
 C MxKwd  = Maximum Number of KeyWords
 C LenPhy = Number of Physical Constants
@@ -24,7 +24,7 @@ C MxPot  = Max Terms in Potential Fitting
       Parameter(MxScr=100000,MxAt=1000,MxBnd=10,MxKwd=50,LenPhy=30)
       Parameter(MxGNIC=1000,MxTrm=45,MxAtP=4,MxCyc=20,MxAtCy=10)
       Parameter(MxFrg=100,MxAtFr=30,MxAtB=100,MaxNZ=1000,MxBox=1000)
-      Parameter(MxPot=20)  
+      Parameter(MxPot=20)
       Character*80 FilNam,InFil,OutFil,GauKwd,Title,React,LinScr
       Character*20 StrInp
 CENZO
@@ -43,7 +43,7 @@ CENZO
       Logical UsedPrim
       Logical TstAng,TTest,Error,PrtVal
       Dimension IEl(0:MaxEl)
-      Dimension IScr(MxScr) 
+      Dimension IScr(MxScr)
       Dimension Scr(MxScr)
 C Dimensions for Atom Properties (including Coordinates)
       Dimension IAn(MxAt),IFrag(MxAt)
@@ -123,12 +123,12 @@ C Input and Output Files are wayin and wayout
       Rewind(IOut)
 C which version of physical constants
       IOpt=2010
-C Set physical constants and treshold for linear angles in radiants 
+C Set physical constants and treshold for linear angles in radiants
 C (171.9 degrees)
       Call PhyFil(IOpt,LenPhy,PhyCon)
       pi=4.0d0*ATan(1.0d0)
       ToDeg=1.80d+2/pi
-      TreshL=3.0d0 
+      TreshL=3.0d0
 C Set Atomic Symbols
       call FillEl(0,MaxEl,IEl)
 C Read keywords
@@ -213,7 +213,7 @@ C Print Coordinates and Rotational Constants
       Else
        Write(IOut,'(4X,''Atom'',4X,''Pauling EAN  Topolog.EAN'',6X,
      $  ''X'',10X,''Y'',12X,''Z'',5X,''Fragment'')')
-      EndIf 
+      EndIf
       Do 5 IAt=1,NAtoms
        If(NFrag.eq.1) then
         Write(IOut,'(I5,2X,A2,2(4X,F8.5),3F12.5)') IAt,IEl(IAn(IAt)),
@@ -240,7 +240,7 @@ C Print interatomic distances
       write(IOut,'('' '')')
 C Make partition functions
       call Therm1(In,IOut,IPrint,PhyCon,Multip,NAtoms,Linear,
-     $ TotWt,ZPE,RTemp,DBVib,Frq)         
+     $ TotWt,ZPE,RTemp,DBVib,Frq)
 C Make primitive bond lengths and valence angles including linear ones
       NLenR=0
       NAngR=0
@@ -255,12 +255,12 @@ C Make primitive bond lengths and valence angles including linear ones
        do 10 il=1,NLenR
         IAt=IAtmBr(1,1,Il)
         JAt=IAtmBr(2,1,Il)
-        R0IJ(IL)=Distan(C,IAt,JAt,0)   
+        R0IJ(IL)=Distan(C,IAt,JAt,0)
         RBIJ(IL)=RBPCS(IAt,JAt,IAn,R0IJ(IL))
-        write(IOut,'(2I5,7X,F8.5,7X,F8.5)') IAt,JAt,R0IJ(IL),RBIJ(IL) 
+        write(IOut,'(2I5,7X,F8.5,7X,F8.5)') IAt,JAt,R0IJ(IL),RBIJ(IL)
    10  continue
        write(IOut,'('' '')')
-      endif 
+      endif
 C Make primitive dihedrals
       NDihR=0
       IPrDih=0
@@ -292,7 +292,7 @@ C Compute B matrix (not for G16)
 C      Call DrvBG(IOut,IPrint,Linear,DoBPCS,DoneC,MxAtP,MxTrm,NAtoms,
 C    $   NLenR,NAngR,NLAngR,NOuplR,NDihR,NTotR,IAn,IAtmBR,IAtmAR,IAtmLR,
 C    $   IAtmDR,IAtmOR,NTermB,NTermA,NTermL,NTermD,NTermO,C,Atmass,R0IJ,
-C    $   RBIJ,CoefB,CoefA,CoefL,CoefD,CoefO,Scr,Iscr) 
+C    $   RBIJ,CoefB,CoefA,CoefL,CoefD,CoefO,Scr,Iscr)
       Call PCSGeo(IOut,IPrint,Linear,DoneC,MxAtP,MxTrm,NAtoms,NLenR,
      $  NAngR,NLAngR,NOuplR,NDihR,NTotR,IAn,IAtmBR,IAtmAR,IAtmLR,
      $  IAtmDR,IAtmOR,NTermB,NTermA,NTermL,NTermD,NTermO,C,Atmass,R0IJ,
@@ -492,6 +492,8 @@ C
      $ '(14X, ''Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
       Write(IOut,'('' Candidates '',6I8)') NLen,NAng,NLAng,NDih,
      $  NOuPl,NTot
+      Write(IOut,'('' Out-of-plane candidates before pruning:'',I5)')
+     $ NOuPl
       UsedPrim=.False.
       If(NTot.lt.NTarget) then
        Write(IOut,'(/,'' GNIC candidate count below vibrational rank;'',
@@ -522,7 +524,7 @@ CENZO Print Information on Torsions
       enddo
       Call DrvTrs(IOut,IPrint,MxBnd,NAtoms,NLenR,IAn,IAtCyc,NBond,IBond,
      $IScr,EAn,C)
-CENZO 
+CENZO
 C Print results
       Write(IOut,'(/,I5,'' Atoms and'',I5,'' Internal Coordinates'')')
      $  NAtoms,NTarget
@@ -533,13 +535,17 @@ C Print results
       Write(IOut,'('' Non Redund.'',6I8,/)') NLen,NAng,NLAng,NDih,
      $  NOuPl,NTot
       NRed=NTot-NTarget
+      IPrOrd=IPrint
+      If(NRed.ne.0) IPrOrd=-1
       If(NRed.eq.0) then
        write(IOut,'('' All local redundancies have been '',
      $  ''Eliminated'',/)')
       else
        write(IOut,'('' Pre-pruning residual redundancies:'',I3,
-     $  '' (handled by type-preserving rank check)'',/)') NRed 
-      endif        
+     $  '' (handled by type-preserving rank check)'')') NRed
+       write(IOut,'('' Coordinate definitions are printed after '',
+     $  ''pruning only.'',/)')
+      endif
       NTT=0
       IVlt=0
 C Bond Lengths
@@ -552,17 +558,17 @@ C Bond Lengths
       IFill=0
       If(RigB) IFill=1
       Do 40 Ir=1,NLen
-       IFixB(Ir)=IFill        
+       IFixB(Ir)=IFill
    40 Continue
 C Stretchings remain primitive R(i,j) coordinates here.  Symmetry labels
 C are assigned later by the global GICForge symmetry pass.
-      call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,InvDst,NVar,
+      call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,IType,InvDst,NVar,
      $  Ini,IniP,NTermB,IAtomB,IPrimB,ITVB,IFixB,IAn,CoefB,ValTB,C,
      $  ImpDih,Clean)
 C Valence Angles
       IType=2
       Ini=NLen+1
-      NVar=NAng 
+      NVar=NAng
       IniP=NLenR+1
       NVarP=NAngR
       IFill=0
@@ -572,7 +578,7 @@ C Valence Angles
    50 Continue
       If(SyGNIC) call SymOneGICBlock(IOut,'Bend',MxAtP,MxTrm,2,
      $ NAng,NTermA,IAtomA,ITVA,IFixA,IAn,CoefA)
-      call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,.False.,
+      call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,IType,.False.,
      $ NVar,Ini,IniP,NTermA,IAtomA,IPrimA,ITVA,IFixA,IAn,CoefA,ValTA,C,
      $ ImpDih,Clean)
 C Linear Valence Angles
@@ -588,12 +594,12 @@ C Linear Valence Angles
    60 Continue
       If(SyGNIC) call SymOneGICBlock(IOut,'Linear bend',MxAtP,MxTrm,3,
      $ NLang,NTermL,IAtomL,ITVLA,IFixL,IAn,CoefL)
-      call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,IType,.False.,
+      call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,IType,.False.,
      $ NVar,Ini,IniP,NTermL,IAtomL,IPrimL,ITVLA,IFixL,IAn,CoefL,ValTL,C,
      $ ImpDih,Clean)
 C Dihedrals
       Itype=4
-      Ini=NLen+NAng+NLAng+1 
+      Ini=NLen+NAng+NLAng+1
       NVar=NDih
       IniP=NLenR+NAngR+NLAngR+1
       NVarP=NDihR
@@ -604,7 +610,7 @@ C Dihedrals
    70 Continue
       If(SyGNIC) call SymOneGICBlock(IOut,'Torsion',MxAtP,MxTrm,4,
      $ NDih,NTermD,IAtomD,ITVD,IFixD,IAn,CoefD)
-      call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
+      call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermD,IAtomD,IPrimD,ITVD,IFixD,IAn,CoefD,ValTD,C,
      $ ImpDih,Clean)
 C Out of Plane
@@ -621,7 +627,7 @@ C Out of Plane
 C     OOP combinations are not printed by PrtOut yet
 C     ("Combinations of Improper Dihedrals NYI"). Keep OOP primitives
 C     unchanged here; residual redundancies are still pruned by type below.
-      call OrdRed(IOut,IVlt,IPrint,MxAtP,MxTrm,DoBPCS,Itype,.False.,
+      call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
       call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
@@ -684,7 +690,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
 C Gaussian Input
       if(DoG16.or.DoGDV) then
        OPEN(IPunch,FILE='gauin',STATUS='UNKNOWN')
-       Rewind(IPunch) 
+       Rewind(IPunch)
        call SetGKw(IPunch,DoGNIC,SyGNIC,Loose,DoScan,ModPCS,IDeriv)
        Write(IPunch,'(/,A80,/)') Title
        Write(IPunch,'(2I3)') ICharg,Multip
@@ -711,7 +717,7 @@ C Linear Angles
 C Dihedral Angles
        Call PrtDih(IPunch,MxAtP,MxTrm,NDih,NTT,DoScan,NTermD,IAtomD,
      $   ITVD,IPerD,IFixD,CoefD,ValtD,C,Clean,PrtVal,.True.)
-C Out of Plane Angles(U) or Impr. Dihedrals (Only option in g16)      
+C Out of Plane Angles(U) or Impr. Dihedrals (Only option in g16)
        Call PrtOut(IPunch,MxAtP,MxTrm,NOuPl,NTT,NTermO,IAtomO,ITVO,
      $   IFixO,CoefO,ValtO,C,ImpDih,PrtVal)
 C Fragments
@@ -743,7 +749,7 @@ C     do 10 IAt=1,NAtoms
 C      write(IOut,'('' Atom'',I5,'' Ian ='',I3,'' EAn ='',F8.4,
 C    $   '' forms'',I2,'' bonds with atoms'',4I3)') IAt,IAn(IAt),
 C    $   EAn(IAt),NBond(IAt),(IBond(IB,IAt),IB=1,NBond(IAt))
-C 10  Continue 
+C 10  Continue
 C     Write(IOut,'('' IRing'')')
 C     Write(IOut,'(20I3)') (IRing(I),I=1,NAtoms)
 C     Write(IOut,'('' Atoms Involved in'',I5,'' Bonds'')') NLen
@@ -763,8 +769,8 @@ C     Write(IOut,'(2I3)') (Iatom(1,ILen),IAtom(2,ILen),ILen=1,NLen)
       OutFil=InFil(IStart:IEnd)
       OutFil(IEnd:IEnd)='.'
       OutFil(IEnd+1:IEnd+3)=Ext
-      Return 
-      End 
+      Return
+      End
 *Deck FndKwd
       Subroutine FndKwd(IOut,IPrint,ModPCS,IDeriv,CLine,Kwd,MxKwd)
       Implicit Real*8 (A-H,O-Z)
@@ -793,7 +799,7 @@ C     Write(IOut,'(2I3)') (Iatom(1,ILen),IAtom(2,ILen),ILen=1,NLen)
       do 10 i=1,NumKwd
        I1=Ini(i)
        If(I.eq.NumKwd) then
-        I2=I1+7 
+        I2=I1+7
        Else
         I2=Min0(I1+7,Ini(i+1)-1)
        EndIf
@@ -805,10 +811,10 @@ C the default is to normalize GNICs
        ElseIf(Test(1:3).eq.'G16') then
         Kwd(2)=.True.
         Kwd(7)=.True.
-       ElseIF(Test(1:3).eq.'GDV') then  
+       ElseIF(Test(1:3).eq.'GDV') then
         Kwd(3)=.True.
        ElseIf(Test(1:5).eq.'CUBIC') then
-        Kwd(4)=.True. 
+        Kwd(4)=.True.
        ElseIf(Test(1:7).eq.'NATURAL') then
         Kwd(5)=.True.
        ElseIf(Test(1:6).eq.'ECKART') then
@@ -850,7 +856,7 @@ C the default is to normalize GNICs
        ElseIf(Test(1:6).eq.'LOCSVD') then
         Kwd(22)=.True.
       ElseIf(Test(1:5).eq.'CLEAN') then
-        Kwd(31)=.true.  
+        Kwd(31)=.true.
        ElseIf(Test(1:5).eq.'LOOSE') then
         Kwd(33)=.true.
        ElseIf(Test(1:3).eq.'OPT') then
@@ -886,7 +892,7 @@ C      write(IOut,'(A80)') CLine
      $ '' Abundance '')')
       If(Kwd(6))  write(IOut,'('' ECKART    : Enforce Eckart'',
      $  '' Orientation'')')
-      If(Kwd(7))  write(IOut,'('' IMPDIH    : Use Improper Dihedrals'', 
+      If(Kwd(7))  write(IOut,'('' IMPDIH    : Use Improper Dihedrals'',
      $   '' in place of Out-of-plane Bends'')')
       If(Kwd(8))  write(IOut,'('' GNIC      : Make Generalized'',
      $  ''  Natural Internal Coords.'')')
@@ -929,13 +935,13 @@ C      write(IOut,'(A80)') CLine
       If(ModPCS.eq.3.or.error)write(IOut,'('' DPCS3     : DPCS3 Model'',
      $  '' (rev-dsd-PBEP86D4/3F12-)'')')
       If(IDeriv(1).eq.1.or.error)write(IOut,'('' OPT       : Geometry'',
-     $  ''  Optimization'')') 
+     $  ''  Optimization'')')
       If(IDeriv(2).eq.1.or.error)write(IOut,'('' FREQ      : Second'',
      $  '' Energy Derivatives'')')
       If(IDeriv(3).eq.1.or.error)write(IOut,'('' CUBIC     : Third'',
      $  '' Energy Derivatives'')')
       If(IDeriv(4).eq.1.or.error)write(IOut,'('' ANHARM    : Fourth'',
-     $  '' Energy Derivatives (up to ijkk'')')       
+     $  '' Energy Derivatives (up to ijkk'')')
       If(Error) STOP
       Return
       End
@@ -943,7 +949,7 @@ C      write(IOut,'(A80)') CLine
       Subroutine Therm1(In,IOut,IPrint,PhyCon,Multip,NAtoms,Linear,
      $ TotWt,ZPE,RTemp,DBVib,Frq)
       Implicit Real*8 (A-H,O-Z)
-      Logical Linear 
+      Logical Linear
       Save TRef, PRef
       Data Zero/0.0d0/,One/1.0d0/,Two/2.0d0/,Three/3.0d0/
       Data TRef/2.9815d2/, PRef/1.0d0/
@@ -986,7 +992,7 @@ C compute rotational partition function
        EndIf
       EndIf
       QVib=zero
-      QZVib=zero 
+      QZVib=zero
       QTot=QTran*QRot*QVib*QElec
       QZTot=QTran*QRot*QZVib*QElec
       write(IOut,'(/,5X,'' Partition Functions at '',F7.2,'' K'')') T
@@ -1001,7 +1007,7 @@ C compute rotational partition function
       write(IOut,'(5X,'' Total (from ZPE)    '',D12.5)') QZTot
       return
       end
-*Deck ChrNum 
+*Deck ChrNum
       Subroutine ChrNum(String,IStart,IEnd,Number)
       Implicit Real*8 (A-H,O-Z)
 C
@@ -1016,7 +1022,7 @@ C
       NTot=IEnd-IStart
       Number=0
       NPow=-1
-      do 10 ii=IEnd,IStart,-1 
+      do 10 ii=IEnd,IStart,-1
        if(String(ii:ii).eq.' ') goto 10
        found=.false.
        IBas=0
@@ -1028,7 +1034,7 @@ C
          found=.true.
         endif
    20  continue
-       Number=Number+IBas*10**NPow  
+       Number=Number+IBas*10**NPow
    10 continue
       return
       end
@@ -1047,14 +1053,14 @@ C
       ElseIf(String(1:5).eq.'DPCS3') then
        ModPCS=3
       EndIf
-      If(ModPCS.ge.0) FndPCS=.true. 
+      If(ModPCS.ge.0) FndPCS=.true.
       Return
-      End          
+      End
 *Deck SetDer
       Subroutine SetDer(String,IDeriv,FndDer)
       Character String*8
       Logical FndDer
-      Integer IDeriv(4) 
+      Integer IDeriv(4)
       Call IClear(4,IDeriv)
       ITot=0
       FndDer=.false.
@@ -1078,7 +1084,7 @@ C     If(ITot.gt.0) FndDer=.true.
 *Deck SetGKw
       Subroutine SetGKw(IOut,DoGNIC,SyGNIC,Loose,DoScan,ModPCS,IDeriv)
       Logical DoGNIC,SyGNIC,Loose,DoScan
-      Integer IOut,ModPCS,IDeriv(4) 
+      Integer IOut,ModPCS,IDeriv(4)
       Write(IOut,'(''%Nprocshared=8'')')
       Write(IOut,'(''%Mem=32GB'')')
       Write(IOut,'(''%chk=gicforge.chk'')')
@@ -1104,11 +1110,11 @@ C     If(ITot.gt.0) FndDer=.true.
        Write(IOut,'(''HF3C '')',advance='no')
       ElseIf(ModPCS.eq.2) then
        Write(IOut,'(''B3LYP EMPIRICALDISPERSION=GD4 6-31G* '')',
-     $   advance='no') 
+     $   advance='no')
       ElseIf(ModPCS.eq.3) then
        Write(IOut,'(''revDSDPBEP86D4 gen '')',advance='no')
-      EndIf 
-      If(IDeriv(1).eq.1.or.DoScan) then 
+      EndIf
+      If(IDeriv(1).eq.1.or.DoScan) then
        If(ModPCS.eq.0) then
         Write(IOut,'(''OPT=nomicro '')',advance='no')
        ElseIf(ModPCS.gt.1.and..not.DoScan) then
@@ -1240,10 +1246,10 @@ C PMom1(3,3*NAtoms) = Cartesian first derivatives of the diagonal
        iz = 3*(i-1) + 3
 C XX Component
        PMom1(1,ix) = zero
-       PMom1(1,iy) = two*atmass(i)*c(2,i) 
+       PMom1(1,iy) = two*atmass(i)*c(2,i)
        PMom1(1,iz) = two*atmass(i)*c(3,i)
 C YY Component
-       PMom1(2,ix) = two*atmass(i)*c(1,i) 
+       PMom1(2,ix) = two*atmass(i)*c(1,i)
        PMom1(2,iy) = zero
        PMom1(2,iz) = two*atmass(i)*c(3,i)
 C ZZ Component
@@ -1252,12 +1258,12 @@ C ZZ Component
        PMom1(3,iz) = zero
    10 Continue
       Return
-      End   
+      End
 *Deck PMOMH
       Subroutine PMOMH(NAtoms,AtMass,C,PMom2)
       Implicit Real*8 (A-H,O-Z)
 C Computes the second derivatives of the diagonal elements
-C of the moment of inertia tensor w.r.t. Cartesian coordinates 
+C of the moment of inertia tensor w.r.t. Cartesian coordinates
 C I/O
 C NAtoms             = Number of Atoms (Nat3 = 3*NAtoms)
 C C(3,NAtoms)        = Cartesian Coordinates
@@ -1273,12 +1279,12 @@ C                      the Inertia Moment Tensor w.r.t. Cartesian Coordinates
        iz = 3*(i-1) + 3
 C XX Component
        PMom2(1,ix,ix) = zero
-       PMom2(1,iy,iy) = two*atmass(i) 
+       PMom2(1,iy,iy) = two*atmass(i)
        PMom2(1,iz,iz) = two*atmass(i)
-C YY Component 
-       PMom2(2,ix,ix) = two*atmass(i)  
+C YY Component
+       PMom2(2,ix,ix) = two*atmass(i)
        PMom2(2,iy,iy) = zero
-       PMom2(2,iz,iz) = two*atmass(i)  
+       PMom2(2,iz,iz) = two*atmass(i)
 C ZZ Component
        PMom2(3,ix,ix) = two*atmass(i)
        PMom2(3,iy,iy) = two*atmass(i)

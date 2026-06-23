@@ -409,14 +409,15 @@ The default GIC fit model is:
     selected components of that isotopologue; QM predicates keep their declared
     weights. The Fortran77 kernel solves the same subproblem through the
     symmetric eigendecomposition of the scaled Gram matrix.
-11. For the GIC model, back-transform GIC steps to Cartesian displacements
-    using the analytic B matrix. Line-search trials reuse the current GICForge
-    coordinate model. Every accepted GIC step is validated by rerunning
+11. For the GIC model, SEfit obtains its working coordinates only through the
+    public GICForge API. `GICSYM` provides the frozen totally symmetric GIC
+    subspace; `SYCART` provides symmetrized Cartesian coordinates when the
+    Cartesian symmetry model is selected. Line-search trials reuse the current
+    GICForge coordinate model. Every accepted GIC step is validated by rerunning
     GICForge and comparing the point-group, irrep and coordinate-family
     signature with the reference model; topology-changing steps are rejected
     and the trust radius is reduced. The Cartesian-GIC projector is refreshed
-    analytically only when needed and
-    otherwise updated by a secant correction.
+    analytically only when needed and otherwise updated by a secant correction.
 12. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
     the final geometry.
 
@@ -578,6 +579,10 @@ GICForge generates a complete totally symmetric non-redundant coordinate set,
 but a given isotopologue set does not necessarily observe every A1 direction
 with comparable accuracy. Leaving a weak direction active can inflate the
 standard deviations of the fitted coordinates without improving the residual.
+The coordinate set is the post-pruning GICForge result; pre-pruning candidate
+coordinates printed in the backend report are not used by SEfit. If GICForge
+symmetry is requested, SEfit consumes the symmetrized `gauin`/schema and the
+manifest records the point group, irreps and coordinate-family counts.
 
 Before the nonlinear fit starts, Merlino analyzes the weighted Jacobian of the
 selected observables with respect to the active A1 coordinates. If the condition
