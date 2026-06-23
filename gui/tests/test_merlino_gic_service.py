@@ -758,6 +758,37 @@ def test_gicforge_fortran_locsvd_handles_ring_angles_and_dihedrals(tmp_path):
     assert _common_coordinate_signs_match(legacy_definition, definition, prefix="RPck", min_abs=1.0e-3)
 
 
+def test_gicforge_fortran_locsvd_uses_priority_pruning_only_when_requested(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/sf6.xyz"))
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "default",
+        executable=executable,
+        symmetrize=False,
+    )
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "locsvd",
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+
+    default_provout = (tmp_path / "default" / "provout").read_text(errors="ignore")
+    locsvd_provout = (tmp_path / "locsvd" / "provout").read_text(errors="ignore")
+    assert "Priority order: Stretch, Linear" not in default_provout
+    assert "Priority order: Stretch, Linear" in locsvd_provout
+
+
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
     try:
         executable = resolve_backend("gicforge")

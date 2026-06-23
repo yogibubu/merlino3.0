@@ -19,7 +19,7 @@ C=======================================================================
      $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,
      $ IPrimD,IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,
      $ IFixD,IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,
-     $ ValTD,ValTO,C,DoBMat,BMat,Scr,ImpDih)
+     $ ValTD,ValTO,C,DoBMat,BMat,Scr,ImpDih,DoLocSVD)
       Implicit Real*8 (A-H,O-Z)
       Integer MxAtP,MxTrm,NAtoms,NTarget,NLen,NAng,NLAng,NOupl,NDih
       Dimension NTermB(*),NTermA(*),NTermL(*),NTermD(*),NTermO(*)
@@ -34,8 +34,9 @@ C=======================================================================
       Dimension CoefD(MxTrm,*),CoefO(MxTrm,*)
       Dimension ValTB(*),ValTA(*),ValTL(*),ValTD(*),ValTO(*)
       Dimension C(3,*),BMat(3*NAtoms,*),Scr(*)
-      Logical Keep(1000)
-      Logical DoB1,DoBMat,ImpDih
+      Logical KeepA(1000),KeepL(1000),KeepD(1000),KeepO(1000)
+      Logical DoB1,DoBMat,ImpDih,DoLocSVD
+      Integer CountKeep
       Character*16 Label
 
       If(NAtoms.le.0) return
@@ -80,40 +81,100 @@ C=======================================================================
        Return
       EndIf
 
-      NBasis=0
-      Call SeedGICBasis(IOut,NAtoms,NLen,0,BMat,Scr,NBasis)
       NAng0=NAng
       NLang0=NLAng
       NDih0=NDih
 
-      Label='Bend'
-      IOff=NLen
-      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NAng,IOff,BMat,Keep,
-     $ Scr,NBasis,NVib,NKeep)
-      If(NKeep.lt.NAng) Call PackGICBlock(MxAtP,MxTrm,NAng,Keep,
-     $ NTermA,IAtomA,IPrimA,ITVA,IFixA,CoefA,ValTA)
+      If(.not.DoLocSVD) then
+       NBasis=0
+       Call SeedGICBasis(IOut,NAtoms,NLen,0,BMat,Scr,NBasis)
+
+       Label='Bend'
+       IOff=NLen
+       Call PruneOneBlockAgainst(IOut,Label,NAtoms,NAng,IOff,BMat,
+     $  KeepA,Scr,NBasis,NVib,NKeep)
+       If(NKeep.lt.NAng) Call PackGICBlock(MxAtP,MxTrm,NAng,KeepA,
+     $  NTermA,IAtomA,IPrimA,ITVA,IFixA,CoefA,ValTA)
+
+       Label='Linear bend'
+       IOff=NLen+NAng0
+       Call PruneOneBlockAgainst(IOut,Label,NAtoms,NLAng,IOff,BMat,
+     $  KeepL,Scr,NBasis,NVib,NKeep)
+       If(NKeep.lt.NLAng) Call PackGICBlock(MxAtP,MxTrm,NLAng,KeepL,
+     $  NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
+
+       Label='Torsion'
+       IOff=NLen+NAng0+NLang0
+       Call PruneOneBlockAgainst(IOut,Label,NAtoms,NDih,IOff,BMat,
+     $  KeepD,Scr,NBasis,NVib,NKeep)
+       If(NKeep.lt.NDih) Call PackGICBlock(MxAtP,MxTrm,NDih,KeepD,
+     $  NTermD,IAtomD,IPrimD,ITVD,IFixD,CoefD,ValTD)
+
+       Label='Out-of-plane'
+       IOff=NLen+NAng0+NLang0+NDih0
+       Call PruneOneBlockAgainst(IOut,Label,NAtoms,NOupl,IOff,BMat,
+     $  KeepO,Scr,NBasis,NVib,NKeep)
+       If(NKeep.lt.NOupl) Call PackGICBlock(MxAtP,MxTrm,NOupl,KeepO,
+     $  NTermO,IAtomO,IPrimO,ITVO,IFixO,CoefO,ValTO)
+       GoTo 500
+      EndIf
+
+      Call InitKeep(NAng,KeepA)
+      Call InitKeep(NLAng,KeepL)
+      Call InitKeep(NDih,KeepD)
+      Call InitKeep(NOupl,KeepO)
+      NBasis=0
+      Call SeedGICBasis(IOut,NAtoms,NLen,0,BMat,Scr,NBasis)
+
+      Write(IOut,'(''   Priority order: Stretch, Linear, Exocyclic '',
+     $ ''torsion, Butterfly, Exocyclic bend, Ring bend, Ring '',
+     $ ''torsion, Out-of-plane.'')')
 
       Label='Linear bend'
       IOff=NLen+NAng0
-      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NLAng,IOff,BMat,Keep,
-     $ Scr,NBasis,NVib,NKeep)
-      If(NKeep.lt.NLAng) Call PackGICBlock(MxAtP,MxTrm,NLAng,Keep,
-     $ NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NLAng,IOff,
+     $ BMat,ITVLA,1,KeepL,Scr,NBasis,NVib,NKeep,NSelect)
 
-      Label='Torsion'
+      Label='Exocyclic torsion'
       IOff=NLen+NAng0+NLang0
-      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NDih,IOff,BMat,Keep,
-     $ Scr,NBasis,NVib,NKeep)
-      If(NKeep.lt.NDih) Call PackGICBlock(MxAtP,MxTrm,NDih,Keep,
-     $ NTermD,IAtomD,IPrimD,ITVD,IFixD,CoefD,ValTD)
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
+     $ BMat,ITVD,2,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
+
+      Label='Butterfly torsion'
+      IOff=NLen+NAng0+NLang0
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
+     $ BMat,ITVD,3,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
+
+      Label='Exocyclic bend'
+      IOff=NLen
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
+     $ BMat,ITVA,4,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
+
+      Label='Ring bend'
+      IOff=NLen
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
+     $ BMat,ITVA,5,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
+
+      Label='Ring torsion'
+      IOff=NLen+NAng0+NLang0
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
+     $ BMat,ITVD,6,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
 
       Label='Out-of-plane'
       IOff=NLen+NAng0+NLang0+NDih0
-      Call PruneOneBlockAgainst(IOut,Label,NAtoms,NOupl,IOff,BMat,Keep,
-     $ Scr,NBasis,NVib,NKeep)
-      If(NKeep.lt.NOupl) Call PackGICBlock(MxAtP,MxTrm,NOupl,Keep,
-     $ NTermO,IAtomO,IPrimO,ITVO,IFixO,CoefO,ValTO)
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NOupl,IOff,
+     $ BMat,ITVO,7,KeepO,Scr,NBasis,NVib,NKeep,NSelect)
 
+      If(CountKeep(NAng,KeepA).lt.NAng) Call PackGICBlock(MxAtP,MxTrm,
+     $ NAng,KeepA,NTermA,IAtomA,IPrimA,ITVA,IFixA,CoefA,ValTA)
+      If(CountKeep(NLAng,KeepL).lt.NLAng) Call PackGICBlock(MxAtP,
+     $ MxTrm,NLAng,KeepL,NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
+      If(CountKeep(NDih,KeepD).lt.NDih) Call PackGICBlock(MxAtP,MxTrm,
+     $ NDih,KeepD,NTermD,IAtomD,IPrimD,ITVD,IFixD,CoefD,ValTD)
+      If(CountKeep(NOupl,KeepO).lt.NOupl) Call PackGICBlock(MxAtP,
+     $ MxTrm,NOupl,KeepO,NTermO,IAtomO,IPrimO,ITVO,IFixO,CoefO,ValTO)
+
+  500 Continue
       Write(IOut,'(''   Final active GIC counts:'')')
       Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,'' Linear='',I5,
      $ '' Torsion='',I5,'' Out-of-plane='',I5)') NLen,NAng,NLAng,NDih,
@@ -131,6 +192,127 @@ C=======================================================================
      $ ImpDih)
        Call WriteGICBMat(NAtoms,NTot,BMat)
        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
+      EndIf
+      Return
+      End
+
+*Deck InitKeep
+      Subroutine InitKeep(NVar,Keep)
+      Integer NVar,I
+      Logical Keep(*)
+      Do 10 I=1,NVar
+       Keep(I)=.False.
+   10 Continue
+      Return
+      End
+
+*Deck CountKeep
+      Integer Function CountKeep(NVar,Keep)
+      Integer NVar,I
+      Logical Keep(*)
+      CountKeep=0
+      Do 10 I=1,NVar
+       If(Keep(I)) CountKeep=CountKeep+1
+   10 Continue
+      Return
+      End
+
+*Deck SelectPruneMode
+      Logical Function SelectPruneMode(ITPV,Mode)
+      Integer ITPV,Mode
+      SelectPruneMode=.False.
+      If(Mode.eq.1) then
+       SelectPruneMode=.True.
+      ElseIf(Mode.eq.2) then
+       If(ITPV.le.0) SelectPruneMode=.True.
+      ElseIf(Mode.eq.3) then
+       If(ITPV.eq.2) SelectPruneMode=.True.
+      ElseIf(Mode.eq.4) then
+       If(ITPV.ne.14) SelectPruneMode=.True.
+      ElseIf(Mode.eq.5) then
+       If(ITPV.eq.14) SelectPruneMode=.True.
+      ElseIf(Mode.eq.6) then
+       If(ITPV.eq.1) SelectPruneMode=.True.
+      ElseIf(Mode.eq.7) then
+       SelectPruneMode=.True.
+      EndIf
+      Return
+      End
+
+*Deck PruneSelectedBlockAgainst
+      Subroutine PruneSelectedBlockAgainst(IOut,Label,NAtoms,NVar,IOff,
+     $ BMat,ITPV,Mode,Keep,Scr,NBasis,NTarget,NKeep,NSelect)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,NAtoms,NVar,IOff,Mode,NBasis,NTarget,NKeep,NSelect
+      Integer ITPV(*)
+      Character*(*) Label
+      Dimension BMat(3*NAtoms,*),Scr(3*NAtoms,*)
+      Logical Keep(*),SelectPruneMode
+      Logical AnyRem,Selected
+      Real*8 Norm,Norm0,Dot,TAbs,TRel
+      Data TAbs/1.0D-10/, TRel/1.0D-08/
+
+      NCart=3*NAtoms
+      NKeep=0
+      NSelect=0
+      If(NVar.le.0) return
+
+      Do 100 I=1,NVar
+       Selected=SelectPruneMode(ITPV(I),Mode)
+       If(.not.Selected) GoTo 100
+       NSelect=NSelect+1
+       If(NBasis.ge.NTarget) GoTo 100
+       Row=IOff+I
+       Norm0=0.0D0
+       Do 110 K=1,NCart
+        Scr(K,NBasis+1)=BMat(K,Row)
+        Norm0=Norm0+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+  110  Continue
+       Norm0=DSqrt(Norm0)
+       If(Norm0.le.TAbs) GoTo 100
+
+       Do 130 J=1,NBasis
+        Dot=0.0D0
+        Do 120 K=1,NCart
+         Dot=Dot+Scr(K,NBasis+1)*Scr(K,J)
+  120   Continue
+        Do 125 K=1,NCart
+         Scr(K,NBasis+1)=Scr(K,NBasis+1)-Dot*Scr(K,J)
+  125   Continue
+  130  Continue
+
+       Norm=0.0D0
+       Do 140 K=1,NCart
+        Norm=Norm+Scr(K,NBasis+1)*Scr(K,NBasis+1)
+  140  Continue
+       Norm=DSqrt(Norm)
+       If(Norm.gt.TAbs.and.Norm.gt.TRel*Norm0) then
+        NKeep=NKeep+1
+        NBasis=NBasis+1
+        Keep(I)=.True.
+        Do 150 K=1,NCart
+         Scr(K,NBasis)=Scr(K,NBasis)/Norm
+  150   Continue
+       EndIf
+  100 Continue
+
+      If(NSelect.le.0) Return
+      If(NKeep.lt.NSelect) then
+       Write(IOut,'(''   '',A,'': kept '',I5,'' of '',I5,
+     $ '' coordinates; removed '',I5,'' residual redundant.'')')
+     $ Label,NKeep,NSelect,NSelect-NKeep
+       Write(IOut,'(''     Removed local indices:'')')
+       AnyRem=.False.
+       Do 210 I=1,NVar
+        If(SelectPruneMode(ITPV(I),Mode).and..not.Keep(I)) then
+         Write(IOut,'(I6)',advance='no') I
+         AnyRem=.True.
+        EndIf
+  210  Continue
+       If(AnyRem) Write(IOut,'('' '')')
+      Else
+       Write(IOut,'(''   '',A,'': kept all '',I5,
+     $ '' coordinates.'')') Label,NSelect
       EndIf
       Return
       End

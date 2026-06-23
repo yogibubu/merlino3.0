@@ -623,7 +623,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
-     $  ValTO,C,DoBMat,BMat,Scr,ImpDih)
+     $  ValTO,C,DoBMat,BMat,Scr,ImpDih,DoLocSVD)
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.lt.NTarget.and..not.UsedPrim) then
        Write(IOut,'(/,'' Post-pruning GIC count below vibrational '',
@@ -644,7 +644,7 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $  IAtomA,IAtomL,IAtomD,IAtomO,IPrimB,IPrimA,IPrimL,IPrimD,
      $  IPrimO,ITVB,ITVA,ITVLA,ITVD,ITVO,IFixB,IFixA,IFixL,IFixD,
      $  IFixO,CoefB,CoefA,CoefL,CoefD,CoefO,ValTB,ValTA,ValTL,ValTD,
-     $  ValTO,C,DoBMat,BMat,Scr,ImpDih)
+     $  ValTO,C,DoBMat,BMat,Scr,ImpDih,DoLocSVD)
       EndIf
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.ne.NTarget) then
