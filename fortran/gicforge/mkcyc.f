@@ -651,15 +651,18 @@ C the final deterministic tie-break.  This mirrors the Python generator.
       end
 *Deck CyGNA  
       Subroutine CyGNA(IOut,IPrint,MxAtCy,MaxAtA,MxTrmA,NBond,
-     $  NAtC,NAng,ICyc,IAtomC,NTermA,IAtomA,ITVA,CoefA)
+     $  NAtC,NAng,ICyc,IAtomC,NTermA,IAtomA,ITVA,CoefA,DoLocSVD,
+     $  NAtoms,C)
       Implicit None 
       Common/bic/N2Cyc,N3Cyc,IAt2C(3,20),Iat3C(4,20)
       Common/bic1/NBrL,NBrA,NBrD,IBrL(4,20),IBrA(5,20),IBrD(6,20)
 C Input
       Integer NAtC(*),IAtomC(MxAtCy,*),NBond(*)
-      Integer IOut,IPrint,MxAtCy,MaxAtA,MxTrmA,NAng,ICyc
+      Integer IOut,IPrint,MxAtCy,MaxAtA,MxTrmA,NAng,ICyc,NAtoms
       Integer N2Cyc,N3Cyc,NBrL,NBrA,NBrD
       Integer IAt2C,IAt3C,IBrL,IBrA,IBrD
+      Logical DoLocSVD
+      Real*8 C(3,*)
 C Input/Output
       Integer NTermA(*),IAtomA(MaxAtA,MxTrmA,*),ITVA(*)
       Real*8 CoefA(MxTrmA,*)
@@ -685,8 +688,13 @@ C
       ValAng=.true.
       NAng0=NAng
       NAtCyc=NAtC(ICyc)
-      call CycAng(IOut,Iprint,MaxAtA,MxTrmA,MxAtCy,ValAng,NAng,ICyc,
-     $  NAtC,IAtomC,NTermA,ITVA,IAtomA,CoefA)
+      If(DoLocSVD) then
+       call CyGNSVD(IOut,IPrint,MaxAtA,MxTrmA,MxAtCy,ValAng,NAng,
+     $  ICyc,NAtC,IAtomC,NTermA,ITVA,IAtomA,CoefA,NAtoms,C)
+      Else
+       call CycAng(IOut,Iprint,MaxAtA,MxTrmA,MxAtCy,ValAng,NAng,
+     $  ICyc,NAtC,IAtomC,NTermA,ITVA,IAtomA,CoefA)
+      EndIf
       if(IPrint.gt.0) then
        write(IOut,'(/,I2,''-membered Cycle'')') NAtCyc
        do 30 ip=1,NAtCyc-3
@@ -701,14 +709,17 @@ C
       end
 *Deck CyGND   
       Subroutine CyGND(IOut,IPrint,MxAtCy,MaxAtD,MxTrmD,NAtC,
-     $  NDih,ICyc,IAtomC,NTermD,IAtomD,ITVD,CoefD)
+     $  NDih,ICyc,IAtomC,NTermD,IAtomD,ITVD,CoefD,DoLocSVD,
+     $  NAtoms,C)
       Implicit none 
       Common/bic/N2Cyc,N3Cyc,IAt2C(3,20),Iat3C(4,20)
       Common/bic1/NBrL,NBrA,NBrD,IBrL(4,20),IBrA(5,20),IBrD(6,20)
 C Input
       Integer NAtC(*),IAtomC(MxAtCy,*)
-      Integer IOut,IPrint,MxAtCy,MaxAtD,MxTrmD,NDih,ICyc
+      Integer IOut,IPrint,MxAtCy,MaxAtD,MxTrmD,NDih,ICyc,NAtoms
       Integer N2Cyc,N3Cyc,NBrL,NBrA,NBrD,IAt2C,IAt3C,IBrL,IBrA,IBrD
+      Logical DoLocSVD
+      Real*8 C(3,*)
 C Input/Output
       Integer NTermD(*),IAtomD(MaxAtD,MxTrmD,*),ITVD(*)
       Real*8 CoefD(MxTrmD,*)
@@ -735,8 +746,13 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
       NAtPrm=4
       ValAng=.false.
       NDih0=NDih
-      call CycAng(IOut,Iprint,MaxAtD,MxTrmD,MxAtCy,ValAng,NDih,ICyc,
-     $  NAtC,IAtomC,NTermD,ITVD,IAtomD,CoefD)
+      If(DoLocSVD) then
+       call CyGNSVD(IOut,IPrint,MaxAtD,MxTrmD,MxAtCy,ValAng,NDih,
+     $  ICyc,NAtC,IAtomC,NTermD,ITVD,IAtomD,CoefD,NAtoms,C)
+      Else
+       call CycAng(IOut,Iprint,MaxAtD,MxTrmD,MxAtCy,ValAng,NDih,
+     $  ICyc,NAtC,IAtomC,NTermD,ITVD,IAtomD,CoefD)
+      EndIf
       if(IPrint.gt.0) then
        write(IOut,'(/,I2,''-membered Cycle'')') NAtCyc
        do 30 ip=1,NAtCyc-3
@@ -749,6 +765,106 @@ C if all the atoms of the cycle join 3 cycles there are no free dihedrals
       endif 
       return
       end
+*Deck CyGNSVD
+      Subroutine CyGNSVD(IOut,IPrint,MxAt,MxTrm,MxAtCy,ValAng,IGnic,
+     $ ICyc,NAtC,IAtomC,NTerm,ITV,IAtomG,Coeff,NAtoms,C)
+      Implicit Real*8 (A-H,O-Z)
+      Parameter(MxLoc=20,MxCart=3000)
+      Logical ValAng
+      Integer IOut,IPrint,MxAt,MxTrm,MxAtCy,IGnic,ICyc,NAtoms
+      Integer NAtC(*),IAtomC(MxAtCy,*),NTerm(*),ITV(*)
+      Integer IAtomG(MxAt,MxTrm,*)
+      Dimension Coeff(MxTrm,*),C(3,*)
+      Dimension BLoc(MxCart,MxLoc),G(MxLoc,MxLoc),EVal(MxLoc)
+      Dimension EVec(MxLoc,MxLoc),B(3,4),DB(3,4,3,4),IB(4)
+      Integer Rank,RankUse
+
+      NCyc=NAtC(ICyc)
+      If(NCyc.le.3) Return
+      If(NCyc.gt.MxLoc) then
+       Write(IOut,'('' LOCSVD ring block too large for cycle'',I5)')
+     $  ICyc
+       Return
+      EndIf
+      NCart=3*NAtoms
+      If(NCart.gt.MxCart) then
+       Write(IOut,'('' LOCSVD ring block skipped: too many atoms'',I6)')
+     $  NAtoms
+       Return
+      EndIf
+
+      Call AClear(MxCart*MxLoc,BLoc)
+      Do 30 ITerm=1,NCyc
+       I1=ITerm-1
+       If(I1.le.0) I1=I1+NCyc
+       I2=ITerm
+       I3=ITerm+1
+       If(I3.gt.NCyc) I3=I3-NCyc
+       I4=ITerm+2
+       If(I4.gt.NCyc) I4=I4-NCyc
+       IAt=IAtomC(I1,ICyc)
+       JAt=IAtomC(I2,ICyc)
+       KAt=IAtomC(I3,ICyc)
+       LAt=IAtomC(I4,ICyc)
+       Call AClear(12,B)
+       Call AClear(144,DB)
+       If(ValAng) then
+        Call DBBend(1,IAt,JAt,KAt,B,IB,C,DB)
+       Else
+        Call DBTors(1,IAt,JAt,KAt,LAt,B,IB,C,DB)
+       EndIf
+       Do 20 IC=1,3
+        BLoc(3*(IAt-1)+IC,ITerm)=B(IC,1)
+        BLoc(3*(JAt-1)+IC,ITerm)=B(IC,2)
+        BLoc(3*(KAt-1)+IC,ITerm)=B(IC,3)
+        If(.not.ValAng) BLoc(3*(LAt-1)+IC,ITerm)=B(IC,4)
+   20  Continue
+   30 Continue
+
+      Do 60 I=1,NCyc
+       Do 50 J=1,NCyc
+        Sum=0.0D0
+        Do 40 IC=1,NCart
+         Sum=Sum+BLoc(IC,I)*BLoc(IC,J)
+   40   Continue
+        G(I,J)=Sum
+   50  Continue
+   60 Continue
+
+      Call LocSVDJacobi(MxLoc,NCyc,G,EVal,EVec,Rank)
+      RankUse=Rank
+      If(RankUse.gt.NCyc-3) RankUse=NCyc-3
+      If(IPrint.gt.0) then
+       If(ValAng) then
+        Write(IOut,'('' LOCSVD ring angle modes'',2I5)') ICyc,RankUse
+       Else
+        Write(IOut,'('' LOCSVD ring dihedral modes'',2I5)')
+     $   ICyc,RankUse
+       EndIf
+      EndIf
+
+      Do 100 IM=1,RankUse
+       IGnic=IGnic+1
+       NTerm(IGnic)=NCyc
+       ITV(IGnic)=14
+       If(.not.ValAng) ITV(IGnic)=1
+       Do 90 ITerm=1,NCyc
+        I1=ITerm-1
+        If(I1.le.0) I1=I1+NCyc
+        I2=ITerm
+        I3=ITerm+1
+        If(I3.gt.NCyc) I3=I3-NCyc
+        I4=ITerm+2
+        If(I4.gt.NCyc) I4=I4-NCyc
+        IAtomG(1,ITerm,IGnic)=IAtomC(I1,ICyc)
+        IAtomG(2,ITerm,IGnic)=IAtomC(I2,ICyc)
+        IAtomG(3,ITerm,IGnic)=IAtomC(I3,ICyc)
+        If(.not.ValAng) IAtomG(4,ITerm,IGnic)=IAtomC(I4,ICyc)
+        Coeff(ITerm,IGnic)=EVec(ITerm,IM)
+   90  Continue
+  100 Continue
+      Return
+      End
 *Deck SymCyc
       Subroutine SymCyc(IOut,IPrint,ReNumb,MxBnd,MxAtCy,ICyc,NAtC,ICAt,
      $  NBond,IBond,EAn)

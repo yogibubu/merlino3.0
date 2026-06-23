@@ -601,6 +601,33 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
     assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") == 3
 
 
+def test_gicforge_fortran_locsvd_handles_ring_angles_and_dihedrals(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/naphthalene_c10.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+
+    provout = (tmp_path / "provout").read_text(errors="ignore")
+    assert "Endocyclic Valence Angles" in provout
+    assert "Endocyclic Dihedral Angles" in provout
+    assert provout.count("6-Membered Ring") >= 4
+    assert "Butterfly GNIC Around Bond" in provout
+    assert len(definition.names) == 48
+    assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") >= 20
+
+
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
     try:
         executable = resolve_backend("gicforge")
