@@ -11,6 +11,7 @@ from merlino_core.cli import build_parser as merlino_parser
 from merlino_gic import (
     GICDefinition,
     GICDefinitionError,
+    build_gicforge_python_model,
     compare_gicforge_python_to_fortran,
     compare_gic_b_matrix_to_fortran,
     define_gics_from_cartesian,
@@ -22,6 +23,7 @@ from merlino_gic import (
 from merlino_gic.model import parse_gicforge_line
 from merlino_fortran import resolve_backend
 from merlino_gic.gic_symmetry import write_gic_symmetry_files
+from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.cli import _python_local_gic_allowed
 
@@ -534,6 +536,38 @@ def test_gicforge_python_onedih_matches_fortran_keyword(tmp_path):
         assert report["passed"], report
         assert report["same_ordered_primitives"] is True
         assert report["b_max_abs_diff"] <= 5.0e-8
+
+
+def test_gicforge_python_svd_local_reaches_target_rank():
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    cases = [
+        Path("merlino_fit/tests/data/ch4.xyz"),
+        Path("merlino_fit/tests/data/sf6.xyz"),
+        Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz"),
+        Path("merlino_fit/tests/data/naphthalene_c10.xyz"),
+        Path("merlino_fit/tests/data/polycyclics/pyrene.xyz"),
+        Path("merlino_fit/tests/data/polycyclics/testosterone.xyz"),
+    ]
+    for path in cases:
+        geometry = read_geometry_input(path)
+        model = build_gicforge_python_model(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            onedih=True,
+            svd_local=True,
+        )
+        definition = model.to_definition()
+        b_matrix = definition.u_matrix.T @ b_matrix_analytic(
+            definition.primitives,
+            np.asarray(definition.reference_coordinates_angstrom),
+        )
+        singular_values = np.linalg.svd(b_matrix, compute_uv=False)
+        tolerance = max(1.0e-10, 1.0e-8 * float(singular_values[0]))
+        rank = int(np.sum(singular_values > tolerance))
+
+        assert len(model.coordinates) == model.target_rank
+        assert rank == model.target_rank
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):

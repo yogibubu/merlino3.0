@@ -94,6 +94,7 @@ def build_gicforge_python_model(
     *,
     impdih: bool = True,
     onedih: bool = False,
+    svd_local: bool = False,
     linear_threshold: float = LINEAR_THRESHOLD_RAD,
     primitive_fallback: bool = True,
 ) -> GICForgePythonModel:
@@ -112,6 +113,7 @@ def build_gicforge_python_model(
         ringset=ringset,
         impdih=impdih,
         onedih=onedih,
+        svd_local=svd_local,
         linear_threshold=linear_threshold,
     )
     primitive_candidates = tuple(coord for block in primitive_blocks for coord in block)
@@ -121,7 +123,7 @@ def build_gicforge_python_model(
         raise ValueError(f"GICForge Python candidates below vibrational rank ({len(candidates)} < {target})")
     if len(candidates) < target:
         raise ValueError(f"Primitive candidates below vibrational rank ({len(candidates)} < {target})")
-    coordinates = _prune_type_local(candidates, coords, target_rank=target)
+    coordinates = _prune_type_local(candidates, coords, target_rank=target, block_pruning=svd_local)
     return GICForgePythonModel(
         atom_symbols=atoms,
         atomic_numbers=atomic_numbers,
@@ -227,6 +229,7 @@ def _fortran_like_primitive_blocks(
     ringset,
     impdih: bool,
     onedih: bool,
+    svd_local: bool,
     linear_threshold: float,
 ):
     bonds: list[GICForgePythonCoordinate] = []
@@ -257,7 +260,34 @@ def _fortran_like_primitive_blocks(
             if first < center:
                 continue
             bonds.append(_primitive_coordinate("Stre", len(bonds) + 1, Primitive("bond", (center, first))))
-        if len(neigh) == 3:
+        if svd_local and len(neigh) > 1:
+            exo_primitives, exo_linears = _exocyclic_angle_primitives(
+                center,
+                neigh,
+                selected_rings=selected_rings,
+                coords=coords,
+                linear_threshold=linear_threshold,
+            )
+            if exo_primitives:
+                bends.extend(
+                    _svd_local_coordinates(
+                        exo_primitives,
+                        coords=coords,
+                        prefix="XAng",
+                        start=len(bends) + 1,
+                        kind_type_index=0,
+                    )
+                )
+            for primitive in exo_linears:
+                linears.append(_primitive_coordinate("LAng", len(linears) + 1, primitive))
+                linears.append(
+                    _primitive_coordinate(
+                        "LAng",
+                        len(linears) + 1,
+                        Primitive("linear_bend", primitive.atoms, mode=-2),
+                    )
+                )
+        elif len(neigh) == 3:
             bends.extend(
                 _c2v3_angle_coordinates(
                     center,
@@ -323,7 +353,19 @@ def _fortran_like_primitive_blocks(
     for ring in selected_rings:
         if _all_atoms_in_three_selected_rings(ring, selected_rings):
             continue
-        bends.extend(_cyclic_coordinates(ring, valence_angle=True, prefix="RDef", start=len(bends) + 1))
+        if svd_local:
+            bends.extend(
+                _svd_local_coordinates(
+                    _cyclic_primitives(ring, valence_angle=True),
+                    coords=coords,
+                    prefix="RDef",
+                    start=len(bends) + 1,
+                    kind_type_index=14,
+                    max_modes=max(0, len(ring) - 3),
+                )
+            )
+        else:
+            bends.extend(_cyclic_coordinates(ring, valence_angle=True, prefix="RDef", start=len(bends) + 1))
 
     for bond in bonds:
         _coef, primitive = bond.terms[0]
@@ -366,7 +408,19 @@ def _fortran_like_primitive_blocks(
     for ring in selected_rings:
         if _all_atoms_in_three_selected_rings(ring, selected_rings):
             continue
-        torsions.extend(_cyclic_coordinates(ring, valence_angle=False, prefix="RPck", start=len(torsions) + 1))
+        if svd_local:
+            torsions.extend(
+                _svd_local_coordinates(
+                    _cyclic_primitives(ring, valence_angle=False),
+                    coords=coords,
+                    prefix="RPck",
+                    start=len(torsions) + 1,
+                    kind_type_index=1,
+                    max_modes=max(0, len(ring) - 3),
+                )
+            )
+        else:
+            torsions.extend(_cyclic_coordinates(ring, valence_angle=False, prefix="RPck", start=len(torsions) + 1))
 
     oop_prefix = "ImpD" if impdih else "OuPl"
     for center in range(graph.natoms):
@@ -654,6 +708,40 @@ def _atoms_share_selected_ring(first: int, second: int, rings: list[tuple[int, .
     return False
 
 
+def _exocyclic_angle_primitives(
+    center: int,
+    neigh: list[int],
+    *,
+    selected_rings: list[tuple[int, ...]],
+    coords: np.ndarray,
+    linear_threshold: float,
+) -> tuple[list[Primitive], list[Primitive]]:
+    angles: list[Primitive] = []
+    linears: list[Primitive] = []
+    for index, first in enumerate(neigh[:-1]):
+        for second in neigh[index + 1 :]:
+            left, right = sorted((first, second))
+            if _is_endocyclic_angle(left, center, right, selected_rings):
+                continue
+            primitive = Primitive("angle", (left, center, right))
+            if angle(left, center, right, coords) < linear_threshold:
+                angles.append(primitive)
+            else:
+                linears.append(Primitive("linear_bend", (left, center, right), mode=-1))
+    return angles, linears
+
+
+def _is_endocyclic_angle(left: int, center: int, right: int, rings: list[tuple[int, ...]]) -> bool:
+    for ring in rings:
+        size = len(ring)
+        for index, atom in enumerate(ring):
+            if atom != center:
+                continue
+            if {left, right} == {ring[(index - 1) % size], ring[(index + 1) % size]}:
+                return True
+    return False
+
+
 def _torsion_coordinate(
     center: int,
     right: int,
@@ -821,6 +909,84 @@ def _cyclic_coordinates(
             )
         )
     return coordinates
+
+
+def _cyclic_primitives(ring: tuple[int, ...], *, valence_angle: bool) -> list[Primitive]:
+    ncyc = len(ring)
+    if ncyc == 3:
+        return []
+    primitives: list[Primitive] = []
+    for term in range(ncyc):
+        if valence_angle:
+            primitives.append(
+                Primitive(
+                    "angle",
+                    (ring[(term - 1) % ncyc], ring[term], ring[(term + 1) % ncyc]),
+                )
+            )
+        else:
+            primitives.append(
+                Primitive(
+                    "dihedral",
+                    (ring[(term - 1) % ncyc], ring[term], ring[(term + 1) % ncyc], ring[(term + 2) % ncyc]),
+                )
+            )
+    return primitives
+
+
+def _svd_local_coordinates(
+    primitives: list[Primitive],
+    *,
+    coords: np.ndarray,
+    prefix: str,
+    start: int,
+    kind_type_index: int,
+    max_modes: int | None = None,
+) -> list[GICForgePythonCoordinate]:
+    if not primitives:
+        return []
+    primitive_b = b_matrix_analytic(tuple(primitives), coords)
+    u_matrix, singular_values, _vh = np.linalg.svd(primitive_b, full_matrices=False)
+    rank = _svd_rank(singular_values)
+    if max_modes is not None:
+        rank = min(rank, max_modes)
+    coordinates: list[GICForgePythonCoordinate] = []
+    for mode in range(rank):
+        coeffs = u_matrix[:, mode].astype(float)
+        coeffs = _canonical_svd_coefficients(coeffs)
+        terms = tuple(
+            (float(coefficient), primitive)
+            for coefficient, primitive in zip(coeffs, primitives)
+            if abs(float(coefficient)) > 1.0e-12
+        )
+        if not terms:
+            continue
+        coordinates.append(
+            GICForgePythonCoordinate(
+                name=f"{prefix}{start + len(coordinates):04d}",
+                block=prefix,
+                type_index=kind_type_index,
+                terms=terms,
+            )
+        )
+    return coordinates
+
+
+def _svd_rank(singular_values: np.ndarray) -> int:
+    if singular_values.size == 0:
+        return 0
+    tolerance = max(1.0e-10, 1.0e-8 * float(singular_values[0]))
+    return int(np.sum(singular_values > tolerance))
+
+
+def _canonical_svd_coefficients(coefficients: np.ndarray) -> np.ndarray:
+    if coefficients.size == 0:
+        return coefficients
+    dominant = int(np.argmax(np.abs(coefficients)))
+    if coefficients[dominant] < 0.0:
+        coefficients = -coefficients
+    coefficients[np.abs(coefficients) < 1.0e-14] = 0.0
+    return coefficients
 
 
 def _cyclic_index(index_1based: int, ncyc: int) -> int:
@@ -1332,7 +1498,10 @@ def _prune_type_local(
     coords: np.ndarray,
     *,
     target_rank: int,
+    block_pruning: bool = False,
 ) -> tuple[GICForgePythonCoordinate, ...]:
+    if block_pruning:
+        return _prune_block_local(coordinates, coords, target_rank=target_rank)
     by_kind = {
         "bond": [coord for coord in coordinates if coord.dominant_kind == "bond"],
         "angle": [coord for coord in coordinates if coord.dominant_kind == "angle"],
@@ -1383,6 +1552,55 @@ def _prune_type_local(
     return tuple(keep)
 
 
+def _prune_block_local(
+    coordinates: tuple[GICForgePythonCoordinate, ...],
+    coords: np.ndarray,
+    *,
+    target_rank: int,
+) -> tuple[GICForgePythonCoordinate, ...]:
+    ordered = sorted(coordinates, key=lambda coord: (_block_pruning_priority(coord), coord.name))
+    if len(ordered) <= target_rank:
+        return tuple(ordered)
+    primitive_basis = _primitive_basis(ordered)
+    row_index = {primitive: index for index, primitive in enumerate(primitive_basis)}
+    primitive_b = b_matrix_analytic(primitive_basis, coords)
+    b_rows = []
+    for coordinate in ordered:
+        row = np.zeros(primitive_b.shape[1], dtype=float)
+        for coefficient, primitive in coordinate.terms:
+            row += coefficient * primitive_b[row_index[primitive]]
+        b_rows.append(row)
+
+    basis_rows: list[np.ndarray] = []
+    keep: list[GICForgePythonCoordinate] = []
+    for index, coordinate in enumerate(ordered):
+        if len(basis_rows) >= target_rank or len(keep) >= target_rank:
+            break
+        if _seed_basis_row_by_svd(b_rows[index], basis_rows):
+            keep.append(coordinate)
+    return tuple(sorted(keep, key=lambda coord: coordinates.index(coord)))
+
+
+def _block_pruning_priority(coordinate: GICForgePythonCoordinate) -> int:
+    if coordinate.dominant_kind == "bond":
+        return 0
+    if coordinate.dominant_kind == "linear_bend":
+        return 1
+    if coordinate.block == "Tors":
+        return 2
+    if coordinate.block == "BtFl":
+        return 3
+    if coordinate.block == "XAng":
+        return 4
+    if coordinate.block == "RDef":
+        return 5
+    if coordinate.block == "RPck":
+        return 6
+    if coordinate.dominant_kind == "out_of_plane":
+        return 7
+    return 8
+
+
 def _high_coord_linear_pruning_order(
     coordinates: list[GICForgePythonCoordinate],
 ) -> list[GICForgePythonCoordinate]:
@@ -1409,9 +1627,7 @@ def _high_coord_linear_pruning_order(
     return ordered
 
 
-def _seed_basis_row(row: np.ndarray, basis: list[np.ndarray]) -> bool:
-    t_abs = 1.0e-10
-    t_rel = 1.0e-8
+def _seed_basis_row(row: np.ndarray, basis: list[np.ndarray], *, t_abs: float = 1.0e-10, t_rel: float = 1.0e-8) -> bool:
     candidate = np.asarray(row, dtype=float).copy()
     norm0 = float(np.linalg.norm(candidate))
     if norm0 <= t_abs:
@@ -1421,6 +1637,24 @@ def _seed_basis_row(row: np.ndarray, basis: list[np.ndarray]) -> bool:
     norm = float(np.linalg.norm(candidate))
     if norm > t_abs and norm > t_rel * norm0:
         basis.append(candidate / norm)
+        return True
+    return False
+
+
+def _seed_basis_row_by_svd(row: np.ndarray, basis_rows: list[np.ndarray]) -> bool:
+    candidate = np.asarray(row, dtype=float).copy()
+    norm = float(np.linalg.norm(candidate))
+    if norm <= 1.0e-10:
+        return False
+    if not basis_rows:
+        basis_rows.append(candidate)
+        return True
+    old = np.vstack(basis_rows)
+    new = np.vstack([old, candidate])
+    old_rank = _svd_rank(np.linalg.svd(old, compute_uv=False))
+    new_rank = _svd_rank(np.linalg.svd(new, compute_uv=False))
+    if new_rank > old_rank:
+        basis_rows.append(candidate)
         return True
     return False
 
