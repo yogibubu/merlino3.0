@@ -152,6 +152,7 @@ C Read keywords
       DoScan=Kwd(20)
       DoRig=Kwd(21)
       DoLocSVD=Kwd(22)
+      If(DoLocSVD) Do1Dih=.True.
       RdIsot=.False.
       Clean=Kwd(31)
       DVIBRot=.False.

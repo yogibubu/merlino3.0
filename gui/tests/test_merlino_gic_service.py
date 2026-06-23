@@ -586,8 +586,8 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
 
     from merlino_semiexp.geometry_input import read_geometry_input
 
-    geometry = read_geometry_input(Path("geometry/h2o.xyz"))
-    define_gics_from_cartesian(
+    geometry = read_geometry_input(Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz"))
+    definition = define_gics_from_cartesian(
         tuple(geometry.atoms),
         geometry.coordinates_angstrom,
         workdir=tmp_path,
@@ -596,7 +596,9 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
         extra_keywords=("LOCSVD",),
     )
 
-    assert "LOCSVD    : Local SVD GNIC blocks" in (tmp_path / "provout").read_text(errors="ignore")
+    provout = (tmp_path / "provout").read_text(errors="ignore")
+    assert "LOCSVD    : Local SVD GNIC blocks" in provout
+    assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") == 3
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
