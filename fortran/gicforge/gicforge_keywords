@@ -15,7 +15,8 @@ LOCSVD    : Local SVD GNIC blocks (experimental)
 CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian
  BDPCS3    : Make BDPCS3 Bond Lengths
- SYMMALL   : Symmetrize same-type GNIC blocks
+ GICSYM    : Symmetrize GIC blocks for downstream modules
+ SYMMALL   : Symmetrize same-type GNIC blocks (legacy alias)
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
  HBOND     : Detect H-Bonds as non-covalent targets

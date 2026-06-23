@@ -262,6 +262,7 @@ C Build Valence Angles
          EndIf
          Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
          If(Value.lt.TreshL) go to 50 
+         If(DoLocSVD.and.NBJ.gt.2) go to 50
          If(DoLocSVD.and.NLPair.ge.3) go to 50
          NLPair=NLPair+1
          NGicL=NGicL+1

@@ -131,9 +131,15 @@ C=======================================================================
       NBasis=0
       Call SeedGICBasis(IOut,NAtoms,NLen,0,BMat,Scr,NBasis)
 
-      Write(IOut,'(''   Priority order: Stretch, Linear, Exocyclic '',
-     $ ''torsion, Butterfly, Exocyclic bend, Ring bend, Ring '',
+      Write(IOut,'(''   Priority order: Stretch, Exocyclic bend, '',
+     $ ''Linear, Exocyclic torsion, Butterfly, Ring bend, Ring '',
      $ ''torsion, Out-of-plane.'')')
+
+      Label='Exocyclic bend'
+      IOff=NLen
+      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
+     $ BMat,ITVA,4,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Linear bend'
       IOff=NLen+NAng0
@@ -151,12 +157,6 @@ C=======================================================================
       IOff=NLen+NAng0+NLang0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
      $ BMat,ITVD,3,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
-      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
-
-      Label='Exocyclic bend'
-      IOff=NLen
-      Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
-     $ BMat,ITVA,4,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
       Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Ring bend'
@@ -240,6 +240,46 @@ C=======================================================================
       Do 10 I=1,NVar
        If(Keep(I)) CountKeep=CountKeep+1
    10 Continue
+      Return
+      End
+
+*Deck KeepTrueLinearCenters
+      Subroutine KeepTrueLinearCenters(IOut,MxAtP,MxTrm,NAtoms,NLAng,
+     $ NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,MxAtP,MxTrm,NAtoms,NLAng
+      Integer CountKeep
+      Dimension NTermL(*),IAtomL(MxAtP,MxTrm,*),IPrimL(MxTrm,*)
+      Dimension ITVLA(*),IFixL(*),CoefL(MxTrm,*),ValTL(*)
+      Dimension NPair(1000)
+      Logical Keep(1000)
+      If(NAtoms.gt.1000) Return
+      Do 10 I=1,NAtoms
+       NPair(I)=0
+   10 Continue
+      Do 20 I=1,NLAng
+       Keep(I)=.False.
+       JAt=IAtomL(2,1,I)
+       Mode=IAtomL(4,1,I)
+       If(Mode.eq.-1.and.JAt.ge.1.and.JAt.le.NAtoms)
+     $  NPair(JAt)=NPair(JAt)+1
+   20 Continue
+      Do 30 I=1,NLAng
+       JAt=IAtomL(2,1,I)
+       If(JAt.ge.1.and.JAt.le.NAtoms) then
+        If(NPair(JAt).le.1) Keep(I)=.True.
+       Else
+        Keep(I)=.True.
+       EndIf
+   30 Continue
+      NOld=NLAng
+      If(CountKeep(NLAng,Keep).lt.NLAng) then
+       Call PackGICBlock(MxAtP,MxTrm,NLAng,Keep,NTermL,IAtomL,
+     $ IPrimL,ITVLA,IFixL,CoefL,ValTL)
+       Write(IOut,'(''   LOCSVD primitive fallback true-linear '',
+     $ ''filter: kept '',I5,'' of '',I5,'' linear coordinates.'')')
+     $ NLAng,NOld
+      EndIf
       Return
       End
 

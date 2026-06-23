@@ -676,7 +676,7 @@ def _write_gicforge_inputs(
 ) -> None:
     base_keywords = ["GNIC", "BMAT", "ECKART", "G16", "CLEAN"]
     if symmetrize:
-        base_keywords.insert(1, "SYMMALL")
+        base_keywords.insert(1, "GICSYM")
     keywords = "# " + " ".join((*base_keywords, *extra_keywords))
     (workdir / "provin").write_text(
         f"{keywords}\n\n"

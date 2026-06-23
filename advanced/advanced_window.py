@@ -726,7 +726,10 @@ class AdvancedWindow(QMainWindow):
         method = method_widget.currentText() if isinstance(method_widget, QComboBox) else ""
 
         loose = bool(self.kwd_widgets.get("LOOSE") and self.kwd_widgets["LOOSE"].isChecked())
-        symmall = bool(self.kwd_widgets.get("SYMMALL") and self.kwd_widgets["SYMMALL"].isChecked())
+        symmall = bool(
+            (self.kwd_widgets.get("GICSYM") and self.kwd_widgets["GICSYM"].isChecked())
+            or (self.kwd_widgets.get("SYMMALL") and self.kwd_widgets["SYMMALL"].isChecked())
+        )
 
         opt = bool(self.kwd_widgets.get("OPT") and self.kwd_widgets["OPT"].isChecked())
         harm = bool(self.kwd_widgets.get("HARM") and self.kwd_widgets["HARM"].isChecked())

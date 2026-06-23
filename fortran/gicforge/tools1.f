@@ -735,7 +735,7 @@ C    Il Representation, Iz < Iy < Ix
 C   IIl Representation, Ix < Iz < Iy
 C  IIIl Representation, Iy < Ix < Iz
 C
-      Logical Prol,Move,Linear
+      Logical Prol,Move,Linear,Spher
       Dimension AtMass(*),C(3,*)
       Dimension PMom(3),RotMat(3,3)
       Dimension COM(3),CS(3)
@@ -750,9 +750,10 @@ C
       Dif21=CS(2)-CS(1)
       Prol=(Dif13.lt.Dif21) 
       Linear=(CS(1).lt.Small)
+      Spher=(.not.Linear.and.(CS(3)-CS(1)).lt.Small)
       If(Linear) then
        Write(IOut,'(/,'' This Molecule is a Linear Top'',2x)')
-      ElseIf((CS(3)-CS(1)).lt.Small) then
+      ElseIf(Spher) then
        Write(IOut,'(/,'' This Molecule is a Spherical Top'',2x)')
       ElseIf(Dif21.lt.small) then
        Write(IOut,'(/,'' This Molecule is an Oblate Symmetric Top'',
@@ -773,6 +774,7 @@ C
         Do 10 IXYZ=1,3
          C(IXYZ,IAT) =  C(IXYZ,IAt) - COM(IXYZ)
    10  continue
+       If(Spher) Return
 C        Call RigHnd(RotMat)
          Call RotF1(NAtoms,RotMat,C)
          Call AMove(3,CS,PMom)

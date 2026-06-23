@@ -313,7 +313,7 @@ def _fortran_like_primitive_blocks(
                         kind_type_index=0,
                     )
                 )
-            exo_linears = exo_linears[:max(0, max_linear_angle_pairs_per_center)]
+            exo_linears = exo_linears[:max(0, max_linear_angle_pairs_per_center)] if len(neigh) == 2 else []
             for primitive in exo_linears:
                 linears.append(_primitive_coordinate("LAng", len(linears) + 1, primitive))
                 linears.append(
@@ -1803,13 +1803,13 @@ def _prune_block_local(
 def _block_pruning_priority(coordinate: GICForgePythonCoordinate) -> int:
     if coordinate.dominant_kind == "bond":
         return 0
-    if coordinate.dominant_kind == "linear_bend":
-        return 1
-    if coordinate.block == "Tors":
-        return 2
-    if coordinate.block == "BtFl":
-        return 3
     if coordinate.block == "XAng":
+        return 1
+    if coordinate.dominant_kind == "linear_bend":
+        return 2
+    if coordinate.block == "Tors":
+        return 3
+    if coordinate.block == "BtFl":
         return 4
     if coordinate.block == "RDef":
         return 5

@@ -150,10 +150,15 @@ KWD_SPEC = {
         "panel": "Symmetry",
         "description": "Molecular symmetry analysis options",
         "keywords": {
+            "GICSYM": {
+                "type": "flag",
+                "default": False,
+                "description": "Symmetrize GIC blocks for downstream modules",
+            },
             "SYMMALL": {
                 "type": "flag",
                 "default": False,
-                "description": "Symmetrize GICs inside same-type blocks",
+                "description": "Legacy alias for GIC block symmetrization",
             },
             "LOOSE": {
                 "type": "flag",

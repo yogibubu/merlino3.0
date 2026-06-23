@@ -666,8 +666,9 @@ def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
         assert diagnostics["final_rank"] == model.target_rank
         assert diagnostics["rank_complete"] is True
         if path.name == "sf6.xyz":
-            assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 6
-            assert diagnostics["final_counts_by_block"]["LAng"] == 6
+            assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 0
+            assert diagnostics["final_counts_by_block"].get("LAng", 0) == 0
+            assert diagnostics["final_counts_by_block"]["XAng"] == 9
 
 
 def test_gicforge_python_ring_svd_modes_follow_legacy_cycang_signs():
@@ -751,6 +752,30 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
     assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") == 3
 
 
+def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=True,
+    )
+
+    provin = (tmp_path / "provin").read_text(errors="ignore")
+    provout = (tmp_path / "provout").read_text(errors="ignore")
+    assert "# GNIC GICSYM BMAT ECKART G16 CLEAN" in provin
+    assert "GICSYM    : Symmetrize GIC blocks" in provout
+    assert definition.symmetrized is True
+
+
 def test_gicforge_fortran_locsvd_handles_ring_angles_and_dihedrals(tmp_path):
     try:
         executable = resolve_backend("gicforge")
@@ -795,7 +820,7 @@ def test_gicforge_fortran_locsvd_uses_priority_pruning_only_when_requested(tmp_p
 
     from merlino_semiexp.geometry_input import read_geometry_input
 
-    geometry = read_geometry_input(Path("merlino_fit/tests/data/sf6.xyz"))
+    geometry = read_geometry_input(Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz"))
     define_gics_from_cartesian(
         tuple(geometry.atoms),
         geometry.coordinates_angstrom,
@@ -814,11 +839,37 @@ def test_gicforge_fortran_locsvd_uses_priority_pruning_only_when_requested(tmp_p
 
     default_provout = (tmp_path / "default" / "provout").read_text(errors="ignore")
     locsvd_provout = (tmp_path / "locsvd" / "provout").read_text(errors="ignore")
-    assert "Priority order: Stretch, Linear" not in default_provout
-    assert "Priority order: Stretch, Linear" in locsvd_provout
+    assert "Priority order: Stretch, Exocyclic bend" not in default_provout
+    assert "Priority order: Stretch, Exocyclic bend" in locsvd_provout
     assert "Rank after Linear bend" in locsvd_provout
     assert "Target reached after" in locsvd_provout
     assert "ERROR: final block counts" not in locsvd_provout
+
+
+def test_gicforge_fortran_locsvd_sf6_has_no_linear_bends(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/sf6.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+
+    provout = (tmp_path / "provout").read_text(errors="ignore")
+    assert "This Molecule is a Spherical Top" in provout
+    assert "Equilibrium Rotational Constants (MHz)   2732.69361   2732.69361   2732.69361" in provout
+    assert "Stretch=    6 Bend=    9 Linear=    0" in provout
+    assert all(not name.startswith("LAng") for name in definition.names)
+    assert sum(1 for primitive in definition.primitives if primitive.kind == "linear_bend") == 0
 
 
 def test_gicforge_fortran_locsvd_large_molecules_have_clean_rank(tmp_path):

@@ -147,7 +147,7 @@ C Read keywords
       Do1Dih=.not.Kwd(23)
       DoNorm=Kwd(12)
       DoBPCS=Kwd(13)
-      SyGNIC=Kwd(14)
+      SyGNIC=Kwd(14).or.Kwd(24)
       DoBMat=Kwd(19)
       DoScan=Kwd(20)
       DoRig=Kwd(21)
@@ -638,6 +638,8 @@ C     unchanged here; residual redundancies are still pruned by type below.
      $ IAtomB,IAtomA,IAtomL,IAtomD,IAtomO,ITVB,ITVA,ITVLA,ITVD,
      $ ITVO,IFixB,IFixA,IFixL,IFixD,IFixO,CoefB,CoefA,CoefL,
      $ CoefD,CoefO)
+       If(DoLocSVD) Call KeepTrueLinearCenters(IOut,MxAtP,MxTrm,
+     $  NAtoms,NLAng,NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
        UsedPrim=.True.
        call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
      $  NAng,
@@ -818,6 +820,8 @@ C the default is to normalize GNICs
         Kwd(13)=.True.
        ElseIf(Test(1:7).eq.'SYMMALL') then
         Kwd(14)=.True.
+       ElseIf(Test(1:6).eq.'GICSYM') then
+        Kwd(24)=.True.
        ElseIf(Test(1:6).eq.'FINDFR') then
         Kwd(15)=.True.
        ElseIf(Test(1:6).eq.'JOINFR') then
@@ -889,7 +893,9 @@ C      write(IOut,'(A80)') CLine
       If(Kwd(13)) write(IOut,'('' BDPCS3    : Make BDPCS3 Bond'',
      $  '' Lengths'')')
       If(Kwd(14)) write(IOut,'('' SYMMALL   : Symmetrize same-type '',
-     $ ''GNIC blocks'')')
+     $ ''GNIC blocks (legacy alias)'')')
+      If(Kwd(24)) write(IOut,'('' GICSYM    : Symmetrize GIC blocks'',
+     $ '' for downstream modules'')')
       If(Kwd(15)) write(IOut,'('' FINDFR    : Find Fragments'')')
       If(Kwd(16)) write(IOut,'('' JOINFR    : Join Fragments'')')
       If(Kwd(17)) write(IOut,'('' HBOND     : Detect H-Bonds only'')')

@@ -11,7 +11,8 @@ DEBUG    : Preserve all intermediate files (no cleanup)
 
 #GAUSSIAN
  G16       : Make G16 Input (Need Deactivation of G26!!!)
- SYMMALL   : Symmetrize same-type GNIC blocks
+ GICSYM    : Symmetrize GIC blocks for downstream modules
+ SYMMALL   : Symmetrize same-type GNIC blocks (legacy alias)
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan
  PCS0      : PCS0 Model (UFF)
