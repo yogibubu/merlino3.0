@@ -486,6 +486,12 @@ C Make Out-of-Plane GNICs
 C
       NTot=NLen+NAng+NLAng+NDih+NOUPl
       NTarget=3*NAtoms-NTRot
+      Write(IOut,
+     $ '(/,'' Initial GNIC coordinate summary (pre-pruning)'')')
+      Write(IOut,
+     $ '(14X, ''Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
+      Write(IOut,'('' Candidates '',6I8)') NLen,NAng,NLAng,NDih,
+     $  NOuPl,NTot
       UsedPrim=.False.
       If(NTot.lt.NTarget) then
        Write(IOut,'(/,'' GNIC candidate count below vibrational rank;'',

@@ -869,12 +869,31 @@ def _append_symmetrized_provout(path: Path, sym_gics, prims: list[Primitive]) ->
     block = [
         "",
         PROVOUT_SYMM_START,
+        _symmetrized_count_summary(sym_gics),
         " Name          Irrep    Source                      Coordinate",
     ]
     for name, irrep, source, column in sym_gics:
         block.append(f" {name:<13s} {irrep:<8s} {source:<27s} {_format_gic_line(name, column, prims).strip()}")
     block.append(PROVOUT_SYMM_END)
     path.write_text("\n".join(clean + block) + "\n", encoding="utf-8")
+
+
+def _symmetrized_count_summary(sym_gics) -> str:
+    counts = {"Str": 0, "Ang": 0, "Lin": 0, "Tor": 0, "Oop": 0}
+    for name, _irrep, _source, _column in sym_gics:
+        for marker in counts:
+            if marker in name:
+                counts[marker] += 1
+                break
+    return (
+        " Symmetrized coordinate counts:"
+        f" Stretch={counts['Str']:5d}"
+        f" Bend={counts['Ang']:5d}"
+        f" Linear={counts['Lin']:5d}"
+        f" Torsion={counts['Tor']:5d}"
+        f" Out-of-plane={counts['Oop']:5d}"
+        f" Total={sum(counts.values()):5d}"
+    )
 
 
 def _explicit_gic_route(line: str) -> str:

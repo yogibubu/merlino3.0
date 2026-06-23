@@ -782,6 +782,8 @@ def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
     assert "# GNIC GICSYM BMAT ECKART GDV CLEAN" in provin
     assert "GICSYM    : Symmetrize GIC blocks" in provout
     assert "Symmetrized GIC summary from GICSYM" in provout
+    assert "Symmetrized coordinate counts:" in provout
+    assert "Out-of-plane=" in provout
     assert any(marker in provout for marker in ("A'Str", "A1Str", "AStr"))
     assert any(marker in gauin for marker in ("A'Str", "A1Str", "AStr"))
     assert (tmp_path / "gauin.raw").exists()
@@ -1142,6 +1144,8 @@ def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
         final_summary = provout[provout.index("Final GIC summary") :]
 
         assert len(definition.names) == definition.u_matrix.shape[1]
+        assert "Initial GNIC coordinate summary (pre-pruning)" in provout
+        assert "Out-Pl." in provout
         if "RPck" in final_summary:
             assert "QPck" in final_summary
             assert "PhiP" in final_summary
@@ -1149,6 +1153,36 @@ def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
             assert "PhiP" in gauin
         if expects_butterfly:
             assert "Butterfly GNIC Around Bond" in provout
+
+
+def test_gicforge_gicsym_symmetrizes_anthracene_oop_coordinates(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/anthracene.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=True,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / "provout").read_text(errors="ignore")
+    gauin = (tmp_path / "gauin").read_text(errors="ignore")
+
+    assert definition.symmetrized is True
+    assert definition.point_group == "D2h"
+    assert "Symmetrized GIC summary from GICSYM" in provout
+    assert "Symmetrized coordinate counts:" in provout
+    assert "Out-of-plane=" in provout
+    assert any(marker in gauin for marker in ("AgStr", "B1g", "B2u", "B3u"))
+    assert set(definition.irreps) <= {"Ag", "B1g", "B2g", "B3g", "Au", "B1u", "B2u", "B3u"}
+    assert "UNK" not in definition.irreps
 
 
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
