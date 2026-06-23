@@ -656,7 +656,12 @@ C     unchanged here; residual redundancies are still pruned by type below.
        Stop
       EndIf
       NTTsav=NTT
-      Write(IOut,'(/,'' Final GIC summary (Gaussian syntax)'')')
+      If(SyGNIC) then
+       Write(IOut,'(/,'' Final symmetrized GIC summary '',
+     $ ''(Gaussian syntax)'')')
+      Else
+       Write(IOut,'(/,'' Final GIC summary (Gaussian syntax)'')')
+      EndIf
       PrtVal=.True.
       NTTsum=0.0d0
       Call PrtBnd(IOut,MxAtP,MxTrm,InvDst,NLen,NTTsum,NTermB,IAtomB,

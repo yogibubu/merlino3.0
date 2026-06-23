@@ -22,6 +22,8 @@ ZERO_TOL = 1.0e-8
 RANK_TOL = 1.0e-7
 FIT_TOL = 1.0e-4
 PRINT_TOL = 1.0e-6
+PROVOUT_SYMM_START = " Symmetrized GIC summary from GICSYM"
+PROVOUT_SYMM_END = " End Symmetrized GIC summary from GICSYM"
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,8 @@ def write_gic_symmetry_files(workdir: Path) -> None:
         raw_class_targets,
     )
     _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
+    if _gicsym_requested(run_dir):
+        _append_symmetrized_provout(run_dir / "provout", sym_gics, prims)
 
 
 def _parse_gauin_gics(gauin: Path) -> list[GICLine]:
@@ -752,6 +756,42 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
     for name, _irrep, _source, column in other:
         out.append(_format_gic_line(name, column, prims))
     target.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def _gicsym_requested(run_dir: Path) -> bool:
+    provin = run_dir / "provin"
+    if not provin.exists():
+        return False
+    text = provin.read_text(encoding="utf-8", errors="replace").upper()
+    return "GICSYM" in text or "SYMMALL" in text
+
+
+def _append_symmetrized_provout(path: Path, sym_gics, prims: list[Primitive]) -> None:
+    if not path.exists():
+        return
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    clean: list[str] = []
+    in_old_block = False
+    for line in lines:
+        if line.strip() == PROVOUT_SYMM_START.strip():
+            in_old_block = True
+            continue
+        if line.strip() == PROVOUT_SYMM_END.strip():
+            in_old_block = False
+            continue
+        if not in_old_block:
+            clean.append(line)
+    while clean and not clean[-1].strip():
+        clean.pop()
+    block = [
+        "",
+        PROVOUT_SYMM_START,
+        " Irrep    Source                      Coordinate",
+    ]
+    for name, irrep, source, column in sym_gics:
+        block.append(f" {irrep:<8s} {source:<27s} {_format_gic_line(name, column, prims).strip()}")
+    block.append(PROVOUT_SYMM_END)
+    path.write_text("\n".join(clean + block) + "\n", encoding="utf-8")
 
 
 def _format_gic_line(name: str, column: np.ndarray, prims: list[Primitive]) -> str:

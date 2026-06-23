@@ -773,6 +773,8 @@ def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
     provout = (tmp_path / "provout").read_text(errors="ignore")
     assert "# GNIC GICSYM BMAT ECKART G16 CLEAN" in provin
     assert "GICSYM    : Symmetrize GIC blocks" in provout
+    assert "Symmetrized GIC summary from GICSYM" in provout
+    assert any(marker in provout for marker in ("A'Str", "A1Str", "AStr"))
     assert definition.symmetrized is True
 
 
@@ -1062,6 +1064,51 @@ def test_gic_symmetry_keeps_cs_mirror_with_identity_permutation(tmp_path):
     assert "A'Str0001,A'" in gicsym
     assert "cartesian_mixed_projection" not in diagnostics["sources"]
     assert not any(source.startswith("global_") for source in diagnostics["sources"])
+
+
+def test_gic_symmetry_appends_symmetrized_coordinates_to_provout_when_requested(tmp_path):
+    (tmp_path / "provin").write_text("# GNIC GICSYM BMAT ECKART G16 CLEAN\n", encoding="utf-8")
+    (tmp_path / "provout").write_text("legacy report\n", encoding="utf-8")
+    (tmp_path / "xyzin").write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.957200 0.000000 0.000000",
+                "H -0.239987 0.926627 0.000000",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "gauin").write_text(
+        "\n".join(
+            [
+                "%chk=water.chk",
+                "",
+                "0 1",
+                "",
+                " S1=[ 0.70710678*R(  1,  2)+0.70710678*R(  1,  3)]",
+                " S2=[ 0.70710678*R(  1,  2)-0.70710678*R(  1,  3)]",
+                " A1=[ 1.00000000*A(  2,  1,  3)]",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_gic_symmetry_files(tmp_path)
+    first = (tmp_path / "provout").read_text(encoding="utf-8")
+    write_gic_symmetry_files(tmp_path)
+    second = (tmp_path / "provout").read_text(encoding="utf-8")
+
+    assert first == second
+    assert "legacy report" in first
+    assert "Symmetrized GIC summary from GICSYM" in first
+    assert "Coordinate" in first
+    assert "Str0001" in first
+    assert "Ang0001" in first
 
 
 def test_gic_symmetry_preserves_cyclopentadiene_irrep_and_class_counts(tmp_path):
