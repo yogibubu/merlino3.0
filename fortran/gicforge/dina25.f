@@ -39,7 +39,7 @@ CENZO
       Logical DoEck,Do1Dih,DoNorm,DVibRot,InvDst,LConn,DoSySt,Aver
       Logical DoBMat,DoMW,Inv1,DoScan,DoRig,RIgB,RigA,RigL,RigD,RigO
       Logical DoneC,DoB1,DoGNIC,RdIsot
-      Logical DoG16
+      Logical DoG16,DoLocSVD
       Logical UsedPrim
       Logical TstAng,TTest,Error,PrtVal
       Dimension IEl(0:MaxEl)
@@ -151,6 +151,7 @@ C Read keywords
       DoBMat=Kwd(19)
       DoScan=Kwd(20)
       DoRig=Kwd(21)
+      DoLocSVD=Kwd(22)
       RdIsot=.False.
       Clean=Kwd(31)
       DVIBRot=.False.
@@ -823,10 +824,12 @@ C the default is to normalize GNICs
        ElseIf(Test(1:4).eq.'BMAT') then
         Kwd(19)=.True.
        ElseIf(Test(1:4).eq.'SCAN') then
-        Kwd(20)=.True.
-       ElseIf(Test(1:5).eq.'RIGID') then
+       Kwd(20)=.True.
+      ElseIf(Test(1:5).eq.'RIGID') then
         Kwd(21)=.True.
-       ElseIf(Test(1:5).eq.'CLEAN') then
+       ElseIf(Test(1:6).eq.'LOCSVD') then
+        Kwd(22)=.True.
+      ElseIf(Test(1:5).eq.'CLEAN') then
         Kwd(31)=.true.  
        ElseIf(Test(1:5).eq.'LOOSE') then
         Kwd(33)=.true.
@@ -888,6 +891,8 @@ C      write(IOut,'(A80)') CLine
       If(Kwd(20)) write(IOut,'('' SCAN      : Scan for Soft DOF'')')
       If(Kwd(21)) write(IOut,'('' RIGID     : Freeze Hard Modes'',
      $  '' in Scan'')')
+      If(Kwd(22)) write(IOut,'('' LOCSVD    : Local SVD GNIC blocks'',
+     $  '' (experimental)'')')
       If(ModPCS.eq.0.or.error)write(IOut,'('' PCS0      : PCS0 Model'',
      $  '' (UFF)'')')
       If(ModPCS.eq.1.or.error)write(IOut,'('' PCS1      : PCS1 Model'',

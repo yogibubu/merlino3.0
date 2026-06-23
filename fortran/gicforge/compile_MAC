@@ -15,7 +15,7 @@ rm -f "$LOG"
   -w \
   -I../../merlino_core/parameters/fortran \
   -L"$SDK_LIB" \
-  dina25.f entors.f coord.f mkprim.f mkcyc.f mksalc.f \
+  dina25.f entors.f coord.f mkprim.f mkcyc.f mksalc.f locsvd.f \
   gicprune.f gic_type_symmetry.f \
   pcsgeo.f symang.f tools1.f tools2.f symm.f \
   -o "$TARGET" \

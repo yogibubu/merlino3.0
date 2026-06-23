@@ -578,6 +578,27 @@ def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
             assert diagnostics["final_counts_by_block"]["LAng"] == 4
 
 
+def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("geometry/h2o.xyz"))
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+
+    assert "LOCSVD    : Local SVD GNIC blocks" in (tmp_path / "provout").read_text(errors="ignore")
+
+
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
     monkeypatch.delenv("MERLINO_ALLOW_PYTHON_LOCAL_GIC", raising=False)
     assert _python_local_gic_allowed() is False
