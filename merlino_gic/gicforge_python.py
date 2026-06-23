@@ -93,6 +93,7 @@ def build_gicforge_python_model(
     coordinates_angstrom: np.ndarray,
     *,
     impdih: bool = True,
+    onedih: bool = False,
     linear_threshold: float = LINEAR_THRESHOLD_RAD,
     primitive_fallback: bool = True,
 ) -> GICForgePythonModel:
@@ -110,6 +111,7 @@ def build_gicforge_python_model(
         atomic_numbers=atomic_numbers,
         ringset=ringset,
         impdih=impdih,
+        onedih=onedih,
         linear_threshold=linear_threshold,
     )
     primitive_candidates = tuple(coord for block in primitive_blocks for coord in block)
@@ -138,16 +140,18 @@ def compare_gicforge_python_to_fortran(
     workdir: Path,
     executable: Path | None = None,
     impdih: bool = True,
+    onedih: bool = False,
 ) -> dict[str, object]:
     workdir = Path(workdir)
     fortran_dir = workdir / "fortran"
-    python_model = build_gicforge_python_model(atom_symbols, coordinates_angstrom, impdih=impdih)
+    python_model = build_gicforge_python_model(atom_symbols, coordinates_angstrom, impdih=impdih, onedih=onedih)
     fortran_definition = define_gics_from_cartesian(
         tuple(atom_symbols),
         np.asarray(coordinates_angstrom, dtype=float),
         workdir=fortran_dir,
         executable=executable,
         symmetrize=False,
+        extra_keywords=("ONEDIH",) if onedih else (),
     )
     raw_coords = _gicforge_cartesian_from_gauin(fortran_dir / "gauin", len(fortran_definition.atom_symbols))
     fortran_signatures = tuple(_primitive_signature(primitive) for primitive in fortran_definition.primitives)
@@ -162,6 +166,7 @@ def compare_gicforge_python_to_fortran(
                     atom_symbols,
                     raw_coords,
                     impdih=impdih,
+                    onedih=onedih,
                 ).to_definition(workdir=workdir / "python-fortran-frame"),
             )
         )
@@ -221,6 +226,7 @@ def _fortran_like_primitive_blocks(
     atomic_numbers: tuple[int, ...],
     ringset,
     impdih: bool,
+    onedih: bool,
     linear_threshold: float,
 ):
     bonds: list[GICForgePythonCoordinate] = []
@@ -341,10 +347,14 @@ def _fortran_like_primitive_blocks(
             continue
         if len(neighbors[center]) == 1 or len(neighbors[right]) == 1:
             continue
-        torsion = _torsion_coordinate(
+        torsion_factory = _onedih_torsion_coordinate if onedih else _torsion_coordinate
+        torsion = torsion_factory(
             center,
             right,
             neighbors=neighbors,
+            atomic_numbers=atomic_numbers,
+            effective_atomic_numbers=effective_atomic_numbers,
+            atom_ring=atom_ring,
             ring_counts=ring_counts,
             coords=coords,
             linear_threshold=linear_threshold,
@@ -649,6 +659,9 @@ def _torsion_coordinate(
     right: int,
     *,
     neighbors: list[list[int]],
+    atomic_numbers: tuple[int, ...],
+    effective_atomic_numbers: tuple[float, ...],
+    atom_ring: list[int],
     ring_counts: list[int],
     coords: np.ndarray,
     linear_threshold: float,
@@ -676,6 +689,71 @@ def _torsion_coordinate(
         block="Tors",
         type_index=-1,
         terms=tuple((coefficient, Primitive("dihedral", (left, center, right, far))) for left, far in candidates),
+    )
+
+
+def _onedih_torsion_coordinate(
+    center: int,
+    right: int,
+    *,
+    neighbors: list[list[int]],
+    atomic_numbers: tuple[int, ...],
+    effective_atomic_numbers: tuple[float, ...],
+    atom_ring: list[int],
+    ring_counts: list[int],
+    coords: np.ndarray,
+    linear_threshold: float,
+    index: int,
+) -> GICForgePythonCoordinate | None:
+    candidates: list[tuple[int, int]] = []
+    for left in neighbors[center]:
+        if left == right:
+            continue
+        if angle(left, center, right, coords) > linear_threshold:
+            continue
+        if ring_counts[left] >= 2:
+            continue
+        for far in neighbors[right]:
+            if far == center or far == left:
+                continue
+            if angle(center, right, far, coords) > linear_threshold:
+                continue
+            if ring_counts[far] >= 2:
+                continue
+            candidates.append((left, far))
+    if not candidates:
+        return None
+
+    threshold = 5.0e-4
+    selected_left, selected_far = max(
+        candidates,
+        key=lambda pair: (
+            round(effective_atomic_numbers[pair[0]] / threshold) * threshold,
+            round(effective_atomic_numbers[pair[1]] / threshold) * threshold,
+            len(neighbors[center]),
+            len(neighbors[right]),
+            -pair[0],
+            -pair[1],
+        ),
+    )
+    orbit = [
+        (left, far)
+        for left, far in candidates
+        if atom_ring[left] == atom_ring[selected_left]
+        and atomic_numbers[left] == atomic_numbers[selected_left]
+        and len(neighbors[left]) == len(neighbors[selected_left])
+        and atom_ring[far] == atom_ring[selected_far]
+        and atomic_numbers[far] == atomic_numbers[selected_far]
+        and len(neighbors[far]) == len(neighbors[selected_far])
+    ]
+    if not orbit:
+        orbit = [(selected_left, selected_far)]
+    coefficient = 1.0 / np.sqrt(float(len(orbit)))
+    return GICForgePythonCoordinate(
+        name=f"Tors{index:04d}",
+        block="Tors",
+        type_index=-1,
+        terms=tuple((coefficient, Primitive("dihedral", (left, center, right, far))) for left, far in orbit),
     )
 
 

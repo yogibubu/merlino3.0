@@ -222,6 +222,7 @@ def define_gics_from_cartesian(
     executable: Path | None = None,
     runner: RunGICForge | None = None,
     symmetrize: bool = True,
+    extra_keywords: tuple[str, ...] = (),
 ) -> GICDefinition:
     """Construct and freeze a GIC definition from Cartesian geometry.
 
@@ -234,7 +235,7 @@ def define_gics_from_cartesian(
         raise GICDefinitionError("GIC definition needs at least one atom")
     run_dir = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="merlino_gic_define_"))
     run_dir.mkdir(parents=True, exist_ok=True)
-    _write_gicforge_inputs(run_dir, atoms, coords, symmetrize=symmetrize)
+    _write_gicforge_inputs(run_dir, atoms, coords, symmetrize=symmetrize, extra_keywords=extra_keywords)
     run = runner or run_gicforge
     if executable is not None and runner is None:
         result = run_gicforge(run_dir, executable=executable, symmetrize=symmetrize)
@@ -665,8 +666,18 @@ def parse_gicforge_line(line: str) -> tuple[str, list[tuple[float, Primitive]], 
     return name, terms, rhs
 
 
-def _write_gicforge_inputs(workdir: Path, atoms: tuple[str, ...], coords: np.ndarray, *, symmetrize: bool) -> None:
-    keywords = "# GNIC SYMMALL BMAT ECKART G16 CLEAN" if symmetrize else "# GNIC BMAT ECKART G16 CLEAN"
+def _write_gicforge_inputs(
+    workdir: Path,
+    atoms: tuple[str, ...],
+    coords: np.ndarray,
+    *,
+    symmetrize: bool,
+    extra_keywords: tuple[str, ...] = (),
+) -> None:
+    base_keywords = ["GNIC", "BMAT", "ECKART", "G16", "CLEAN"]
+    if symmetrize:
+        base_keywords.insert(1, "SYMMALL")
+    keywords = "# " + " ".join((*base_keywords, *extra_keywords))
     (workdir / "provin").write_text(
         f"{keywords}\n\n"
         "Merlino GIC definition utility\n\n"

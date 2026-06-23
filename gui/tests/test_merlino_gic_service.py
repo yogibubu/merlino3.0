@@ -507,6 +507,35 @@ def test_gicforge_python_port_matches_fortran_for_fused_and_substituted_rings(tm
         assert report["b_max_abs_diff"] <= 5.0e-8
 
 
+def test_gicforge_python_onedih_matches_fortran_keyword(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    cases = [
+        ("glycolaldehyde", Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz")),
+        ("myrtenol", Path("merlino_fit/tests/data/polycyclics/myrtenol.xyz")),
+        ("testosterone", Path("merlino_fit/tests/data/polycyclics/testosterone.xyz")),
+        ("naphthalene", Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz")),
+    ]
+    for name, path in cases:
+        geometry = read_geometry_input(path)
+        report = compare_gicforge_python_to_fortran(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=tmp_path / name,
+            executable=executable,
+            onedih=True,
+        )
+
+        assert report["passed"], report
+        assert report["same_ordered_primitives"] is True
+        assert report["b_max_abs_diff"] <= 5.0e-8
+
+
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
     monkeypatch.delenv("MERLINO_ALLOW_PYTHON_LOCAL_GIC", raising=False)
     assert _python_local_gic_allowed() is False
