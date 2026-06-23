@@ -378,13 +378,12 @@ def _fortran_like_primitive_blocks(
             continue
         if svd_local:
             bends.extend(
-                _svd_local_coordinates(
-                    _cyclic_primitives(ring, valence_angle=True),
+                _cyclic_svd_coordinates(
+                    ring,
+                    valence_angle=True,
                     coords=coords,
                     prefix="RDef",
                     start=len(bends) + 1,
-                    kind_type_index=14,
-                    max_modes=max(0, len(ring) - 3),
                 )
             )
         else:
@@ -433,13 +432,12 @@ def _fortran_like_primitive_blocks(
             continue
         if svd_local:
             torsions.extend(
-                _svd_local_coordinates(
-                    _cyclic_primitives(ring, valence_angle=False),
+                _cyclic_svd_coordinates(
+                    ring,
+                    valence_angle=False,
                     coords=coords,
                     prefix="RPck",
                     start=len(torsions) + 1,
-                    kind_type_index=1,
-                    max_modes=max(0, len(ring) - 3),
                 )
             )
         else:
@@ -934,6 +932,46 @@ def _cyclic_coordinates(
     return coordinates
 
 
+def _cyclic_svd_coordinates(
+    ring: tuple[int, ...],
+    *,
+    valence_angle: bool,
+    coords: np.ndarray,
+    prefix: str,
+    start: int,
+) -> list[GICForgePythonCoordinate]:
+    primitives = _cyclic_primitives_legacy_order(ring, valence_angle=valence_angle)
+    if not primitives:
+        return []
+    reference = _cyclic_reference_coefficients(len(ring), valence_angle=valence_angle)
+    primitive_b = b_matrix_analytic(tuple(primitives), coords)
+    u_matrix, singular_values, _vh = np.linalg.svd(primitive_b, full_matrices=False)
+    rank = min(_svd_rank(singular_values), max(0, len(ring) - 3))
+    if rank == 0:
+        return []
+    coefficients = _align_svd_modes_to_reference(u_matrix[:, :rank], reference[:, :rank])
+    coordinates: list[GICForgePythonCoordinate] = []
+    for mode in range(rank):
+        coeffs = coefficients[:, mode].astype(float)
+        coeffs[np.abs(coeffs) < 1.0e-14] = 0.0
+        terms = tuple(
+            (float(coefficient), primitive)
+            for coefficient, primitive in zip(coeffs, primitives)
+            if abs(float(coefficient)) > 1.0e-12
+        )
+        if not terms:
+            continue
+        coordinates.append(
+            GICForgePythonCoordinate(
+                name=f"{prefix}{start + len(coordinates):04d}",
+                block=prefix,
+                type_index=14 if valence_angle else 1,
+                terms=terms,
+            )
+        )
+    return coordinates
+
+
 def _cyclic_primitives(ring: tuple[int, ...], *, valence_angle: bool) -> list[Primitive]:
     ncyc = len(ring)
     if ncyc == 3:
@@ -955,6 +993,92 @@ def _cyclic_primitives(ring: tuple[int, ...], *, valence_angle: bool) -> list[Pr
                 )
             )
     return primitives
+
+
+def _cyclic_primitives_legacy_order(ring: tuple[int, ...], *, valence_angle: bool) -> list[Primitive]:
+    ncyc = len(ring)
+    if ncyc == 3:
+        return []
+    istart = _cyclic_legacy_start(ncyc, valence_angle=valence_angle)
+    primitives: list[Primitive] = []
+    for iterm in range(1, ncyc + 1):
+        iang1 = _cyclic_index(iterm + istart - 1, ncyc)
+        iang2 = _cyclic_index(iterm + istart, ncyc)
+        iang3 = _cyclic_index(iterm + istart + 1, ncyc)
+        iang4 = _cyclic_index(iterm + istart + 2, ncyc)
+        if valence_angle:
+            primitives.append(Primitive("angle", (ring[iang1], ring[iang2], ring[iang3])))
+        else:
+            primitives.append(Primitive("dihedral", (ring[iang1], ring[iang2], ring[iang3], ring[iang4])))
+    return primitives
+
+
+def _cyclic_reference_coefficients(ncyc: int, *, valence_angle: bool) -> np.ndarray:
+    reference = np.zeros((ncyc, max(0, ncyc - 3)), dtype=float)
+    if ncyc <= 3:
+        return reference
+    vnorm = np.sqrt(2.0 / float(ncyc))
+    vnorm1 = np.sqrt(1.0 / float(ncyc))
+    for ivar in range(1, ncyc - 2):
+        even = ivar == 2 * (ivar // 2)
+        ivar1 = ivar
+        if ivar == 1:
+            ivar1 = ivar + 1
+        if ivar == 4:
+            ivar1 = ivar - 1
+        if ivar == 5:
+            ivar1 = ivar - 1
+        if ivar == 6:
+            ivar1 = ivar - 2
+        for iterm in range(1, ncyc + 1):
+            snum = float(2 * ivar1 * (iterm - 1))
+            value = np.pi * snum / float(ncyc)
+            if even:
+                coefficient = vnorm * np.sin(value)
+            elif ivar < ncyc - 3:
+                coefficient = vnorm * np.cos(value)
+            else:
+                coefficient = vnorm1 * np.cos(float(iterm - 1) * np.pi)
+            if abs(coefficient) < 1.0e-14:
+                coefficient = 0.0
+            reference[iterm - 1, ivar - 1] = float(coefficient)
+    return reference
+
+
+def _align_svd_modes_to_reference(u_matrix: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    aligned = np.zeros_like(reference)
+    used: set[int] = set()
+    for mode in range(reference.shape[1]):
+        best_index = -1
+        best_dot = 0.0
+        best_score = -1.0
+        for candidate in range(u_matrix.shape[1]):
+            if candidate in used:
+                continue
+            dot = float(np.dot(reference[:, mode], u_matrix[:, candidate]))
+            score = abs(dot)
+            if score > best_score:
+                best_index = candidate
+                best_dot = dot
+                best_score = score
+        if best_index < 0:
+            continue
+        used.add(best_index)
+        sign = -1.0 if best_dot < 0.0 else 1.0
+        aligned[:, mode] = sign * u_matrix[:, best_index]
+    return aligned
+
+
+def _cyclic_legacy_start(ncyc: int, *, valence_angle: bool) -> int:
+    if not valence_angle:
+        return ncyc
+    if ncyc == 6:
+        return 2
+    if ncyc == 7:
+        return 4
+    if ncyc == 8:
+        return 2
+    return 3
 
 
 def _svd_local_coordinates(

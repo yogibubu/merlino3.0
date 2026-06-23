@@ -72,6 +72,54 @@ def _coordinate_vectors_by_name(definition: GICDefinition, *, prefix: str) -> di
     return vectors
 
 
+def _python_coordinate_vectors_by_name(coordinates, *, prefix: str) -> dict[str, dict[tuple[str, tuple[int, ...]], float]]:
+    vectors: dict[str, dict[tuple[str, tuple[int, ...]], float]] = {}
+    for coordinate in coordinates:
+        if not coordinate.name.startswith(prefix):
+            continue
+        vectors[coordinate.name] = {
+            (primitive.kind, tuple(primitive.atoms)): float(coefficient)
+            for coefficient, primitive in coordinate.terms
+            if abs(float(coefficient)) > 1.0e-12
+        }
+    return vectors
+
+
+def _common_python_coordinate_signs_match(reference_coordinates, candidate_coordinates, *, prefix: str) -> bool:
+    reference_vectors = _python_coordinate_vectors_by_name(reference_coordinates, prefix=prefix)
+    candidate_vectors = _python_coordinate_vectors_by_name(candidate_coordinates, prefix=prefix)
+    common_names = sorted(set(reference_vectors) & set(candidate_vectors))
+    if common_names:
+        vector_pairs = [(reference_vectors[name], candidate_vectors[name]) for name in common_names]
+    else:
+        reference_ordered = list(reference_vectors.values())
+        candidate_ordered = list(candidate_vectors.values())
+        if len(reference_ordered) != len(candidate_ordered) or not reference_ordered:
+            return False
+        vector_pairs = list(zip(reference_ordered, candidate_ordered, strict=True))
+    for ref, cand in vector_pairs:
+        if not _coordinate_vector_signs_match(ref, cand):
+            return False
+    return True
+
+
+def _coordinate_vector_signs_match(
+    ref: dict[tuple[str, tuple[int, ...]], float],
+    cand: dict[tuple[str, tuple[int, ...]], float],
+) -> bool:
+    common_primitives = sorted(set(ref) & set(cand))
+    if not common_primitives:
+        return False
+    dot = sum(ref[key] * cand[key] for key in common_primitives)
+    if dot <= 0.0:
+        return False
+    for key in common_primitives:
+        if abs(ref[key]) > 1.0e-3 and abs(cand[key]) > 1.0e-3:
+            if np.sign(ref[key]) != np.sign(cand[key]):
+                return False
+    return True
+
+
 def test_gic_contract_cli_parser_accepts_contract_arguments():
     args = merlino_parser().parse_args(
         [
@@ -620,6 +668,35 @@ def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
         if path.name == "sf6.xyz":
             assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 4
             assert diagnostics["final_counts_by_block"]["LAng"] == 4
+
+
+def test_gicforge_python_ring_svd_modes_follow_legacy_cycang_signs():
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/naphthalene_c10.xyz"))
+    legacy_model = build_gicforge_python_model(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        onedih=True,
+        svd_local=False,
+    )
+    svd_model = build_gicforge_python_model(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        onedih=True,
+        svd_local=True,
+    )
+
+    assert _common_python_coordinate_signs_match(
+        legacy_model.primitive_candidates,
+        svd_model.primitive_candidates,
+        prefix="RDef",
+    )
+    assert _common_python_coordinate_signs_match(
+        legacy_model.primitive_candidates,
+        svd_model.primitive_candidates,
+        prefix="RPck",
+    )
 
 
 def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
