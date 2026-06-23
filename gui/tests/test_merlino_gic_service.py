@@ -429,8 +429,13 @@ def test_gicforge_provout_final_summary_includes_ring_dihedral_coordinates(tmp_p
     assert "RDef000" in final_summary
     assert "RPck000" in final_summary
     assert "QPck000" in final_summary
+    assert "QPck0001(Value=" in final_summary
+    assert "PhiP0001(Value=" in final_summary
     assert provout.index("Endocyclic Valence Angles") < provout.index("Endocyclic Dihedral Angles")
     assert final_summary.index("RPck000") < final_summary.index("QPck000")
+    gauin = (tmp_path / "contract" / "raw" / "gauin").read_text(encoding="utf-8", errors="replace")
+    assert "QPck0001=SQRT(" in gauin
+    assert "PhiP0001=ATAN2(" in gauin
 
 
 def test_gicforge_provout_reports_exocyclic_dihedral_count_before_butterfly(tmp_path):
@@ -1104,6 +1109,46 @@ def test_gicforge_fortran_locsvd_coronene_reaches_analytic_rank(tmp_path):
 
     assert len(definition.names) == 102
     assert rank == 102
+
+
+def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    pahs = [
+        (Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz"), True),
+        (Path("merlino_fit/tests/data/naphthalene_c10.xyz"), True),
+        (Path("merlino_fit/tests/data/polycyclics/anthracene.xyz"), True),
+        (Path("merlino_fit/tests/data/polycyclics/phenanthrene.xyz"), True),
+        (Path("merlino_fit/tests/data/polycyclics/pyrene.xyz"), False),
+        (Path("merlino_fit/tests/data/polycyclics/coronene.xyz"), False),
+    ]
+    for path, expects_butterfly in pahs:
+        geometry = read_geometry_input(path)
+        definition = define_gics_from_cartesian(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=tmp_path / path.stem,
+            executable=executable,
+            symmetrize=False,
+            extra_keywords=("LOCSVD",),
+        )
+        provout = (tmp_path / path.stem / "provout").read_text(errors="ignore")
+        gauin = (tmp_path / path.stem / "gauin").read_text(errors="ignore")
+        final_summary = provout[provout.index("Final GIC summary") :]
+
+        assert len(definition.names) == definition.u_matrix.shape[1]
+        if "RPck" in final_summary:
+            assert "QPck" in final_summary
+            assert "PhiP" in final_summary
+            assert "QPck" in gauin
+            assert "PhiP" in gauin
+        if expects_butterfly:
+            assert "Butterfly GNIC Around Bond" in provout
 
 
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):

@@ -73,17 +73,25 @@ C=======================================================================
       If(NTot.eq.NVib) then
        Write(IOut,'(''   Current GIC count='',I5,
      $ '' target vibrational rank='',I5)') NTot,NVib
-       Write(IOut,'(''   No pruning performed: the set is already '',
-     $ ''minimal.'')')
-       Write(IOut,'(''   Final active GIC counts:'')')
-       Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,
-     $ '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
-     $ NLen,NAng,NLAng,NDih,NOupl
-       If(DoBMat) then
-        Call WriteGICBMat(NAtoms,NTot,BMat)
-        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
+       NBasis=0
+       Call SeedGICBasis(IOut,NAtoms,NTot,0,BMat,Scr,NBasis)
+       If(NBasis.eq.NVib) Then
+        Write(IOut,'(''   No pruning performed: the set is already '',
+     $  ''minimal and full rank.'')')
+        Write(IOut,'(''   Final active GIC counts:'')')
+        Write(IOut,'(''     Stretch='',I5,'' Bend='',I5,
+     $  '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
+     $  NLen,NAng,NLAng,NDih,NOupl
+        If(DoBMat) then
+         Call WriteGICBMat(NAtoms,NTot,BMat)
+         Write(IOut,'(''   Machine-readable final B matrix: '',
+     $   ''bmat.out'')')
+        EndIf
+        Return
        EndIf
-       Return
+       Write(IOut,'(''   Minimal-count set has B-rank '',I5,
+     $ '' / '',I5,''; pruning dependent rows before fallback.'')')
+     $ NBasis,NVib
       EndIf
 
       NAng0=NAng

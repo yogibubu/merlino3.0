@@ -1655,9 +1655,11 @@ C       Value1=OutAngOLd(C(1,IAt2),C(1,IAt1),C(1,IAt3),C(1,IAt4))*ToDeg
       end
 
 *Deck PrtPckQP
-      Subroutine PrtPckQP(IOut,NVar,ITPV)
-      Implicit Integer (A-Z)
-      Integer IOut,NVar,ITPV(*)
+      Subroutine PrtPckQP(IOut,NVar,ITPV,ValTot,PrtVal)
+      Implicit Real*8 (A-H,O-Z)
+      Integer IOut,NVar,ITPV(*),IPair,IVar,JVar
+      Logical PrtVal
+      Dimension ValTot(*)
       Character S1*4,S2*4,SP*4
 C
 C     Derive Gaussian functional GICs from ring-puckering components
@@ -1683,13 +1685,25 @@ C
       Call IntoCh(IVar,S1,L1)
       Call IntoCh(JVar,S2,L2)
       Call IntoCh(IPair,SP,LP)
-      Write(IOut,1000) SP,S1,S1,S2,S2
-      Write(IOut,1010) SP,S2,S1
+      QVal=DSqrt(ValTot(IVar)*ValTot(IVar)+
+     $ ValTot(JVar)*ValTot(JVar))
+      PhiVal=DAtan2(ValTot(JVar),ValTot(IVar))
+      If(PrtVal) Then
+       Write(IOut,1000) SP,QVal,S1,S1,S2,S2
+       Write(IOut,1010) SP,PhiVal,S2,S1
+      Else
+       Write(IOut,1020) SP,S1,S1,S2,S2
+       Write(IOut,1030) SP,S2,S1
+      EndIf
       IVar=IVar+2
       Go To 10
- 1000 Format(' QPck',A4,'=SQRT(RPck',A4,'*RPck',A4,
+ 1000 Format(' QPck',A4,'(Value=',F10.5,')=SQRT(RPck',A4,
+     $ '*RPck',A4,'+RPck',A4,'*RPck',A4,')')
+ 1010 Format(' PhiP',A4,'(Value=',F10.5,')=ATAN2(RPck',A4,
+     $ ',RPck',A4,')')
+ 1020 Format(' QPck',A4,'=SQRT(RPck',A4,'*RPck',A4,
      $ '+RPck',A4,'*RPck',A4,')')
- 1010 Format(' PhiP',A4,'=ATAN2(RPck',A4,',RPck',A4,
+ 1030 Format(' PhiP',A4,'=ATAN2(RPck',A4,',RPck',A4,
      $ ')')
       End
 *Deck PrtBnd 
@@ -2082,6 +2096,6 @@ C       Value=Dihed(C(1,IAt1),C(1,IAt2),C(1,IAt3),C(1,IAt4))*ToDeg
      $   DAbs(Coef(NTrmI,IVar)),(IAtom(ii,NTrmI,IVar),ii=1,4)
        endif
   100 continue
-      Call PrtPckQP(IOut,NVar,ITPV)
+      Call PrtPckQP(IOut,NVar,ITPV,ValTot,PrtVal)
       return
       end
