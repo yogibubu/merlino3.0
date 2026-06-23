@@ -101,7 +101,7 @@ def build_gicforge_python_model(
     atom_symbols: Iterable[str],
     coordinates_angstrom: np.ndarray,
     *,
-    impdih: bool = True,
+    impdih: bool = False,
     onedih: bool = True,
     svd_local: bool = False,
     max_linear_angle_pairs_per_center: int = 3,
@@ -162,7 +162,7 @@ def compare_gicforge_python_to_fortran(
     *,
     workdir: Path,
     executable: Path | None = None,
-    impdih: bool = True,
+    impdih: bool = False,
     onedih: bool = True,
     svd_local: bool = False,
 ) -> dict[str, object]:
@@ -176,6 +176,8 @@ def compare_gicforge_python_to_fortran(
         svd_local=svd_local,
     )
     extra_keywords = []
+    if impdih:
+        extra_keywords.append("IMPDIH")
     if not onedih:
         extra_keywords.append("NOONEDIH")
     if svd_local:

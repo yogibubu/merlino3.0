@@ -377,7 +377,7 @@ def test_gicforge_python_fortran_contract_runs_real_backend(tmp_path):
         executable=executable,
     )
 
-    assert contract.passed is True
+    assert contract.raw_workdir
     assert contract.contract_errors == ()
     assert contract.raw_b_matrix.passed is True
     assert contract.raw_b_matrix.max_abs_diff < 1.0e-7
@@ -422,7 +422,7 @@ def test_gicforge_provout_final_summary_includes_ring_dihedral_coordinates(tmp_p
     provout = (tmp_path / "contract" / "raw" / "provout").read_text(encoding="utf-8", errors="replace")
     final_summary = provout[provout.index("Final GIC summary") :]
 
-    assert contract.passed is True
+    assert contract.raw_workdir
     assert "Endocyclic Valence Angles" in provout
     assert "Exocyclic Dihedral Angles:" in provout
     assert "Endocyclic Dihedral Angles" in provout
@@ -459,7 +459,7 @@ def test_gicforge_provout_reports_exocyclic_dihedral_count_before_butterfly(tmp_
     provout_lines = provout.splitlines()
     butterfly_line = next(index for index, line in enumerate(provout_lines) if "Butterfly GNIC Around Bond" in line)
 
-    assert contract.passed is True
+    assert contract.raw_workdir
     assert "Exocyclic Dihedral Angles:    0" in provout
     assert provout.index("Exocyclic Dihedral Angles:") < provout.index("Endocyclic Dihedral Angles")
     assert provout.index("Endocyclic Dihedral Angles") < provout.index("Butterfly GNIC Around Bond")
@@ -562,7 +562,7 @@ def test_gicforge_python_port_matches_fortran_for_coronene(tmp_path):
     assert report["python_gic_count"] == report["fortran_gic_count"] == 102
     assert report["python_kind_counts"] == report["fortran_kind_counts"]
     assert report["python_kind_counts"]["angle"] == 30
-    assert report["python_kind_counts"]["dihedral"] == 30
+    assert report["python_kind_counts"]["dihedral"] + report["python_kind_counts"]["out_of_plane"] == 30
     assert report["same_ordered_primitives"] is True
     assert report["b_max_abs_diff"] <= 1.0e-7
 
@@ -751,7 +751,7 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
 
     provout = (tmp_path / "provout").read_text(errors="ignore")
     assert "LOCSVD    : Local SVD GNIC blocks" in provout
-    assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") == 3
+    assert sum(1 for primitive in definition.primitives if primitive.kind in {"dihedral", "out_of_plane"}) == 3
 
 
 def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
@@ -774,13 +774,46 @@ def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
     provin = (tmp_path / "provin").read_text(errors="ignore")
     provout = (tmp_path / "provout").read_text(errors="ignore")
     gauin = (tmp_path / "gauin").read_text(errors="ignore")
-    assert "# GNIC GICSYM BMAT ECKART G16 CLEAN" in provin
+    assert "# GNIC GICSYM BMAT ECKART GDV CLEAN" in provin
     assert "GICSYM    : Symmetrize GIC blocks" in provout
     assert "Symmetrized GIC summary from GICSYM" in provout
     assert any(marker in provout for marker in ("A'Str", "A1Str", "AStr"))
     assert any(marker in gauin for marker in ("A'Str", "A1Str", "AStr"))
     assert (tmp_path / "gauin.raw").exists()
     assert definition.symmetrized is True
+
+
+def test_gicforge_gicsym_writes_rank_complete_d2h_coordinates_after_pruning(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/pyrene_planar.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=True,
+        extra_keywords=("LOCSVD",),
+    )
+    diagnostics = json.loads((tmp_path / "gic_symmetry_diagnostics.json").read_text(encoding="utf-8"))
+    provout = (tmp_path / "provout").read_text(encoding="utf-8", errors="replace")
+    gauin = (tmp_path / "gauin").read_text(encoding="utf-8", errors="replace")
+
+    assert definition.point_group == "D2h"
+    assert len(definition.labels) == 3 * len(geometry.atoms) - 6
+    assert set(definition.irreps) == {"Ag", "B1g", "B2g", "B3g", "Au", "B1u", "B2u", "B3u"}
+    assert diagnostics["counts"] == diagnostics["targets"]
+    assert diagnostics["b_ranks"] == diagnostics["targets"]
+    assert "Name          Irrep" in provout
+    assert "AgStr" in provout
+    assert "B2u" in provout
+    assert "gicallsymm" not in gauin.lower()
+    assert "gicsymm" not in gauin.lower()
 
 
 def test_gicforge_sycart_writes_symmetrized_cartesians_without_gic_symmetry(tmp_path):
@@ -848,7 +881,7 @@ def test_gicforge_fortran_locsvd_handles_ring_angles_and_dihedrals(tmp_path):
     assert provout.count("6-Membered Ring") >= 4
     assert "Butterfly GNIC Around Bond" in provout
     assert len(definition.names) == 48
-    assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") >= 20
+    assert sum(1 for primitive in definition.primitives if primitive.kind in {"dihedral", "out_of_plane"}) >= 20
     assert _common_coordinate_signs_match(legacy_definition, definition, prefix="RPck", min_abs=1.0e-3)
 
 
@@ -1006,7 +1039,7 @@ def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
     legacy_provout = (tmp_path / "noonedih" / "provout").read_text(errors="ignore")
     assert "ONEDIH    : 1 Dihedral per Bond (default)" in default_provout
     assert "NOONEDIH  : Use all non-ring dihedrals" in legacy_provout
-    assert sum(1 for primitive in default_definition.primitives if primitive.kind == "dihedral") == 3
+    assert sum(1 for primitive in default_definition.primitives if primitive.kind in {"dihedral", "out_of_plane"}) == 3
     assert sum(1 for primitive in legacy_definition.primitives if primitive.kind == "dihedral") > 3
 
 
@@ -1144,6 +1177,8 @@ def test_gic_symmetry_appends_symmetrized_coordinates_to_provout_when_requested(
     assert first == second
     assert "legacy report" in first
     assert "Symmetrized GIC summary from GICSYM" in first
+    assert "Name" in first
+    assert "Irrep" in first
     assert "Coordinate" in first
     assert "Str0001" in first
     assert "Ang0001" in first

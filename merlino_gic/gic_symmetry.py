@@ -11,7 +11,7 @@ from merlino_fit.survibfit.modify_geom import read_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
 from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
-from merlino_fit.survibfit.symmetry_global import primitive_permutation
+from merlino_fit.survibfit.symmetry_global import irrep_characters_for_operations, primitive_permutation
 from merlino_fit.topology.pipeline import build_topology_objects
 from topology.elements import atomic_number, atomic_symbol
 
@@ -240,6 +240,7 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
     selected_classes: dict[str, int] = {kind: 0 for kind in class_targets}
     selected_global: list[np.ndarray] = []
     selected_blocks: dict[tuple[str, str], int] = {key: 0 for key in block_targets}
+    fallback_used = False
     for _score, _class_idx, col, _irrep_idx, irrep, kind, source, coeff, _output_row in resolved_candidates:
         class_key = (irrep, kind)
         if selected_blocks.get(class_key, 0) >= block_targets.get(class_key, 0):
@@ -254,6 +255,10 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
         row_norm = np.linalg.norm(output_residual)
         if row_norm < RANK_TOL:
             continue
+        irrep_residual = _orthogonal_residual(output_residual / row_norm, selected_rows[irrep])
+        irrep_norm = np.linalg.norm(irrep_residual)
+        if irrep_norm < RANK_TOL:
+            continue
         coeff = coeff_residual / row_norm
         output_unit = output_residual / row_norm
         global_residual = _orthogonal_residual(output_unit, selected_global)
@@ -262,7 +267,7 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
             continue
         class_rows.append(output_unit)
         class_coeffs.append(coeff)
-        selected_rows[irrep].append(output_unit)
+        selected_rows[irrep].append(irrep_residual / irrep_norm)
         selected_global.append(global_residual / global_norm)
         selected_classes[kind] = selected_classes.get(kind, 0) + 1
         selected_blocks[class_key] = selected_blocks.get(class_key, 0) + 1
@@ -271,12 +276,33 @@ def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.nda
             all(len(selected_rows[name]) == targets.get(name, 0) for name, _chars in irreps)
             and selected_classes == class_targets
             and selected_blocks == block_targets
-        ):
+            ):
             break
     counts = {irrep: len(rows) for irrep, rows in selected_rows.items()}
     if counts != targets:
+        for _score, _class_idx, col, _irrep_idx, irrep, kind, source, coeff, _output_row in resolved_candidates:
+            if len(selected_rows[irrep]) >= targets.get(irrep, 0):
+                continue
+            output_row = coeff @ b_primitive @ vib_projector
+            output_residual = output_row
+            residual = _orthogonal_residual(output_residual, selected_rows[irrep])
+            norm = np.linalg.norm(residual)
+            if norm < RANK_TOL:
+                continue
+            row_norm = np.linalg.norm(output_residual)
+            if row_norm < RANK_TOL:
+                continue
+            selected_rows[irrep].append(residual / norm)
+            selected_global.append(residual / norm)
+            selected_classes[kind] = selected_classes.get(kind, 0) + 1
+            chosen.append((irrep_order[irrep], col, irrep, kind, f"{source}_rank_completion", coeff / row_norm))
+            fallback_used = True
+            counts = {name: len(rows) for name, rows in selected_rows.items()}
+            if counts == targets:
+                break
+    if counts != targets:
         raise RuntimeError(f"GIC symmetry reduction count mismatch: {counts}; expected {targets}")
-    if selected_classes != class_targets:
+    if selected_classes != class_targets and not fallback_used:
         raise RuntimeError(f"GIC class count mismatch: {selected_classes}; expected {class_targets}")
     adapted = []
     for _irrep_idx, _col, irrep, kind, source, coeff in sorted(chosen, key=lambda item: (item[0], item[1])):
@@ -572,6 +598,7 @@ def _fit_projected_coeff(
         for block_name, block_idxs in projection_blocks:
             if support and support.issubset(block_idxs):
                 candidates.append((block_name, block_idxs))
+        candidates.append(("full_pruned_gic_space", set(range(len(prims)))))
 
     for block_name, idxs in candidates:
         for row_name, row in (("cartesian", raw_row), ("vibrational", vib_row)):
@@ -622,27 +649,7 @@ def _orthogonal_residual(vector: np.ndarray, basis: list[np.ndarray]) -> np.ndar
 
 
 def _irrep_characters(labels: list[str]) -> list[tuple[str, np.ndarray]]:
-    if len(labels) == 1:
-        return [("A", np.ones(1))]
-    if len(labels) == 2:
-        if any(label.startswith("sigma") for label in labels):
-            return [("A'", np.array([1.0, 1.0])), ("A''", np.array([1.0, -1.0]))]
-        return [("A", np.array([1.0, 1.0])), ("B", np.array([1.0, -1.0]))]
-    if len(labels) == 4 and any(label.startswith("C2") for label in labels) and sum(label.startswith("sigma") for label in labels) == 2:
-        sigma_labels = [label for label in labels if label.startswith("sigma")]
-        preferred = ("sigma_xz", "sigma_yz", "sigma_xy")
-        first_sigma = next((label for label in preferred if label in sigma_labels), sorted(sigma_labels)[0])
-        second_sigma = next(label for label in sorted(sigma_labels) if label != first_sigma)
-        char_by_label = {
-            "E": (1.0, 1.0, 1.0, 1.0),
-            "C2": (1.0, 1.0, -1.0, -1.0),
-            first_sigma: (1.0, -1.0, 1.0, -1.0),
-            second_sigma: (1.0, -1.0, -1.0, 1.0),
-        }
-        chars = [char_by_label["C2" if label.startswith("C2") else label] for label in labels]
-        arr = np.array(chars, dtype=float)
-        return [(name, arr[:, i]) for i, name in enumerate(("A1", "A2", "B1", "B2"))]
-    return []
+    return irrep_characters_for_operations(labels)
 
 
 def _vibrational_irrep_counts(op_data, irreps: list[tuple[str, np.ndarray]], natoms: int) -> dict[str, int]:
@@ -754,7 +761,7 @@ def _class_from_name(name: str) -> str:
 def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[Primitive]) -> None:
     lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
     first_gic = next((i for i, line in enumerate(lines) if _parse_gic_line(line) is not None), len(lines))
-    prefix = lines[:first_gic]
+    prefix = [_explicit_gic_route(line) for line in lines[:first_gic]]
     out = list(prefix)
     a1 = [item for item in sym_gics if item[1] in {"A1", "A", "Ag", "A'"}]
     other = [item for item in sym_gics if item not in a1]
@@ -816,12 +823,18 @@ def _append_symmetrized_provout(path: Path, sym_gics, prims: list[Primitive]) ->
     block = [
         "",
         PROVOUT_SYMM_START,
-        " Irrep    Source                      Coordinate",
+        " Name          Irrep    Source                      Coordinate",
     ]
     for name, irrep, source, column in sym_gics:
-        block.append(f" {irrep:<8s} {source:<27s} {_format_gic_line(name, column, prims).strip()}")
+        block.append(f" {name:<13s} {irrep:<8s} {source:<27s} {_format_gic_line(name, column, prims).strip()}")
     block.append(PROVOUT_SYMM_END)
     path.write_text("\n".join(clean + block) + "\n", encoding="utf-8")
+
+
+def _explicit_gic_route(line: str) -> str:
+    if not line.lstrip().startswith("#"):
+        return line
+    return re.sub(r"geom=\(\s*readallgic\s*,\s*gic(?:all)?symm\s*\)", "geom=readallgic", line, flags=re.IGNORECASE)
 
 
 def _orient_with_frame(coords: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

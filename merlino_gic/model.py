@@ -146,6 +146,69 @@ class GICEvaluation:
 
 
 @dataclass(frozen=True)
+class GICForgeComputation:
+    definition: GICDefinition
+    workdir: Path
+    files: dict[str, Path]
+    manifest: Path | None = None
+    sycart_coordinates_angstrom: np.ndarray | None = None
+
+
+class GICForge:
+    """Public GICForge API for non-redundant GIC and SYCART generation."""
+
+    def __init__(self, *, executable: Path | None = None, runner: RunGICForge | None = None) -> None:
+        self.executable = executable
+        self.runner = runner
+
+    def compute(
+        self,
+        atom_symbols: tuple[str, ...] | list[str],
+        coordinates_angstrom: np.ndarray,
+        *,
+        workdir: Path | None = None,
+        mode: str = "gicsym",
+        extra_keywords: tuple[str, ...] = (),
+    ) -> GICForgeComputation:
+        normalized = mode.strip().lower().replace("-", "_")
+        if normalized in {"gic", "raw"}:
+            symmetrize = False
+            symmetrize_cartesians = False
+        elif normalized in {"gicsym", "symmetrized_gic", "sym"}:
+            symmetrize = True
+            symmetrize_cartesians = False
+        elif normalized in {"sycart", "cartesian", "symmetrized_cartesian"}:
+            symmetrize = False
+            symmetrize_cartesians = True
+        elif normalized in {"gicsym_sycart", "sycart_gicsym"}:
+            symmetrize = True
+            symmetrize_cartesians = True
+        else:
+            raise GICDefinitionError(f"Unsupported GICForge mode {mode!r}")
+        definition = define_gics_from_cartesian(
+            atom_symbols,
+            coordinates_angstrom,
+            workdir=workdir,
+            executable=self.executable,
+            runner=self.runner,
+            symmetrize=symmetrize,
+            symmetrize_cartesians=symmetrize_cartesians,
+            extra_keywords=extra_keywords,
+        )
+        run_dir = Path(definition.generation_workdir)
+        files = {name: run_dir / name for name in _known_gicforge_outputs() if (run_dir / name).exists()}
+        sycart = _read_sycart_coordinates(run_dir / "sycart.xyz", tuple(definition.atom_symbols)) if (run_dir / "sycart.xyz").exists() else None
+        manifest = run_dir / "gicforge_manifest.json"
+        return GICForgeComputation(
+            definition=definition,
+            workdir=run_dir,
+            files=files,
+            manifest=manifest if manifest.exists() else None,
+            sycart_coordinates_angstrom=sycart,
+        )
+
+
+@dataclass(frozen=True)
 class GICBMatrixComparison:
     passed: bool
     max_abs_diff: float
@@ -683,7 +746,7 @@ def _write_gicforge_inputs(
     symmetrize_cartesians: bool = False,
     extra_keywords: tuple[str, ...] = (),
 ) -> None:
-    base_keywords = ["GNIC", "BMAT", "ECKART", "G16", "CLEAN"]
+    base_keywords = ["GNIC", "BMAT", "ECKART", "GDV", "CLEAN"]
     if symmetrize:
         base_keywords.insert(1, "GICSYM")
     if symmetrize_cartesians:
@@ -699,6 +762,41 @@ def _write_gicforge_inputs(
     for atom, (x, y, z) in zip(atoms, coords):
         lines.append(f"{atom:>4s} {x: 16.8E} {y: 16.8E} {z: 16.8E}")
     (workdir / "xyzin").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _known_gicforge_outputs() -> tuple[str, ...]:
+    return (
+        "gicforge.out",
+        "provout",
+        "gauin",
+        "gauin.raw",
+        "gauin.symm",
+        "gicsym",
+        "gic_symmetry_diagnostics.json",
+        "sycart.xyz",
+        "symmetrized.xyz",
+        "msrin",
+        "VPT2in",
+        "bmat.out",
+        "gic_definition.json",
+    )
+
+
+def _read_sycart_coordinates(path: Path, atoms: tuple[str, ...]) -> np.ndarray:
+    lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    if len(lines) < len(atoms) + 2:
+        raise GICDefinitionError(f"Cannot read SYCART coordinates from {path}")
+    coords = []
+    read_atoms = []
+    for raw in lines[2 : 2 + len(atoms)]:
+        fields = raw.split()
+        if len(fields) < 4:
+            raise GICDefinitionError(f"Malformed SYCART coordinate line in {path}: {raw!r}")
+        read_atoms.append(atomic_symbol(atomic_number(fields[0])))
+        coords.append((float(fields[1]), float(fields[2]), float(fields[3])))
+    if tuple(read_atoms) != tuple(atomic_symbol(atomic_number(atom)) for atom in atoms):
+        raise GICDefinitionError(f"SYCART atom order changed in {path}")
+    return np.asarray(coords, dtype=float)
 
 
 def _validated_coordinates(coordinates: np.ndarray, natoms: int) -> np.ndarray:

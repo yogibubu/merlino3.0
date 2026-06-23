@@ -5,12 +5,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from merlino_fit.survibfit.symmetry_detector import symmetry_elements_from_geometry
+from merlino_fit.survibfit.symmetry_global import irrep_characters_for_operations
 from merlino_gic.gic_symmetry import (
     SYMM_INERTIA_TOL,
     SYMM_TOL,
     _cartesian_operation,
     _canonical_operation_order,
-    _irrep_characters,
 )
 from topology.elements import atomic_number, atomic_symbol
 
@@ -51,7 +51,7 @@ def cartesian_symmetry_coordinate_model(
         raise ValueError("Cartesian-symmetry reference geometry has inconsistent dimensions")
     oriented, rotation = _oriented_coords_and_rotation(atoms, reference)
     op_data = _operation_data_for_cartesians(atoms, oriented)
-    irreps = _irrep_characters([item[0] for item in op_data])
+    irreps = irrep_characters_for_operations([item[0] for item in op_data])
     point_group = _point_group_from_ops([item[0] for item in op_data])
     basis_oriented, basis_irreps = _symmetry_adapted_cartesian_vibrations(
         oriented,

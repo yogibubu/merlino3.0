@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import re
 
 from topology.elements import atomic_symbol
 
@@ -15,6 +16,157 @@ from .symmetry_detector import (
     orient_coords,
     symmetry_elements_from_geometry,
 )
+
+
+def irrep_characters_for_operations(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    """Return real irrep projectors for the detected operation sequence.
+
+    The returned character vectors are scaled by the irrep dimension.  This
+    keeps the existing projection formula `(1/h) sum chi(R) R` valid for both
+    one-dimensional and degenerate irreps, and makes the vibrational target
+    count equal to the dimension of the projected subspace.
+    """
+    canonical = [_canonical_operation_label(label) for label in labels]
+    if canonical == ["E"]:
+        return [("A", np.ones(1))]
+    group = _group_label([(label, None, 0.0) for label in labels])
+    if group == "Cs":
+        return _cs_irreps(canonical)
+    if group == "Ci":
+        return _ci_irreps(canonical)
+    if group == "C2":
+        return _c2_irreps(canonical)
+    if group == "C2v":
+        return _c2v_irreps(canonical)
+    if group == "D2":
+        return _d2_irreps(canonical)
+    if group == "C2h":
+        return _c2h_irreps(canonical)
+    if group == "D2h":
+        return _d2h_irreps(canonical)
+    general = _cyclic_family_irreps(group, canonical)
+    if general:
+        return general
+    return []
+
+
+def _canonical_operation_label(label: str) -> str:
+    text = str(label)
+    if text == "E":
+        return "E"
+    if text == "i":
+        return "i"
+    if text.startswith("sigma"):
+        return text
+    match = re.match(r"C(\d+)([xyz])\^(\d+)", text)
+    if match:
+        n, axis, power = match.groups()
+        if int(n) == 2:
+            return f"C2{axis}"
+        return f"C{n}{axis}^{power}"
+    if text.startswith("C2_xy"):
+        return "C2_perp"
+    if text.startswith("S"):
+        return text
+    return text
+
+
+def _chars(labels: list[str], values: dict[str, float]) -> np.ndarray:
+    return np.array([values.get(label, 1.0) for label in labels], dtype=float)
+
+
+def _cs_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    return [("A'", _chars(labels, {"sigma_xy": 1.0, "sigma_xz": 1.0, "sigma_yz": 1.0})),
+            ("A''", _chars(labels, {"sigma_xy": -1.0, "sigma_xz": -1.0, "sigma_yz": -1.0}))]
+
+
+def _ci_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    return [("Ag", _chars(labels, {"i": 1.0})), ("Au", _chars(labels, {"i": -1.0}))]
+
+
+def _c2_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    return [("A", _chars(labels, {"C2x": 1.0, "C2y": 1.0, "C2z": 1.0, "C2_perp": 1.0})),
+            ("B", _chars(labels, {"C2x": -1.0, "C2y": -1.0, "C2z": -1.0, "C2_perp": -1.0}))]
+
+
+def _c2v_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    sigma_labels = [label for label in labels if label.startswith("sigma")]
+    preferred = ("sigma_xz", "sigma_yz", "sigma_xy")
+    first_sigma = next((label for label in preferred if label in sigma_labels), sorted(sigma_labels)[0])
+    second_sigma = next(label for label in sorted(sigma_labels) if label != first_sigma)
+    table = {
+        "E": (1.0, 1.0, 1.0, 1.0),
+        "C2x": (1.0, 1.0, -1.0, -1.0),
+        "C2y": (1.0, 1.0, -1.0, -1.0),
+        "C2z": (1.0, 1.0, -1.0, -1.0),
+        "C2_perp": (1.0, 1.0, -1.0, -1.0),
+        first_sigma: (1.0, -1.0, 1.0, -1.0),
+        second_sigma: (1.0, -1.0, -1.0, 1.0),
+    }
+    arr = np.array([table[label] for label in labels], dtype=float)
+    return [(name, arr[:, i]) for i, name in enumerate(("A1", "A2", "B1", "B2"))]
+
+
+def _d2_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    return [
+        ("A", _chars(labels, {"C2x": 1.0, "C2y": 1.0, "C2z": 1.0})),
+        ("B1", _chars(labels, {"C2x": -1.0, "C2y": -1.0, "C2z": 1.0})),
+        ("B2", _chars(labels, {"C2x": -1.0, "C2y": 1.0, "C2z": -1.0})),
+        ("B3", _chars(labels, {"C2x": 1.0, "C2y": -1.0, "C2z": -1.0})),
+    ]
+
+
+def _c2h_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    c2 = {"C2x", "C2y", "C2z", "C2_perp"}
+    return [
+        ("Ag", np.array([1.0 if label == "E" or label in c2 or label == "i" or label.startswith("sigma") else 1.0 for label in labels])),
+        ("Bg", np.array([1.0 if label in {"E", "i"} else -1.0 for label in labels])),
+        ("Au", np.array([1.0 if label == "E" or label in c2 else -1.0 for label in labels])),
+        ("Bu", np.array([1.0 if label == "E" or label.startswith("sigma") else -1.0 for label in labels])),
+    ]
+
+
+def _d2h_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    signs = {
+        "Ag":  {"E": 1, "C2z": 1, "C2y": 1, "C2x": 1, "i": 1, "sigma_xy": 1, "sigma_xz": 1, "sigma_yz": 1},
+        "B1g": {"E": 1, "C2z": 1, "C2y": -1, "C2x": -1, "i": 1, "sigma_xy": 1, "sigma_xz": -1, "sigma_yz": -1},
+        "B2g": {"E": 1, "C2z": -1, "C2y": 1, "C2x": -1, "i": 1, "sigma_xy": -1, "sigma_xz": 1, "sigma_yz": -1},
+        "B3g": {"E": 1, "C2z": -1, "C2y": -1, "C2x": 1, "i": 1, "sigma_xy": -1, "sigma_xz": -1, "sigma_yz": 1},
+        "Au":  {"E": 1, "C2z": 1, "C2y": 1, "C2x": 1, "i": -1, "sigma_xy": -1, "sigma_xz": -1, "sigma_yz": -1},
+        "B1u": {"E": 1, "C2z": 1, "C2y": -1, "C2x": -1, "i": -1, "sigma_xy": -1, "sigma_xz": 1, "sigma_yz": 1},
+        "B2u": {"E": 1, "C2z": -1, "C2y": 1, "C2x": -1, "i": -1, "sigma_xy": 1, "sigma_xz": -1, "sigma_yz": 1},
+        "B3u": {"E": 1, "C2z": -1, "C2y": -1, "C2x": 1, "i": -1, "sigma_xy": 1, "sigma_xz": 1, "sigma_yz": -1},
+    }
+    return [(name, _chars(labels, chars)) for name, chars in signs.items()]
+
+
+def _cyclic_family_irreps(group: str, labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    match = re.match(r"C(\d+)$", group)
+    if not match:
+        return []
+    n = int(match.group(1))
+    out: list[tuple[str, np.ndarray]] = [("A", np.ones(len(labels), dtype=float))]
+    if n % 2 == 0:
+        out.append(("B", np.array([(-1.0) ** _rotation_power(label) for label in labels], dtype=float)))
+    for k in range(1, (n + 1) // 2):
+        if n % 2 == 0 and k == n // 2:
+            continue
+        chars = []
+        for label in labels:
+            chars.append(2.0 * np.cos(2.0 * np.pi * k * _rotation_power(label) / float(n)))
+        out.append((f"E{k}", 2.0 * np.array(chars, dtype=float)))
+    return out
+
+
+def _rotation_power(label: str) -> int:
+    if label == "E":
+        return 0
+    match = re.match(r"C(\d+)[xyz]\^(\d+)", label)
+    if match:
+        return int(match.group(2))
+    if label.startswith("C2"):
+        return 1
+    return 0
 
 
 def _oop_sign(orig, mapped):

@@ -21,7 +21,7 @@ from geometry.physical_constants import Phy, get_physical_constants
 from geometry.rotational import rotational_constants_MHz
 from geometry.structure import Structure
 from merlino_core import ScientificValidationError, build_run_manifest
-from merlino_gic import GICDefinition, define_gics_from_cartesian, run_gicforge
+from merlino_gic import GICDefinition, GICForge, define_gics_from_cartesian, run_gicforge
 from merlino_gic.gic_symmetry import SYMM_INERTIA_TOL as GIC_SYMM_INERTIA_TOL
 from merlino_gic.gic_symmetry import SYMM_TOL as GIC_SYMM_TOL
 from merlino_core.numerics import limit_step, objective, rank_condition
@@ -285,12 +285,13 @@ class GICForgeSEBackend:
         self.counter += 1
         workdir = self.root / f"iter_{self.counter:04d}"
         workdir.mkdir(parents=True, exist_ok=True)
-        definition = define_gics_from_cartesian(
+        computation = GICForge(runner=run_gicforge).compute(
             self.atoms,
             coords,
             workdir=workdir,
-            runner=run_gicforge,
+            mode="gicsym",
         )
+        definition = computation.definition
         point_group = _gicforge_point_group(workdir / "provout")
         if self.point_group is None:
             self.point_group = point_group
@@ -3485,21 +3486,15 @@ def _gicforge_sycart_coordinates(
         root = Path(outdir) / "gicforge_sycart"
         root.mkdir(parents=True, exist_ok=True)
     workdir = root / "iter_0001"
-    define_gics_from_cartesian(
+    computation = GICForge(runner=run_gicforge).compute(
         atoms,
         coords,
         workdir=workdir,
-        runner=run_gicforge,
-        symmetrize=False,
-        symmetrize_cartesians=True,
+        mode="sycart",
     )
-    sycart = workdir / "sycart.xyz"
-    if not sycart.exists():
-        raise ScientificValidationError(f"GICForge SYCART did not produce {sycart}")
-    geometry = read_geometry_input(sycart)
-    if tuple(geometry.atoms) != tuple(atoms):
-        raise ScientificValidationError(f"GICForge SYCART atom order changed in {sycart}")
-    return np.asarray(geometry.coordinates_angstrom, dtype=float), workdir
+    if computation.sycart_coordinates_angstrom is None:
+        raise ScientificValidationError(f"GICForge SYCART did not produce {workdir / 'sycart.xyz'}")
+    return np.asarray(computation.sycart_coordinates_angstrom, dtype=float), workdir
 
 
 def _gicforge_point_group(provout: Path) -> str:
