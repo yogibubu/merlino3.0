@@ -9,7 +9,8 @@
  GNIC      : Make Generalized  Natural Internal Coords.
  INVDIST   : Inv.Dist. for Stretching
  SYMMSTR   : Legacy keyword ignored for primitive stretching coordinates
-ONEDIH    : 1 Dihedral per Bond
+ONEDIH    : 1 Dihedral per Bond (default)
+NOONEDIH  : Use all non-ring dihedrals
 LOCSVD    : Local SVD GNIC blocks (experimental)
 CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian

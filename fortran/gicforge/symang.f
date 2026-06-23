@@ -1,8 +1,9 @@
 *Deck MkGNCA 
       Subroutine MkGNCA(IOut,IPrint,MxBnd,MxGIcA,MxTerA,MaxAtA,
      $  NAtoms,NCyc,NBond,NGICA,IBond,NTermA,IAtomA,IAn,IAtCyc,
-     $  ITVA,CoefA,C,EAN,TreshL)
+     $  ITVA,CoefA,C,EAN,TreshL,DoLocSVD)
       Implicit Real*8 (A-H,O-Z)
+      Logical DoLocSVD
       Dimension NBond(*),IBond(MxBnd,*),IAn(*),IAtCyc(*)
       Dimension NTermA(*),IAtomA(MaxAtA,MxTerA,*),ITVA(*) 
       Dimension C(3,*),CoefA(MxTerA,*),EAN(*)
@@ -12,6 +13,12 @@ C     NGicA=0
 C Build Valence Angles 
       write(IOut,'(/,'' Exocyclic Valence Angles'')')
       write(IOut,'('' Center  Symmetry  Valence Angles'')')
+      If(DoLocSVD) then
+       Call MkGNCALocSVD(IOut,IPrint,MxBnd,MxGIcA,MxTerA,MaxAtA,
+     $  NAtoms,NBond,NGICA,IBond,NTermA,IAtomA,IAtCyc,ITVA,CoefA,
+     $  C,TreshL)
+       GoTo 80
+      EndIf
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
        if(NBJ.eq.1) go to 30
@@ -58,6 +65,7 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
         go to 30
        endif
    30 continue
+   80 continue
       If(IPrint.gt.0) then
        write(IOut,'(/,I5,'' Angle GNICS'')') NGICA
        if(NGICA.eq.0) return
@@ -76,6 +84,119 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
   60   continue
       endif
       return
+      End
+*Deck MkGNCALocSVD
+      Subroutine MkGNCALocSVD(IOut,IPrint,MxBnd,MxGIcA,MxTerA,
+     $ MaxAtA,NAtoms,NBond,NGICA,IBond,NTermA,IAtomA,IAtCyc,ITVA,
+     $ CoefA,C,TreshL)
+      Implicit Real*8 (A-H,O-Z)
+      Parameter(MxLoc=45,MxCart=3000)
+      Dimension NBond(*),IBond(MxBnd,*),IAtCyc(*)
+      Dimension NTermA(*),IAtomA(MaxAtA,MxTerA,*),ITVA(*)
+      Dimension CoefA(MxTerA,*),C(3,*)
+      Dimension LAt1(MxLoc),LAt2(MxLoc),BLoc(MxCart,MxLoc)
+      Dimension G(MxLoc,MxLoc),EVal(MxLoc),EVec(MxLoc,MxLoc)
+      Dimension B(3,4),DB(3,4,3,4),IB(4)
+      Integer Rank
+      Logical Endo
+
+      NCart=3*NAtoms
+      If(NCart.gt.MxCart) then
+       Write(IOut,'('' LOCSVD angle block skipped: too many '',
+     $ ''atoms'',I6)') NAtoms
+       Return
+      EndIf
+
+      Do 200 JAt=1,NAtoms
+       NBJ=NBond(JAt)
+       If(NBJ.le.1) GoTo 200
+       NPrim=0
+       Do 220 II=1,NBJ-1
+        IAt=IBond(II,JAt)
+        Do 230 KK=II+1,NBJ
+         KAt=IBond(KK,JAt)
+         Endo=.False.
+         If(IAtCyc(JAt).gt.0.and.IAtCyc(IAt).eq.IAtCyc(JAt).and.
+     $    IAtCyc(KAt).eq.IAtCyc(JAt)) Endo=.True.
+         If(Endo) GoTo 230
+         Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
+         If(Value.gt.TreshL) GoTo 230
+         If(KAt.lt.IAt) then
+          LAt=IAt
+          IAt=KAt
+          KAt=LAt
+         EndIf
+         NPrim=NPrim+1
+         If(NPrim.gt.MxLoc) then
+          Write(IOut,'('' LOCSVD angle block too large at center'',I6)')
+     $     JAt
+          NPrim=MxLoc
+          GoTo 240
+         EndIf
+         LAt1(NPrim)=IAt
+         LAt2(NPrim)=KAt
+  230   Continue
+  220  Continue
+  240  Continue
+       If(NPrim.eq.0) GoTo 200
+
+       Call AClear(MxCart*MxLoc,BLoc)
+       Do 260 IP=1,NPrim
+        IAt=LAt1(IP)
+        KAt=LAt2(IP)
+        Call AClear(12,B)
+        Call AClear(144,DB)
+        Call DBBend(1,IAt,JAt,KAt,B,IB,C,DB)
+        IXYZ=3*(IAt-1)
+        JXYZ=3*(JAt-1)
+        KXYZ=3*(KAt-1)
+        Do 250 IC=1,3
+         BLoc(IXYZ+IC,IP)=B(IC,1)
+         BLoc(JXYZ+IC,IP)=B(IC,2)
+         BLoc(KXYZ+IC,IP)=B(IC,3)
+  250   Continue
+  260  Continue
+
+       Do 290 IP=1,NPrim
+        Do 280 JP=1,NPrim
+         Sum=0.0D0
+         Do 270 IC=1,NCart
+          Sum=Sum+BLoc(IC,IP)*BLoc(IC,JP)
+  270    Continue
+         G(IP,JP)=Sum
+  280   Continue
+  290  Continue
+
+       Call LocSVDJacobi(MxLoc,NPrim,G,EVal,EVec,Rank)
+       If(Rank.gt.0) write(IOut,'(I4,6X,A6,5X,I2)')
+     $  JAt,'LOCSVD',Rank
+       Do 330 IM=1,Rank
+        If(NGICA.ge.MxGIcA) then
+         Write(IOut,'('' Too many angle GNICs in LOCSVD'')')
+         Return
+        EndIf
+        NGICA=NGICA+1
+        ITVA(NGICA)=0
+        NTerm=0
+        Do 310 IP=1,NPrim
+         If(DAbs(EVec(IP,IM)).le.1.0D-12) GoTo 310
+         NTerm=NTerm+1
+         If(NTerm.gt.MxTerA) then
+          Write(IOut,'('' Too many LOCSVD angle terms at center'',I6)')
+     $    JAt
+          NTerm=MxTerA
+          GoTo 320
+         EndIf
+         CoefA(NTerm,NGICA)=EVec(IP,IM)
+         IAtomA(1,NTerm,NGICA)=LAt1(IP)
+         IAtomA(2,NTerm,NGICA)=JAt
+         IAtomA(3,NTerm,NGICA)=LAt2(IP)
+  310   Continue
+  320   Continue
+        NTermA(NGICA)=NTerm
+  330  Continue
+  200 Continue
+      Return
       End
 *Deck C2V3At
       Subroutine C2V3At(Iout,IPrint,MxBnd,MaxAtA,MxTrmA,ICoord,IAt,

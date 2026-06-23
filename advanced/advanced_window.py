@@ -116,7 +116,7 @@ class AdvancedWindow(QMainWindow):
                 self.kwd_widgets["GNIC"] = gnic_cb
                 row.addWidget(gnic_cb)
 
-                for kw in ["ONEDIH", "BDPCS3"]:
+                for kw in ["NOONEDIH", "BDPCS3"]:
                     cb = QCheckBox(kw)
                     self.kwd_widgets[kw] = cb
                     row.addWidget(cb)

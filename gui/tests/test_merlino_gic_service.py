@@ -601,6 +601,39 @@ def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
     assert sum(1 for primitive in definition.primitives if primitive.kind == "dihedral") == 3
 
 
+def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("doc/papers/newmsr/figures/data/glycolaldehyde_parent.xyz"))
+    default_definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "default",
+        executable=executable,
+        symmetrize=False,
+    )
+    legacy_definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "noonedih",
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("NOONEDIH",),
+    )
+
+    default_provout = (tmp_path / "default" / "provout").read_text(errors="ignore")
+    legacy_provout = (tmp_path / "noonedih" / "provout").read_text(errors="ignore")
+    assert "ONEDIH    : 1 Dihedral per Bond (default)" in default_provout
+    assert "NOONEDIH  : Use all non-ring dihedrals" in legacy_provout
+    assert sum(1 for primitive in default_definition.primitives if primitive.kind == "dihedral") == 3
+    assert sum(1 for primitive in legacy_definition.primitives if primitive.kind == "dihedral") > 3
+
+
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
     monkeypatch.delenv("MERLINO_ALLOW_PYTHON_LOCAL_GIC", raising=False)
     assert _python_local_gic_allowed() is False

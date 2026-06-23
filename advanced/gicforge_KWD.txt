@@ -2,7 +2,7 @@
  GDV       : Make G26 Input
  ECKART    : Enforce Eckart Orientation
  GNIC      : Make Generalized  Natural Internal Coords.
- ONEDIH    : 1 Dihedral per Bond
+ NOONEDIH  : Use all non-ring dihedrals
  CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian
 

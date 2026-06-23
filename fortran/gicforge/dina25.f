@@ -144,7 +144,7 @@ C Read keywords
       DoGNIC=Kwd(8)
       InvDst=Kwd(9)
       DoSySt=Kwd(10)
-      Do1Dih=Kwd(11)
+      Do1Dih=.not.Kwd(23)
       DoNorm=Kwd(12)
       DoBPCS=Kwd(13)
       SyGNIC=Kwd(14)
@@ -152,7 +152,6 @@ C Read keywords
       DoScan=Kwd(20)
       DoRig=Kwd(21)
       DoLocSVD=Kwd(22)
-      If(DoLocSVD) Do1Dih=.True.
       RdIsot=.False.
       Clean=Kwd(31)
       DVIBRot=.False.
@@ -370,7 +369,7 @@ C      NAng=0
       IPrAng=0
       call MkGNCA(IOut,IPrAng,MxBnd,MxGNIC,MxTrm,MxAtP,NAtoms,
      $  NCyc,NBond,NAng,IBond,NTermA,IAtomA,IAn,IAtCyc,ITVA,
-     $  CoefA,C,EAN,TreshL)
+     $  CoefA,C,EAN,TreshL,DoLocSVD)
 C Make ring coordinates for valence angles
       If(NCyc.gt.0) then
        Write(IOut,'('' Endocyclic Valence Angles'')')
@@ -810,6 +809,8 @@ C the default is to normalize GNICs
         Kwd(10)=.True.
        ElseIf(Test(1:6).eq.'ONEDIH') then
         Kwd(11)=.True.
+       ElseIf(Test(1:8).eq.'NOONEDIH') then
+        Kwd(23)=.True.
        ElseIf(Test(1:6).eq.'NONORM') then
         Kwd(12)=.False.
        ElseIf(Test(1:6).eq.'BDPCS3') then
@@ -875,7 +876,10 @@ C      write(IOut,'(A80)') CLine
      $  )')
       If(Kwd(10)) write(IOut,'('' SYMMSTR   : Legacy keyword ignored'',
      $ '' for primitive stretchings'')')
-      If(Kwd(11)) write(IOut,'('' ONEDIH    : 1 Dihedral per Bond'')')
+      If(.not.Kwd(23)) write(IOut,'('' ONEDIH    : 1 Dihedral per Bond'',
+     $ '' (default)'')')
+      If(Kwd(23)) write(IOut,'('' NOONEDIH  : Use all non-ring '',
+     $ ''dihedrals'')')
       If(.not.Kwd(12)) write(IOut,'('' NONORM    : Not Normalize'',
      $  '' Dihedral GNICS'')')
       If(Kwd(31)) write(IOut,'('' CLEAN     : Clean GNIC values'')')

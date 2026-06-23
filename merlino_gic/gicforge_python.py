@@ -102,7 +102,7 @@ def build_gicforge_python_model(
     coordinates_angstrom: np.ndarray,
     *,
     impdih: bool = True,
-    onedih: bool = False,
+    onedih: bool = True,
     svd_local: bool = False,
     max_linear_angle_pairs_per_center: int = 2,
     linear_threshold: float = LINEAR_THRESHOLD_RAD,
@@ -163,7 +163,7 @@ def compare_gicforge_python_to_fortran(
     workdir: Path,
     executable: Path | None = None,
     impdih: bool = True,
-    onedih: bool = False,
+    onedih: bool = True,
 ) -> dict[str, object]:
     workdir = Path(workdir)
     fortran_dir = workdir / "fortran"
@@ -174,7 +174,7 @@ def compare_gicforge_python_to_fortran(
         workdir=fortran_dir,
         executable=executable,
         symmetrize=False,
-        extra_keywords=("ONEDIH",) if onedih else (),
+        extra_keywords=() if onedih else ("NOONEDIH",),
     )
     raw_coords = _gicforge_cartesian_from_gauin(fortran_dir / "gauin", len(fortran_definition.atom_symbols))
     fortran_signatures = tuple(_primitive_signature(primitive) for primitive in fortran_definition.primitives)

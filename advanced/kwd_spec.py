@@ -83,7 +83,7 @@ KWD_SPEC = {
             "GNIC_MODE": {
                 "values": [
                     None,
-                    "OneDih",
+                    "NoOneDih",
                     "BDPCS3",
                 ],
                 "exclusive": True,
