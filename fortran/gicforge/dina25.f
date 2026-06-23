@@ -368,8 +368,8 @@ C Make angle GNICs
 C      NAng=0
       IPrAng=0
       call MkGNCA(IOut,IPrAng,MxBnd,MxGNIC,MxTrm,MxAtP,NAtoms,
-     $  NCyc,NBond,NAng,IBond,NTermA,IAtomA,IAn,IAtCyc,ITVA,
-     $  CoefA,C,EAN,TreshL,DoLocSVD)
+     $  NCyc,MxAtCy,NAtC,ICAt,NBond,NAng,IBond,NTermA,IAtomA,IAn,
+     $  IAtCyc,ITVA,CoefA,C,EAN,TreshL,DoLocSVD)
 C Make ring coordinates for valence angles
       If(NCyc.gt.0) then
        Write(IOut,'('' Endocyclic Valence Angles'')')

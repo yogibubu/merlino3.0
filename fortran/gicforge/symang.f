@@ -1,9 +1,11 @@
 *Deck MkGNCA 
       Subroutine MkGNCA(IOut,IPrint,MxBnd,MxGIcA,MxTerA,MaxAtA,
-     $  NAtoms,NCyc,NBond,NGICA,IBond,NTermA,IAtomA,IAn,IAtCyc,
-     $  ITVA,CoefA,C,EAN,TreshL,DoLocSVD)
+     $  NAtoms,NCyc,MxAtCy,NAtC,ICAt,NBond,NGICA,IBond,NTermA,IAtomA,
+     $  IAn,IAtCyc,ITVA,CoefA,C,EAN,TreshL,DoLocSVD)
       Implicit Real*8 (A-H,O-Z)
       Logical DoLocSVD
+      Logical IsEndoAngleInCycles
+      Dimension NAtC(*),ICAt(MxAtCy,*)
       Dimension NBond(*),IBond(MxBnd,*),IAn(*),IAtCyc(*)
       Dimension NTermA(*),IAtomA(MaxAtA,MxTerA,*),ITVA(*) 
       Dimension C(3,*),CoefA(MxTerA,*),EAN(*)
@@ -15,8 +17,8 @@ C Build Valence Angles
       write(IOut,'('' Center  Symmetry  Valence Angles'')')
       If(DoLocSVD) then
        Call MkGNCALocSVD(IOut,IPrint,MxBnd,MxGIcA,MxTerA,MaxAtA,
-     $  NAtoms,NBond,NGICA,IBond,NTermA,IAtomA,IAtCyc,ITVA,CoefA,
-     $  C,TreshL)
+     $  NAtoms,NCyc,MxAtCy,NAtC,ICAt,NBond,NGICA,IBond,NTermA,IAtomA,
+     $  IAtCyc,ITVA,CoefA,C,TreshL)
        GoTo 80
       EndIf
       Do 30 JAt=1,NAtoms
@@ -34,6 +36,8 @@ C Build Valence Angles
            KAt=LAt
           EndIf
           Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
+          If(IsEndoAngleInCycles(NCyc,MxAtCy,NAtC,ICAt,IAt,JAt,KAt))
+     $     go to 50
           If(Value.gt.TreshL) go to 50 
           NGicA=NGicA+1
           NTermA(NGicA)=1
@@ -87,10 +91,11 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
       End
 *Deck MkGNCALocSVD
       Subroutine MkGNCALocSVD(IOut,IPrint,MxBnd,MxGIcA,MxTerA,
-     $ MaxAtA,NAtoms,NBond,NGICA,IBond,NTermA,IAtomA,IAtCyc,ITVA,
-     $ CoefA,C,TreshL)
+     $ MaxAtA,NAtoms,NCyc,MxAtCy,NAtC,ICAt,NBond,NGICA,IBond,NTermA,
+     $ IAtomA,IAtCyc,ITVA,CoefA,C,TreshL)
       Implicit Real*8 (A-H,O-Z)
       Parameter(MxLoc=45,MxCart=3000)
+      Dimension NAtC(*),ICAt(MxAtCy,*)
       Dimension NBond(*),IBond(MxBnd,*),IAtCyc(*)
       Dimension NTermA(*),IAtomA(MaxAtA,MxTerA,*),ITVA(*)
       Dimension CoefA(MxTerA,*),C(3,*)
@@ -98,7 +103,7 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
       Dimension G(MxLoc,MxLoc),EVal(MxLoc),EVec(MxLoc,MxLoc)
       Dimension B(3,4),DB(3,4,3,4),IB(4)
       Integer Rank
-      Logical Endo
+      Logical Endo,IsEndoAngleInCycles
 
       NCart=3*NAtoms
       If(NCart.gt.MxCart) then
@@ -115,9 +120,7 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
         IAt=IBond(II,JAt)
         Do 230 KK=II+1,NBJ
          KAt=IBond(KK,JAt)
-         Endo=.False.
-         If(IAtCyc(JAt).gt.0.and.IAtCyc(IAt).eq.IAtCyc(JAt).and.
-     $    IAtCyc(KAt).eq.IAtCyc(JAt)) Endo=.True.
+         Endo=IsEndoAngleInCycles(NCyc,MxAtCy,NAtC,ICAt,IAt,JAt,KAt)
          If(Endo) GoTo 230
          Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
          If(Value.gt.TreshL) GoTo 230
@@ -196,6 +199,34 @@ C    $    NBond,IBond,IAtCyc,NTermA,IAtomA,CoefA)
         NTermA(NGICA)=NTerm
   330  Continue
   200 Continue
+      Return
+      End
+
+*Deck IsEndoAngleInCycles
+      Logical Function IsEndoAngleInCycles(NCyc,MxAtCy,NAtC,ICAt,
+     $ IAt,JAt,KAt)
+      Implicit None
+      Integer NCyc,MxAtCy,IAt,JAt,KAt
+      Integer NAtC(*),ICAt(MxAtCy,*)
+      Integer ICyc,N,I,Prev,Next
+      IsEndoAngleInCycles=.False.
+      If(NCyc.le.0) Return
+      Do 10 ICyc=1,NCyc
+       N=NAtC(ICyc)
+       If(N.le.2) GoTo 10
+       Do 20 I=1,N
+        If(ICAt(I,ICyc).ne.JAt) GoTo 20
+        Prev=I-1
+        If(Prev.le.0) Prev=N
+        Next=I+1
+        If(Next.gt.N) Next=1
+        If((ICAt(Prev,ICyc).eq.IAt.and.ICAt(Next,ICyc).eq.KAt).or.
+     $     (ICAt(Prev,ICyc).eq.KAt.and.ICAt(Next,ICyc).eq.IAt)) then
+         IsEndoAngleInCycles=.True.
+         Return
+        EndIf
+   20  Continue
+   10 Continue
       Return
       End
 *Deck C2V3At

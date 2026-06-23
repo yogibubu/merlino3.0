@@ -639,6 +639,7 @@ def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
         Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz"),
         Path("merlino_fit/tests/data/naphthalene_c10.xyz"),
         Path("merlino_fit/tests/data/polycyclics/pyrene.xyz"),
+        Path("merlino_fit/tests/data/polycyclics/pyrene_planar.xyz"),
         Path("merlino_fit/tests/data/polycyclics/testosterone.xyz"),
     ]
     for path in cases:
@@ -713,6 +714,7 @@ def test_gicforge_python_fortran_locsvd_contract_reaches_target_rank(tmp_path):
         ("glycine", Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz")),
         ("naphthalene", Path("merlino_fit/tests/data/naphthalene_c10.xyz")),
         ("pyrene", Path("merlino_fit/tests/data/polycyclics/pyrene.xyz")),
+        ("pyrene_planar", Path("merlino_fit/tests/data/polycyclics/pyrene_planar.xyz")),
         ("testosterone", Path("merlino_fit/tests/data/polycyclics/testosterone.xyz")),
     ]
     for name, path in cases:
@@ -946,7 +948,7 @@ def test_gicforge_fortran_locsvd_large_molecules_have_clean_rank(tmp_path):
         assert "ERROR: final block counts" not in provout
 
 
-def test_gicforge_fortran_locsvd_coronene_reports_near_rank_case(tmp_path):
+def test_gicforge_fortran_locsvd_coronene_reaches_analytic_rank(tmp_path):
     try:
         executable = resolve_backend("gicforge")
     except Exception as exc:
@@ -972,7 +974,7 @@ def test_gicforge_fortran_locsvd_coronene_reports_near_rank_case(tmp_path):
     rank = int(np.sum(singular_values > tolerance))
 
     assert len(definition.names) == 102
-    assert rank >= 100
+    assert rank == 102
 
 
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
