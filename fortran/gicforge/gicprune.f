@@ -60,8 +60,13 @@ C=======================================================================
       If(NTot.lt.NVib) then
        Write(IOut,'(''   Current GIC count='',I5,
      $ '' target vibrational rank='',I5)') NTot,NVib
+       Write(IOut,'(''   Candidate counts: Stretch='',I5,'' Bend='',I5,
+     $ '' Linear='',I5,'' Torsion='',I5,'' Out-of-plane='',I5)')
+     $ NLen,NAng,NLAng,NDih,NOupl
        Write(IOut,'('' ERROR: GIC set is below the vibrational rank '',
      $ ''before pruning.'')')
+       Write(IOut,'('' ERROR: LOCSVD/full primitive fallback must '',
+     $ ''generate at least target-rank candidates before pruning.'')')
        Stop 1
       EndIf
 
@@ -134,36 +139,43 @@ C=======================================================================
       IOff=NLen+NAng0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NLAng,IOff,
      $ BMat,ITVLA,1,KeepL,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Exocyclic torsion'
       IOff=NLen+NAng0+NLang0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
      $ BMat,ITVD,2,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Butterfly torsion'
       IOff=NLen+NAng0+NLang0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
      $ BMat,ITVD,3,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Exocyclic bend'
       IOff=NLen
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
      $ BMat,ITVA,4,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Ring bend'
       IOff=NLen
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NAng,IOff,
      $ BMat,ITVA,5,KeepA,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Ring torsion'
       IOff=NLen+NAng0+NLang0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NDih,IOff,
      $ BMat,ITVD,6,KeepD,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       Label='Out-of-plane'
       IOff=NLen+NAng0+NLang0+NDih0
       Call PruneSelectedBlockAgainst(IOut,Label,NAtoms,NOupl,IOff,
      $ BMat,ITVO,7,KeepO,Scr,NBasis,NVib,NKeep,NSelect)
+      Call ReportPruneProgress(IOut,Label,NBasis,NVib)
 
       If(CountKeep(NAng,KeepA).lt.NAng) Call PackGICBlock(MxAtP,MxTrm,
      $ NAng,KeepA,NTermA,IAtomA,IPrimA,ITVA,IFixA,CoefA,ValTA)
@@ -183,6 +195,9 @@ C=======================================================================
       If(NTot.ne.NVib) then
        Write(IOut,'('' WARNING: final GIC count='',I5,
      $ '' differs from target vibrational rank='',I5)') NTot,NVib
+       Write(IOut,'('' WARNING: interim block counts: Stretch='',I5,
+     $ '' Bend='',I5,'' Linear='',I5,'' Torsion='',I5,
+     $ '' Out-of-plane='',I5)') NLen,NAng,NLAng,NDih,NOupl
        Return
       EndIf
       If(DoBMat) then
@@ -193,6 +208,17 @@ C=======================================================================
        Call WriteGICBMat(NAtoms,NTot,BMat)
        Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
       EndIf
+      Return
+      End
+
+*Deck ReportPruneProgress
+      Subroutine ReportPruneProgress(IOut,Label,NBasis,NTarget)
+      Integer IOut,NBasis,NTarget
+      Character*(*) Label
+      Write(IOut,'(''     Rank after '',A,'': '',I5,'' / '',I5)')
+     $ Label,NBasis,NTarget
+      If(NBasis.ge.NTarget) Write(IOut,'(''     Target reached after '',
+     $ A)') Label
       Return
       End
 
@@ -220,22 +246,51 @@ C=======================================================================
 *Deck SelectPruneMode
       Logical Function SelectPruneMode(ITPV,Mode)
       Integer ITPV,Mode
+      Logical IsExoTorsion,IsButterflyTorsion,IsRingBend,IsRingTorsion
       SelectPruneMode=.False.
       If(Mode.eq.1) then
        SelectPruneMode=.True.
       ElseIf(Mode.eq.2) then
-       If(ITPV.le.0) SelectPruneMode=.True.
+       If(IsExoTorsion(ITPV)) SelectPruneMode=.True.
       ElseIf(Mode.eq.3) then
-       If(ITPV.eq.2) SelectPruneMode=.True.
+       If(IsButterflyTorsion(ITPV)) SelectPruneMode=.True.
       ElseIf(Mode.eq.4) then
-       If(ITPV.ne.14) SelectPruneMode=.True.
+       If(.not.IsRingBend(ITPV)) SelectPruneMode=.True.
       ElseIf(Mode.eq.5) then
-       If(ITPV.eq.14) SelectPruneMode=.True.
+       If(IsRingBend(ITPV)) SelectPruneMode=.True.
       ElseIf(Mode.eq.6) then
-       If(ITPV.eq.1) SelectPruneMode=.True.
+       If(IsRingTorsion(ITPV)) SelectPruneMode=.True.
       ElseIf(Mode.eq.7) then
        SelectPruneMode=.True.
       EndIf
+      Return
+      End
+
+*Deck IsRingBend
+      Logical Function IsRingBend(ITPV)
+      Integer ITPV
+      IsRingBend=(ITPV.eq.14)
+      Return
+      End
+
+*Deck IsRingTorsion
+      Logical Function IsRingTorsion(ITPV)
+      Integer ITPV
+      IsRingTorsion=(ITPV.eq.1)
+      Return
+      End
+
+*Deck IsButterflyTorsion
+      Logical Function IsButterflyTorsion(ITPV)
+      Integer ITPV
+      IsButterflyTorsion=(ITPV.eq.2)
+      Return
+      End
+
+*Deck IsExoTorsion
+      Logical Function IsExoTorsion(ITPV)
+      Integer ITPV
+      IsExoTorsion=(ITPV.le.0)
       Return
       End
 

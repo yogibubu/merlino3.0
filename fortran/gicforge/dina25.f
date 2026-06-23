@@ -416,7 +416,8 @@ C Make Linear Angle GNICs: make 2 angles for linear molecules
       NLAng=0
       IPrLAn=0
       call MkGNLA(IOut,IPrLAn,MxBnd,MxGNIC,MxTrm,MxAtP,NAtoms,
-     $  NBond,NLAng,Linear,IBond,NTermL,IAtomL,IAn,CoefL,C,TreshL)
+     $  NBond,NLAng,Linear,IBond,NTermL,IAtomL,IAn,CoefL,C,TreshL,
+     $  DoLocSVD)
 C Make dihedral GNICs
       NDih=0
       call MkGNCD(IOut,IPrint,MxBnd,MxTrm,MxTrm,MxAtP,MxAtP,MxAtCy,

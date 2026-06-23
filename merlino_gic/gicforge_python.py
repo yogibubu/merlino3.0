@@ -104,7 +104,7 @@ def build_gicforge_python_model(
     impdih: bool = True,
     onedih: bool = True,
     svd_local: bool = False,
-    max_linear_angle_pairs_per_center: int = 2,
+    max_linear_angle_pairs_per_center: int = 3,
     linear_threshold: float = LINEAR_THRESHOLD_RAD,
     primitive_fallback: bool = True,
 ) -> GICForgePythonModel:
@@ -164,17 +164,29 @@ def compare_gicforge_python_to_fortran(
     executable: Path | None = None,
     impdih: bool = True,
     onedih: bool = True,
+    svd_local: bool = False,
 ) -> dict[str, object]:
     workdir = Path(workdir)
     fortran_dir = workdir / "fortran"
-    python_model = build_gicforge_python_model(atom_symbols, coordinates_angstrom, impdih=impdih, onedih=onedih)
+    python_model = build_gicforge_python_model(
+        atom_symbols,
+        coordinates_angstrom,
+        impdih=impdih,
+        onedih=onedih,
+        svd_local=svd_local,
+    )
+    extra_keywords = []
+    if not onedih:
+        extra_keywords.append("NOONEDIH")
+    if svd_local:
+        extra_keywords.append("LOCSVD")
     fortran_definition = define_gics_from_cartesian(
         tuple(atom_symbols),
         np.asarray(coordinates_angstrom, dtype=float),
         workdir=fortran_dir,
         executable=executable,
         symmetrize=False,
-        extra_keywords=() if onedih else ("NOONEDIH",),
+        extra_keywords=tuple(extra_keywords),
     )
     raw_coords = _gicforge_cartesian_from_gauin(fortran_dir / "gauin", len(fortran_definition.atom_symbols))
     fortran_signatures = tuple(_primitive_signature(primitive) for primitive in fortran_definition.primitives)
@@ -190,6 +202,7 @@ def compare_gicforge_python_to_fortran(
                     raw_coords,
                     impdih=impdih,
                     onedih=onedih,
+                    svd_local=svd_local,
                 ).to_definition(workdir=workdir / "python-fortran-frame"),
             )
         )

@@ -237,19 +237,20 @@ C     write(IOut,'(''Atom'',I3,'' Term.Atoms.'',I2)')JAt,IT
 *Deck MkGNLA 
       Subroutine MkGNLA(IOut,IPrint,MxBond,MxGIcL,MxTerL,MaxAtL,
      $  NAtoms,NBond,NGICL,Linear,IBond,NTermL,IAtomL,IAn,CoefL,
-     $  C,TreshL)
+     $  C,TreshL,DoLocSVD)
       Implicit Real*8 (A-H,O-Z)
       Dimension C(3,*)
       Dimension NBond(*),IBond(MxBond,*),IAn(*)
       Dimension NTermL(MxGICL),IAtomL(MaxAtL,MxTerL,MxGICL) 
       Dimension CoefL(MxTerL,MxGICL)
-      Logical Linear
+      Logical Linear,DoLocSVD
       pi = dacos(-1.d0)
       ToDeg=1.80d+2/pi
       NGicL=0
 C Build Valence Angles 
       Do 30 JAt=1,NAtoms
        NBJ=NBond(JAt)
+       NLPair=0
        Do 40 ii=1,NBJ-1
         IAt=IBond(ii,JAt)
         Do 50 kk=ii+1,NBJ
@@ -261,6 +262,8 @@ C Build Valence Angles
          EndIf
          Value=ValAng(C(1,IAt),C(1,JAt),C(1,KAt))
          If(Value.lt.TreshL) go to 50 
+         If(DoLocSVD.and.NLPair.ge.3) go to 50
+         NLPair=NLPair+1
          NGicL=NGicL+1
          NTermL(NGicL)=1
          IAtomL(1,1,NGicL)=IAt

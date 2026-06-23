@@ -666,8 +666,8 @@ def test_gicforge_python_svd_local_reaches_target_rank(tmp_path):
         assert diagnostics["final_rank"] == model.target_rank
         assert diagnostics["rank_complete"] is True
         if path.name == "sf6.xyz":
-            assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 4
-            assert diagnostics["final_counts_by_block"]["LAng"] == 4
+            assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 6
+            assert diagnostics["final_counts_by_block"]["LAng"] == 6
 
 
 def test_gicforge_python_ring_svd_modes_follow_legacy_cycang_signs():
@@ -697,6 +697,35 @@ def test_gicforge_python_ring_svd_modes_follow_legacy_cycang_signs():
         svd_model.primitive_candidates,
         prefix="RPck",
     )
+
+
+def test_gicforge_python_fortran_locsvd_contract_reaches_target_rank(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    cases = [
+        ("sf6", Path("merlino_fit/tests/data/sf6.xyz")),
+        ("glycine", Path("doc/papers/newmsr/figures/data/glycine_I_parent.xyz")),
+        ("naphthalene", Path("merlino_fit/tests/data/naphthalene_c10.xyz")),
+        ("pyrene", Path("merlino_fit/tests/data/polycyclics/pyrene.xyz")),
+        ("testosterone", Path("merlino_fit/tests/data/polycyclics/testosterone.xyz")),
+    ]
+    for name, path in cases:
+        geometry = read_geometry_input(path)
+        report = compare_gicforge_python_to_fortran(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=tmp_path / name,
+            executable=executable,
+            svd_local=True,
+        )
+
+        assert report["python_gic_count"] == report["target_rank"], report
+        assert report["fortran_gic_count"] == report["target_rank"], report
 
 
 def test_gicforge_fortran_accepts_locsvd_keyword(tmp_path):
@@ -787,6 +816,74 @@ def test_gicforge_fortran_locsvd_uses_priority_pruning_only_when_requested(tmp_p
     locsvd_provout = (tmp_path / "locsvd" / "provout").read_text(errors="ignore")
     assert "Priority order: Stretch, Linear" not in default_provout
     assert "Priority order: Stretch, Linear" in locsvd_provout
+    assert "Rank after Linear bend" in locsvd_provout
+    assert "Target reached after" in locsvd_provout
+    assert "ERROR: final block counts" not in locsvd_provout
+
+
+def test_gicforge_fortran_locsvd_large_molecules_have_clean_rank(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    cases = [
+        Path("merlino_fit/tests/data/polycyclics/saccharine.xyz"),
+        Path("merlino_fit/tests/data/polycyclics/testosterone.xyz"),
+    ]
+    for path in cases:
+        geometry = read_geometry_input(path)
+        definition = define_gics_from_cartesian(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=tmp_path / path.stem,
+            executable=executable,
+            symmetrize=False,
+            extra_keywords=("LOCSVD",),
+        )
+        b_matrix = definition.u_matrix.T @ b_matrix_analytic(
+            definition.primitives,
+            np.asarray(definition.reference_coordinates_angstrom),
+        )
+        singular_values = np.linalg.svd(b_matrix, compute_uv=False)
+        tolerance = max(1.0e-10, 1.0e-8 * float(singular_values[0]))
+        rank = int(np.sum(singular_values > tolerance))
+        provout = (tmp_path / path.stem / "provout").read_text(errors="ignore")
+
+        assert len(definition.names) == rank
+        assert "WARNING: LOCSVD ring mode weakly matches CycAng" not in provout
+        assert "ERROR: final block counts" not in provout
+
+
+def test_gicforge_fortran_locsvd_coronene_reports_near_rank_case(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/coronene.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    b_matrix = definition.u_matrix.T @ b_matrix_analytic(
+        definition.primitives,
+        np.asarray(definition.reference_coordinates_angstrom),
+    )
+    singular_values = np.linalg.svd(b_matrix, compute_uv=False)
+    tolerance = max(1.0e-10, 1.0e-8 * float(singular_values[0]))
+    rank = int(np.sum(singular_values > tolerance))
+
+    assert len(definition.names) == 102
+    assert rank >= 100
 
 
 def test_gicforge_fortran_defaults_to_onedih_and_accepts_noonedih(tmp_path):
