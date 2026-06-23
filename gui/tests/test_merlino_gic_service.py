@@ -120,6 +120,23 @@ def _coordinate_vector_signs_match(
     return True
 
 
+def _final_nonredundant_total(provout: str) -> int:
+    for line in provout.splitlines():
+        if line.strip().startswith("Final Non Redund."):
+            return int(line.split()[-1])
+    raise AssertionError("Final Non Redund. line not found")
+
+
+def _gicforge_names_from_text(text: str) -> list[str]:
+    names: list[str] = []
+    for raw in text.splitlines():
+        parsed = parse_gicforge_line(raw)
+        if parsed is None:
+            continue
+        names.append(parsed[0].split("(", 1)[0].strip())
+    return names
+
+
 def test_gic_contract_cli_parser_accepts_contract_arguments():
     args = merlino_parser().parse_args(
         [
@@ -821,6 +838,135 @@ def test_gicforge_does_not_make_oop_for_fully_cyclic_atom_sets(tmp_path):
             assert not set(primitive.atoms).issubset(cyclic_atoms)
 
 
+@pytest.mark.parametrize(
+    "xyz_name",
+    [
+        "naphthalene",
+        "anthracene",
+    ],
+)
+def test_gicforge_provout_gic_definition_layout_snapshot(tmp_path, xyz_name):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path(f"merlino_fit/tests/data/polycyclics/{xyz_name}.xyz"))
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / xyz_name,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / xyz_name / "provout").read_text(errors="ignore")
+    block = provout[
+        provout.index("Definition of Generalized Natural Internal Coordinates") :
+        provout.index("Final GIC summary")
+    ]
+
+    expected_order = [
+        "Exocyclic Valence Angles",
+        "Endocyclic Valence Angles",
+        "Exocyclic Dihedral Angles:",
+        "Endocyclic Dihedral Angles",
+        "Butterfly GNIC Around Bond",
+        "Out-of-plane angles:",
+        "Pre-pruning residual redundancies:",
+        "Coordinate definitions are printed after pruning only.",
+        "Type-local residual GIC redundancy pruning",
+        "Redundant",
+        "Pre pruning Non Redund.",
+        "Final Non Redund.",
+        "Machine-readable final B matrix: bmat.out",
+    ]
+    positions = [block.index(marker) for marker in expected_order]
+    assert positions == sorted(positions)
+    assert "Initial GNIC coordinate summary" not in block
+    assert "Out-of-plane candidates before pruning:" not in block
+    assert " Prim:" not in block.split("Type-local residual GIC redundancy pruning", 1)[0]
+
+
+@pytest.mark.parametrize(
+    "xyz_name",
+    [
+        "myrtenol",
+        "testosterone",
+    ],
+)
+def test_gicforge_large_nonplanar_provout_layout_and_rank(tmp_path, xyz_name):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path(f"merlino_fit/tests/data/polycyclics/{xyz_name}.xyz"))
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / xyz_name,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / xyz_name / "provout").read_text(errors="ignore")
+    target = 3 * len(geometry.atoms) - 6
+
+    assert _final_nonredundant_total(provout) == target
+    block = provout[
+        provout.index("Definition of Generalized Natural Internal Coordinates") :
+        provout.index("Final GIC summary")
+    ]
+    expected_order = [
+        "Out-of-plane angles:",
+        "Type-local residual GIC redundancy pruning",
+        "Final Non Redund.",
+        "Machine-readable final B matrix: bmat.out",
+    ]
+    positions = [block.index(marker) for marker in expected_order]
+    assert positions == sorted(positions)
+
+
+@pytest.mark.parametrize(
+    "xyz_name",
+    [
+        "naphthalene",
+        "anthracene",
+        "norbornene",
+        "norbornadiene",
+    ],
+)
+def test_gicforge_final_provout_coordinates_match_gauin_and_target_rank(tmp_path, xyz_name):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path(f"merlino_fit/tests/data/polycyclics/{xyz_name}.xyz"))
+    define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / xyz_name,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / xyz_name / "provout").read_text(errors="ignore")
+    gauin = (tmp_path / xyz_name / "gauin").read_text(errors="ignore")
+    final_summary = provout[provout.index("Final GIC summary") :]
+    target = 3 * len(geometry.atoms) - 6
+
+    assert _final_nonredundant_total(provout) == target
+    assert _gicforge_names_from_text(final_summary) == _gicforge_names_from_text(gauin)
+
+
 def test_gicforge_gicsym_writes_rank_complete_d2h_coordinates_after_pruning(tmp_path):
     try:
         executable = resolve_backend("gicforge")
@@ -1144,8 +1290,8 @@ def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
         final_summary = provout[provout.index("Final GIC summary") :]
 
         assert len(definition.names) == definition.u_matrix.shape[1]
-        assert "Initial GNIC coordinate summary (pre-pruning)" in provout
-        assert "Out-of-plane candidates before pruning:" in provout
+        assert "Out-of-plane angles:" in provout
+        assert provout.index("Out-of-plane angles:") < provout.index("Pre-pruning residual redundancies:")
         assert "Out-Pl." in provout
         if "RPck" in final_summary:
             assert "QPck" in final_summary
@@ -1154,6 +1300,77 @@ def test_gicforge_fortran_locsvd_pah_ring_puckering_and_butterflies(tmp_path):
             assert "PhiP" in gauin
         if expects_butterfly:
             assert "Butterfly GNIC Around Bond" in provout
+
+
+@pytest.mark.parametrize(
+    ("xyz_name", "expected_count"),
+    [
+        ("norbornene", 45),
+        ("norbornadiene", 39),
+    ],
+)
+def test_gicforge_fortran_locsvd_norbornene_family(tmp_path, xyz_name, expected_count):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    path = Path(f"merlino_fit/tests/data/polycyclics/{xyz_name}.xyz")
+    geometry = read_geometry_input(path)
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / xyz_name,
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / xyz_name / "provout").read_text(errors="ignore")
+
+    assert len(definition.names) == expected_count
+    assert len(definition.names) == 3 * len(geometry.atoms) - 6
+    assert "Out-of-plane angles:" in provout
+    assert provout.index("Out-of-plane angles:") < provout.index("Final GIC summary")
+    assert "Final GIC summary" in provout
+
+
+@pytest.mark.parametrize(
+    ("xyz_name", "expected_count", "expected_group", "expected_irreps"),
+    [
+        ("norbornene", 45, "Cs", {"A'", "A''"}),
+        ("norbornadiene", 39, "C2v", {"A1", "A2", "B1", "B2"}),
+    ],
+)
+def test_gicforge_gicsym_norbornene_family(tmp_path, xyz_name, expected_count, expected_group, expected_irreps):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path(f"merlino_fit/tests/data/polycyclics/{xyz_name}.xyz"))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / xyz_name,
+        executable=executable,
+        symmetrize=True,
+        extra_keywords=("LOCSVD",),
+    )
+    provout = (tmp_path / xyz_name / "provout").read_text(errors="ignore")
+    gauin = (tmp_path / xyz_name / "gauin").read_text(errors="ignore")
+
+    assert definition.symmetrized is True
+    assert definition.point_group == expected_group
+    assert len(definition.names) == expected_count
+    assert set(definition.irreps) <= expected_irreps
+    assert "UNK" not in definition.irreps
+    assert "Symmetrized GIC summary from GICSYM" in provout
+    assert "Symmetrized coordinate counts:" in provout
+    assert any(line.lstrip().startswith(tuple(expected_irreps)) for line in gauin.splitlines())
 
 
 def test_gicforge_gicsym_symmetrizes_anthracene_oop_coordinates(tmp_path):

@@ -66,6 +66,8 @@ def test_real_polycyclic_cases_build_consistently():
         "coronene": ("data/polycyclics/coronene.xyz", 36, 426, 102),
         "dihydronaphthalene": ("data/polycyclics/dihydronaphthalene.xyz", 20, 209, 54),
         "norbornane": ("data/polycyclics/norbornane.xyz", 19, 290, 51),
+        "norbornene": ("data/polycyclics/norbornene.xyz", 17, 242, 45),
+        "norbornadiene": ("data/polycyclics/norbornadiene.xyz", 15, 194, 39),
         "myrtenol": ("data/polycyclics/myrtenol.xyz", 27, 361, 75),
         "testosterone": ("data/polycyclics/testosterone.xyz", 49, 723, 141),
         "saccharine": ("data/polycyclics/saccharine.xyz", 17, 172, 45),

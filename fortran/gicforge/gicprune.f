@@ -84,8 +84,6 @@ C=======================================================================
      $  NLen,NAng,NLAng,NDih,NOupl
         If(DoBMat) then
          Call WriteGICBMat(NAtoms,NTot,BMat)
-         Write(IOut,'(''   Machine-readable final B matrix: '',
-     $   ''bmat.out'')')
         EndIf
         Return
        EndIf
@@ -201,9 +199,9 @@ C=======================================================================
      $ NOupl
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.ne.NVib) then
-       Write(IOut,'('' WARNING: final GIC count='',I5,
+       Write(IOut,'('' ERROR: post-pruning GIC count='',I5,
      $ '' differs from target vibrational rank='',I5)') NTot,NVib
-       Write(IOut,'('' WARNING: interim block counts: Stretch='',I5,
+       Write(IOut,'('' ERROR: interim block counts: Stretch='',I5,
      $ '' Bend='',I5,'' Linear='',I5,'' Torsion='',I5,
      $ '' Out-of-plane='',I5)') NLen,NAng,NLAng,NDih,NOupl
        Return
@@ -214,7 +212,6 @@ C=======================================================================
      $ NTermL,NTermD,NTermO,CoefB,CoefA,CoefL,CoefD,CoefO,C,BMat,
      $ ImpDih)
        Call WriteGICBMat(NAtoms,NTot,BMat)
-       Write(IOut,'(''   Machine-readable final B matrix: bmat.out'')')
       EndIf
       Return
       End

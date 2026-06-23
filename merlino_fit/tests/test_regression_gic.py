@@ -112,6 +112,8 @@ def test_survibfit_gic_cli_is_gicforge_identical(tmp_path):
         "polycyclics/anthracene.xyz",
         "polycyclics/coronene.xyz",
         "polycyclics/norbornane.xyz",
+        "polycyclics/norbornene.xyz",
+        "polycyclics/norbornadiene.xyz",
         "polycyclics/myrtenol.xyz",
         "polycyclics/testosterone.xyz",
         "polycyclics/saccharine.xyz",

@@ -27,13 +27,18 @@ ignored by git.
 
 GICForge receives only Cartesian XYZ input from Merlino, builds redundant and
 non-redundant GICs, emits a readable report, and creates Gaussian-readable GIC
-input. The report includes the pre-pruning candidate count by family, including
-out-of-plane coordinates. If that count is not the target vibrational rank
+input. The report lists exocyclic/endocyclic valence angles, exocyclic/endocyclic
+dihedrals, butterfly coordinates and out-of-plane candidates before pruning. If
+the pre-pruning count is not the target vibrational rank
 (`3N-6`, or `3N-5` for linear molecules), coordinate definitions are suppressed
 until after pruning so `provout` exposes only the final active basis. Merlino
 wraps this as the `gic-define` utility, which writes a frozen
 `merlino.gic.definition.v1` schema containing primitives, GIC coefficients,
 labels, irreducible representations and the Gaussian block.
+
+Out-of-plane primitives are not generated when all four involved atoms are
+cyclic. Cyclic centers with exocyclic substituents remain eligible, and any
+redundant candidates are removed only by the final type-local pruning pass.
 
 B-matrix construction is a separate library contract. The `gic-bmatrix` utility
 and `merlino_gic.evaluate_gic_definition` read the frozen schema and evaluate

@@ -78,11 +78,12 @@ cd fortran/gicforge
 The Fortran compile script uses legacy-compatible flags and writes build logs
 under `fortran/gicforge/build/`; it updates `bin/gicforge.x` and the
 compatibility alias `bin/prova.x`.
-GICForge reports pre-pruning candidate counts by coordinate family, including
-out-of-plane coordinates, but writes coordinate definitions only for the final
-post-pruning basis when redundant candidates had to be removed. `GICSYM` and
+GICForge reports out-of-plane candidates in the same GIC definition section as
+valence angles and dihedrals, then writes coordinate definitions only for the
+final post-pruning basis when redundant candidates had to be removed. `GICSYM` and
 `SYCART` are exposed through the shared `merlino_gic.GICForge` API so SEfit and
 future optimizers use the same symmetrized GIC or Cartesian coordinate model.
+Out-of-plane primitives with all atoms cyclic are excluded before pruning.
 
 For the Fortran DVR backend:
 

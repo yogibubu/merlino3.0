@@ -484,16 +484,9 @@ C Make Out-of-Plane GNICs
       call MkGNCO(IOut,IPrint,.True.,MxBnd,MxGNIC,MxTrm,MxAtP,NAtoms,
      $  NCyc,NBond,NOuPl,IBond,NTermO,IAtomO,IAn,IAtCyc,CoefO,C,ImpDih)
 C
+      Write(IOut,'(/,'' Out-of-plane angles:'',I5,/)') NOuPl
       NTot=NLen+NAng+NLAng+NDih+NOUPl
       NTarget=3*NAtoms-NTRot
-      Write(IOut,
-     $ '(/,'' Initial GNIC coordinate summary (pre-pruning)'')')
-      Write(IOut,
-     $ '(14X, ''Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
-      Write(IOut,'('' Candidates '',6I8)') NLen,NAng,NLAng,NDih,
-     $  NOuPl,NTot
-      Write(IOut,'('' Out-of-plane candidates before pruning:'',I5)')
-     $ NOuPl
       UsedPrim=.False.
       If(NTot.lt.NTarget) then
        Write(IOut,'(/,'' GNIC candidate count below vibrational rank;'',
@@ -525,15 +518,6 @@ CENZO Print Information on Torsions
       Call DrvTrs(IOut,IPrint,MxBnd,NAtoms,NLenR,IAn,IAtCyc,NBond,IBond,
      $IScr,EAn,C)
 CENZO
-C Print results
-      Write(IOut,'(/,I5,'' Atoms and'',I5,'' Internal Coordinates'')')
-     $  NAtoms,NTarget
-      Write(IOut,
-     $ '(/,14X, '' Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
-      Write(IOut,'('' Redundant  '',6I8)') NLenR,NAngR,NLAngR,NDihR,
-     $  NOuPlR,NTotR
-      Write(IOut,'('' Non Redund.'',6I8,/)') NLen,NAng,NLAng,NDih,
-     $  NOuPl,NTot
       NRed=NTot-NTarget
       IPrOrd=IPrint
       If(NRed.ne.0) IPrOrd=-1
@@ -630,6 +614,11 @@ C     unchanged here; residual redundancies are still pruned by type below.
       call OrdRed(IOut,IVlt,IPrOrd,MxAtP,MxTrm,DoBPCS,Itype,.False.,
      $ NVar,Ini,IniP,NTermO,IAtomO,IPrimO,ITVO,IFixO,IAn,CoefO,ValTO,C,
      $ ImpDih,Clean)
+      NLenP=NLen
+      NAngP=NAng
+      NLangP=NLAng
+      NDihP=NDih
+      NOuplP=NOupl
       call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
      $  NAng,
      $  NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,IAtomB,
@@ -653,6 +642,11 @@ C     unchanged here; residual redundancies are still pruned by type below.
        If(DoLocSVD) Call KeepTrueLinearCenters(IOut,MxAtP,MxTrm,
      $  NAtoms,NLAng,NTermL,IAtomL,IPrimL,ITVLA,IFixL,CoefL,ValTL)
        UsedPrim=.True.
+       NLenP=NLen
+       NAngP=NAng
+       NLangP=NLAng
+       NDihP=NDih
+       NOuplP=NOupl
        call PruneGICBlocks(IOut,IPrint,MxAtP,MxTrm,NAtoms,NTarget,NLen,
      $  NAng,
      $  NLAng,NOupl,NDih,NTermB,NTermA,NTermL,NTermD,NTermO,IAtomB,
@@ -663,10 +657,23 @@ C     unchanged here; residual redundancies are still pruned by type below.
       EndIf
       NTot=NLen+NAng+NLAng+NDih+NOupl
       If(NTot.ne.NTarget) then
-       Write(IOut,'('' ERROR: final GIC count='',I5,
-     $ '' differs from target vibrational rank='',I5)') NTot,NTarget
-       Stop
+       Write(IOut,'('' ERROR: final post-pruning non-redundant '',
+     $ ''GIC count='',I5,'' differs from target vibrational rank='',
+     $ I5)') NTot,NTarget
+       Write(IOut,'('' ERROR: no Gaussian GIC coordinate block was '',
+     $ ''written because the final basis is not rank complete.'')')
+       Stop 1
       EndIf
+      Write(IOut,
+     $ '(/,28X,''Stretch.  Bend.  L. Bend. Tors.  Out-Pl. Total'')')
+      Write(IOut,'('' Redundant  '',6I8)') NLenR,NAngR,NLAngR,NDihR,
+     $  NOuplR,NTotR
+      Write(IOut,'('' Pre pruning Non Redund.'',6I8)') NLenP,NAngP,
+     $  NLangP,NDihP,NOuplP,NLenP+NAngP+NLangP+NDihP+NOuplP
+      Write(IOut,'('' Final Non Redund.      '',6I8,/)') NLen,NAng,
+     $  NLang,NDih,NOupl,NTot
+      If(DoBMat) Write(IOut,'('' Machine-readable final B matrix: '',
+     $ ''bmat.out'')')
       NTTsav=NTT
       If(SyGNIC) then
        Write(IOut,'(/,'' Final symmetrized GIC summary '',

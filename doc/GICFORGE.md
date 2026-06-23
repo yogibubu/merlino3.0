@@ -25,8 +25,8 @@ GICForge is intentionally narrow:
 - write a readable geometry/GIC report
 - write Gaussian input with inactive `RPck....` puckering components and active
   `QPck....`/`PhiP....` coordinates
-- report the pre-pruning candidate counts, including out-of-plane candidates,
-  before any coordinate definitions are printed
+- report the out-of-plane candidate count in the same GIC definition section as
+  valence-angle, dihedral and butterfly candidates
 
 Everything else belongs to Python: GUI orchestration, RDKit/SMILES, project
 management, DVR, Cremer-Pople post-processing, regression comparison, freeze
@@ -94,6 +94,12 @@ coordinates as `ImpD... = D(...)`, and Python parses them as `dihedral`
 primitives.  With `GDV` or the default behavior, GICForge writes out-of-plane
 coordinates as `OuPl... = U(...)`, and Python parses them as `out_of_plane`
 primitives.
+
+Out-of-plane generation excludes any primitive whose four atoms are all cyclic.
+Planar PAHs can still have out-of-plane candidates on cyclic centers when an
+exocyclic substituent is part of the primitive; those candidates are reported in
+the GIC definition block and the type-local pruning step decides whether they
+survive in the final non-redundant basis.
 
 The reusable `gic-contract` check is intentionally stricter than a coordinate
 count comparison.  Its JSON output records raw and symmetrized names, labels,
