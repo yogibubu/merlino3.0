@@ -1381,9 +1381,10 @@ def test_semiexperimental_fit_can_use_hessian_free_symmetry_cartesians(tmp_path)
     assert result.diagnostics.coordinate_model == "cartesian_symmetry"
     assert result.b_matrix.shape == (len(result.gic_labels), 3 * len(atoms))
     assert all(("irrep=A1" in parameter.name) == parameter.active for parameter in result.parameters)
-    assert manifest["backend"]["coordinate_model"] == "symmetry-cartesian"
+    assert manifest["backend"]["coordinate_model"] == "gicforge-sycart-symmetry-cartesian"
     assert manifest["parameters"]["coordinate_generation"]["active_subspace"] == "totally symmetric symmetry-adapted Cartesian displacements only"
-    assert "coordinate_basis = totally symmetric Hessian-free symmetry-adapted Cartesian displacements" in report
+    assert (tmp_path / "cartesian_symmetry" / "gicforge_sycart" / "iter_0001" / "sycart.xyz").exists()
+    assert "coordinate_basis = GICForge SYCART symmetrized Cartesians" in report
     assert "hessian =" not in report
 
 

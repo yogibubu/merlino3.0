@@ -1012,6 +1012,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
     request, preflight_warnings = _request_with_auto_resolved_isotopologues(request, atoms, coords)
     if restart is not None:
         coords = _read_semiexp_checkpoint(Path(restart), expected_atoms=len(atoms))
+    coords, _sycart_workdir = _gicforge_sycart_coordinates(tuple(atoms), coords, outdir)
     coords0 = coords.copy()
     fixed_parameters = _combined_fixed_parameters(request.fixed_parameters, geometry_input.fixed_parameters)
     fixed_mode_patterns = _gic_fixed_patterns(fixed_parameters)
@@ -1637,15 +1638,16 @@ def write_semiexperimental_outputs(
     manifest_inputs = {"initial_geometry": request.initial_geometry}
     if request.coordinate_model == "cartesian_symmetry":
         coordinate_generation = {
-            "primitive_source": "Hessian-free Cartesian displacement basis from the parent geometry",
-            "reduction": "ordinary Cartesian translations and rotations projected out",
-            "symmetry": "Cartesian displacement basis projected with detected point-group irreps",
+            "primitive_source": "GICForge SYCART symmetrized Cartesian parent geometry",
+            "reduction": "ordinary Cartesian translations and rotations projected out from the GICForge-symmetrized geometry",
+            "symmetry": "GICForge writes symmetrized Cartesian coordinates; Cartesian displacement basis is projected with the same detected point-group irreps",
             "active_subspace": "totally symmetric symmetry-adapted Cartesian displacements only",
             "ring_coordinates": "not used as working coordinates; final primitive internals are reported from final Cartesian geometry",
+            "gicforge_sycart": str(outdir / "gicforge_sycart"),
             "line_search": "SVD More-Hebden trust-region least-squares with fixed symmetry-Cartesian basis; no GIC B projector is required",
-            "restart_policy": "restart jobs rebuild the symmetry-Cartesian basis from the parent geometry",
+            "restart_policy": "restart jobs first call GICForge SYCART, then rebuild the symmetry-Cartesian basis from the symmetrized parent geometry",
         }
-        backend_coordinate_model = "symmetry-cartesian"
+        backend_coordinate_model = "gicforge-sycart-symmetry-cartesian"
         b_matrix_description = "not required for working-coordinate updates"
     else:
         coordinate_generation = {
@@ -2255,7 +2257,7 @@ def semiexperimental_text_report(
 
 def _coordinate_model_description(coordinate_model: str) -> str:
     if coordinate_model == "cartesian_symmetry":
-        return "totally symmetric Hessian-free symmetry-adapted Cartesian displacements"
+        return "GICForge SYCART symmetrized Cartesians with totally symmetric Hessian-free Cartesian displacements"
     return "GICForge non-redundant symmetry-adapted GICs; active subspace is totally symmetric"
 
 
@@ -3470,6 +3472,34 @@ def _make_gicforge_backend(atoms: tuple[str, ...], outdir: Path | None) -> GICFo
         root = Path(outdir) / "gicforge_iterations"
         root.mkdir(parents=True, exist_ok=True)
     return GICForgeSEBackend(atoms=atoms, root=root)
+
+
+def _gicforge_sycart_coordinates(
+    atoms: tuple[str, ...],
+    coords: np.ndarray,
+    outdir: Path | None,
+) -> tuple[np.ndarray, Path]:
+    if outdir is None:
+        root = Path(tempfile.mkdtemp(prefix="merlino_se_sycart_"))
+    else:
+        root = Path(outdir) / "gicforge_sycart"
+        root.mkdir(parents=True, exist_ok=True)
+    workdir = root / "iter_0001"
+    define_gics_from_cartesian(
+        atoms,
+        coords,
+        workdir=workdir,
+        runner=run_gicforge,
+        symmetrize=False,
+        symmetrize_cartesians=True,
+    )
+    sycart = workdir / "sycart.xyz"
+    if not sycart.exists():
+        raise ScientificValidationError(f"GICForge SYCART did not produce {sycart}")
+    geometry = read_geometry_input(sycart)
+    if tuple(geometry.atoms) != tuple(atoms):
+        raise ScientificValidationError(f"GICForge SYCART atom order changed in {sycart}")
+    return np.asarray(geometry.coordinates_angstrom, dtype=float), workdir
 
 
 def _gicforge_point_group(provout: Path) -> str:
