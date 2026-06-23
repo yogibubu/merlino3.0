@@ -95,6 +95,7 @@ def build_gicforge_python_model(
     impdih: bool = True,
     onedih: bool = False,
     svd_local: bool = False,
+    max_linear_angle_pairs_per_center: int = 2,
     linear_threshold: float = LINEAR_THRESHOLD_RAD,
     primitive_fallback: bool = True,
 ) -> GICForgePythonModel:
@@ -114,6 +115,7 @@ def build_gicforge_python_model(
         impdih=impdih,
         onedih=onedih,
         svd_local=svd_local,
+        max_linear_angle_pairs_per_center=max_linear_angle_pairs_per_center,
         linear_threshold=linear_threshold,
     )
     primitive_candidates = tuple(coord for block in primitive_blocks for coord in block)
@@ -230,6 +232,7 @@ def _fortran_like_primitive_blocks(
     impdih: bool,
     onedih: bool,
     svd_local: bool,
+    max_linear_angle_pairs_per_center: int,
     linear_threshold: float,
 ):
     bonds: list[GICForgePythonCoordinate] = []
@@ -278,6 +281,7 @@ def _fortran_like_primitive_blocks(
                         kind_type_index=0,
                     )
                 )
+            exo_linears = exo_linears[:max(0, max_linear_angle_pairs_per_center)]
             for primitive in exo_linears:
                 linears.append(_primitive_coordinate("LAng", len(linears) + 1, primitive))
                 linears.append(

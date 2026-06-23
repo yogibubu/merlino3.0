@@ -568,6 +568,8 @@ def test_gicforge_python_svd_local_reaches_target_rank():
 
         assert len(model.coordinates) == model.target_rank
         assert rank == model.target_rank
+        if path.name == "sf6.xyz":
+            assert sum(1 for coordinate in model.coordinates if coordinate.dominant_kind == "linear_bend") == 4
 
 
 def test_python_local_gic_requires_explicit_environment(monkeypatch):
