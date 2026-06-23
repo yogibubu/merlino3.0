@@ -325,10 +325,10 @@ C Build Primitive Dihedrals
       End
 *Deck MkPrmO
       Subroutine MkPrmO(IOut,IPrint,MxBnd,MxTrmO,MxAtO,NAtoms,NBond,
-     $  NOupl,IBond,NTrmO,IAtomO,CoefO,C,DoG16)
+     $  NOupl,IBond,NTrmO,IAtomO,CoefO,C,DoG16,IAtCyc)
       Implicit Real*8 (A-H,O-Z)
       Logical DoG16
-      Dimension NBond(*),IBond(MxBnd,*)
+      Dimension NBond(*),IBond(MxBnd,*),IAtCyc(*)
       Dimension NTrmO(*),IAtomO(MxAtO,MxTrmO,*) 
       Dimension CoefO(MxTrmO,*),C(3,*)
       pi = acos(-1.d0)
@@ -337,11 +337,13 @@ C Build Primitive Dihedrals
 C Build Primitive Out-of-Plane Angles
       Do 10 IAt=1,NAtoms
        If(NBond(IAt).ne.3) go to 10
-       NOupl=NOupl+1
-       NTrmO(NOupl)=1
        JAt=IBond(1,IAt)
        KAt=IBond(2,IAt)
        LAt=IBond(3,IAt)
+       If(IAtCyc(IAt).gt.0.and.IAtCyc(JAt).gt.0.and.
+     $    IAtCyc(KAt).gt.0.and.IAtCyc(LAt).gt.0) go to 10
+       NOupl=NOupl+1
+       NTrmO(NOupl)=1
        IAtomO(1,1,NOupl)=IAt
        IAtomO(2,1,NOupl)=JAt
        IAtomO(3,1,NOupl)=KAt

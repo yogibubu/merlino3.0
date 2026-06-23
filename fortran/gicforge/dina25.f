@@ -271,7 +271,7 @@ C Make primitive dihedrals
 C Make primitive out-of-plane bendings (use improper dihedrals for G16)
       NOuplR=0
       call MkPrmO(IOut,IPrOup,MxBnd,MxTrm,MxAtP,NAtoms,NBond,
-     $  NOuplR,IBond,NTermO,IAtmOR,CoefO,C,ImpDih)
+     $  NOuplR,IBond,NTermO,IAtmOR,CoefO,C,ImpDih,IAtCyc)
       NTotR=NTotR+NOuPlR
       if(NTotR.eq.0) NTotR=NLenR+NAngR+NLAngR+NDihR+NOuPlR
 C Print summary of internal primitives

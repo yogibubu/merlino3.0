@@ -783,6 +783,37 @@ def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
     assert definition.symmetrized is True
 
 
+def test_gicforge_does_not_make_oop_for_fully_cyclic_atom_sets(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/naphthalene.xyz"))
+    cyclic_atoms = set(range(10))
+    definition = define_gics_from_cartesian(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        workdir=tmp_path / "fortran",
+        executable=executable,
+        symmetrize=False,
+        extra_keywords=("LOCSVD",),
+    )
+    python_definition = build_gicforge_python_model(
+        tuple(geometry.atoms),
+        geometry.coordinates_angstrom,
+        svd_local=True,
+    ).to_definition(workdir=tmp_path / "python")
+
+    for source in (definition, python_definition):
+        for primitive in source.primitives:
+            if primitive.kind != "out_of_plane":
+                continue
+            assert not set(primitive.atoms).issubset(cyclic_atoms)
+
+
 def test_gicforge_gicsym_writes_rank_complete_d2h_coordinates_after_pruning(tmp_path):
     try:
         executable = resolve_backend("gicforge")

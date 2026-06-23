@@ -130,11 +130,41 @@ def build_gicforge_python_model(
     primitive_candidates = tuple(coord for block in primitive_blocks for coord in block)
     target = _target_rank(coords, graph)
     candidates = primitive_candidates
+    if primitive_fallback and len(candidates) < target:
+        primitive_blocks = _primitive_fallback_blocks(
+            graph,
+            coords,
+            atomic_numbers=atomic_numbers,
+            ringset=ringset,
+            impdih=impdih,
+            linear_threshold=linear_threshold,
+        )
+        candidates = tuple(coord for block in primitive_blocks for coord in block)
     if not primitive_fallback and len(candidates) < target:
         raise ValueError(f"GICForge Python candidates below vibrational rank ({len(candidates)} < {target})")
     if len(candidates) < target:
         raise ValueError(f"Primitive candidates below vibrational rank ({len(candidates)} < {target})")
     coordinates = _prune_type_local(candidates, coords, target_rank=target, block_pruning=svd_local)
+    if primitive_fallback and (
+        len(coordinates) < target or (svd_local and _coordinate_b_rank(coordinates, coords) < target)
+    ):
+        primitive_blocks = _primitive_fallback_blocks(
+            graph,
+            coords,
+            atomic_numbers=atomic_numbers,
+            ringset=ringset,
+            impdih=impdih,
+            linear_threshold=linear_threshold,
+        )
+        candidates = tuple(coord for block in primitive_blocks for coord in block)
+        if len(candidates) < target:
+            raise ValueError(f"Primitive candidates below vibrational rank ({len(candidates)} < {target})")
+        coordinates = _prune_type_local(candidates, coords, target_rank=target, block_pruning=svd_local)
+        if len(coordinates) < target or _coordinate_b_rank(coordinates, coords) < target:
+            raise ValueError(
+                f"GICForge Python primitive fallback did not reach vibrational rank "
+                f"({len(coordinates)} coordinates for target {target})"
+            )
     diagnostics = _python_model_diagnostics(
         candidates,
         coordinates,
@@ -151,7 +181,7 @@ def build_gicforge_python_model(
         primitive_candidates=primitive_candidates,
         coordinates=coordinates,
         target_rank=target,
-        primitive_fallback=True,
+        primitive_fallback=primitive_fallback,
         diagnostics=diagnostics,
     )
 
@@ -464,6 +494,100 @@ def _fortran_like_primitive_blocks(
         if len(neigh) != 3:
             continue
         first, second, third = neigh
+        if all(atom_ring[atom] != 0 for atom in (center, first, second, third)):
+            continue
+        if impdih:
+            primitive = Primitive("dihedral", (first, center, third, second))
+        else:
+            primitive = Primitive("out_of_plane", (center, first, second, third))
+        oops.append(_primitive_coordinate(oop_prefix, len(oops) + 1, primitive))
+
+    return bonds, bends, linears, torsions, oops
+
+
+def _primitive_fallback_blocks(
+    graph,
+    coords: np.ndarray,
+    *,
+    atomic_numbers: tuple[int, ...],
+    ringset,
+    impdih: bool,
+    linear_threshold: float,
+):
+    bonds: list[GICForgePythonCoordinate] = []
+    bends: list[GICForgePythonCoordinate] = []
+    linears: list[GICForgePythonCoordinate] = []
+    torsions: list[GICForgePythonCoordinate] = []
+    oops: list[GICForgePythonCoordinate] = []
+    neighbors = [sorted(graph.adjacency[index]) for index in range(graph.natoms)]
+    effective_atomic_numbers = _effective_atomic_numbers(graph, coords, atomic_numbers, neighbors)
+    selected_rings = _minimum_cycle_basis(
+        graph,
+        ringset,
+        effective_atomic_numbers=effective_atomic_numbers,
+        neighbors=neighbors,
+    )
+    atom_ring = _atom_ring_map_from_rings(selected_rings, graph.natoms)
+
+    for center in range(graph.natoms):
+        neigh = neighbors[center]
+        for first in neigh:
+            if first < center:
+                continue
+            bonds.append(_primitive_coordinate("Stre", len(bonds) + 1, Primitive("bond", (center, first))))
+        for ib, first_angle in enumerate(neigh[:-1]):
+            for second_angle in neigh[ib + 1 :]:
+                left, right = sorted((first_angle, second_angle))
+                primitive = Primitive("angle", (left, center, right))
+                if angle(first_angle, center, second_angle, coords) < linear_threshold:
+                    bends.append(_primitive_coordinate("Bend", len(bends) + 1, primitive))
+                else:
+                    linears.append(
+                        _primitive_coordinate(
+                            "LAng",
+                            len(linears) + 1,
+                            Primitive("linear_bend", primitive.atoms, mode=-1),
+                        )
+                    )
+                    linears.append(
+                        _primitive_coordinate(
+                            "LAng",
+                            len(linears) + 1,
+                            Primitive("linear_bend", primitive.atoms, mode=-2),
+                        )
+                    )
+
+    for bond in bonds:
+        _coef, primitive = bond.terms[0]
+        center, right = primitive.atoms
+        if len(neighbors[center]) == 1 or len(neighbors[right]) == 1:
+            continue
+        for left in neighbors[center]:
+            if left == right:
+                continue
+            if angle(left, center, right, coords) > linear_threshold:
+                continue
+            for far in neighbors[right]:
+                if far == center or far == left:
+                    continue
+                if angle(center, right, far, coords) > linear_threshold:
+                    continue
+                torsions.append(
+                    _primitive_coordinate(
+                        "Dihe",
+                        len(torsions) + 1,
+                        Primitive("dihedral", (left, center, right, far)),
+                    )
+                )
+
+    oop_prefix = "ImpD" if impdih else "OuPl"
+    for center in range(graph.natoms):
+        neigh = neighbors[center]
+        if len(neigh) != 3:
+            continue
+        first, second, third = neigh
+        if all(atom_ring[atom] != 0 for atom in (center, first, second, third)):
+            continue
         if impdih:
             primitive = Primitive("dihedral", (first, center, third, second))
         else:
@@ -1809,7 +1933,7 @@ def _block_pruning_priority(coordinate: GICForgePythonCoordinate) -> int:
         return 1
     if coordinate.dominant_kind == "linear_bend":
         return 2
-    if coordinate.block == "Tors":
+    if coordinate.block in {"Dihe", "Tors"}:
         return 3
     if coordinate.block == "BtFl":
         return 4
