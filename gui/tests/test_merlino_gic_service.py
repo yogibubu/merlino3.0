@@ -816,6 +816,71 @@ def test_gicforge_gicsym_writes_rank_complete_d2h_coordinates_after_pruning(tmp_
     assert "gicsymm" not in gauin.lower()
 
 
+def test_gicforge_python_and_fortran_symmetry_backends_agree_for_d2h(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    from merlino_semiexp.geometry_input import read_geometry_input
+
+    geometry = read_geometry_input(Path("merlino_fit/tests/data/polycyclics/pyrene_planar.xyz"))
+    definitions = {}
+    diagnostics = {}
+    for backend in ("python", "fortran"):
+        run_dir = tmp_path / backend
+        definitions[backend] = define_gics_from_cartesian(
+            tuple(geometry.atoms),
+            geometry.coordinates_angstrom,
+            workdir=run_dir,
+            executable=executable,
+            symmetrize=True,
+            symmetry_backend=backend,
+            extra_keywords=("LOCSVD",),
+        )
+        diagnostics[backend] = json.loads((run_dir / "gic_symmetry_diagnostics.json").read_text(encoding="utf-8"))
+
+    assert definitions["python"].irreps == definitions["fortran"].irreps
+    assert definitions["python"].names == definitions["fortran"].names
+    assert diagnostics["python"]["counts"] == diagnostics["fortran"]["counts"]
+    assert diagnostics["python"]["b_ranks"] == diagnostics["fortran"]["b_ranks"]
+    assert diagnostics["fortran"]["symmetry_backend"] == "fortran"
+    assert diagnostics["fortran"]["fortran_point_group"] == "D2h"
+
+
+def test_gicforge_manifest_embeds_gicsym_diagnostics(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    atoms = ("O", "H", "H")
+    coords = np.array(
+        [
+            [0.000000, 0.000000, 0.000000],
+            [0.757000, 0.000000, 0.586000],
+            [-0.757000, 0.000000, 0.586000],
+        ],
+        dtype=float,
+    )
+    define_gics_from_cartesian(
+        atoms,
+        coords,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=True,
+        symmetry_backend="fortran",
+    )
+    manifest = json.loads((tmp_path / "gicforge_manifest.json").read_text(encoding="utf-8"))
+    payload = manifest["parameters"]["gic_symmetry"]
+
+    assert payload["symmetry_backend"] == "fortran"
+    assert payload["fortran_point_group"] == "C2v"
+    assert payload["counts"] == payload["targets"]
+    assert payload["b_ranks"] == payload["targets"]
+    assert payload["sources"]
+
+
 def test_gicforge_sycart_writes_symmetrized_cartesians_without_gic_symmetry(tmp_path):
     try:
         executable = resolve_backend("gicforge")

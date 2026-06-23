@@ -169,6 +169,7 @@ class GICForge:
         workdir: Path | None = None,
         mode: str = "gicsym",
         extra_keywords: tuple[str, ...] = (),
+        symmetry_backend: str | None = None,
     ) -> GICForgeComputation:
         normalized = mode.strip().lower().replace("-", "_")
         if normalized in {"gic", "raw"}:
@@ -193,6 +194,7 @@ class GICForge:
             runner=self.runner,
             symmetrize=symmetrize,
             symmetrize_cartesians=symmetrize_cartesians,
+            symmetry_backend=symmetry_backend,
             extra_keywords=extra_keywords,
         )
         run_dir = Path(definition.generation_workdir)
@@ -286,6 +288,7 @@ def define_gics_from_cartesian(
     runner: RunGICForge | None = None,
     symmetrize: bool = True,
     symmetrize_cartesians: bool = False,
+    symmetry_backend: str | None = None,
     extra_keywords: tuple[str, ...] = (),
 ) -> GICDefinition:
     """Construct and freeze a GIC definition from Cartesian geometry.
@@ -309,9 +312,9 @@ def define_gics_from_cartesian(
     )
     run = runner or run_gicforge
     if executable is not None and runner is None:
-        result = run_gicforge(run_dir, executable=executable, symmetrize=symmetrize)
+        result = run_gicforge(run_dir, executable=executable, symmetrize=symmetrize, symmetry_backend=symmetry_backend)
     elif runner is None:
-        result = run_gicforge(run_dir, symmetrize=symmetrize)
+        result = run_gicforge(run_dir, symmetrize=symmetrize, symmetry_backend=symmetry_backend)
     else:
         result = run(run_dir)
     gauin = (result.files.get("gauin.symm") if symmetrize else None) or result.files.get("gauin")

@@ -1,6 +1,6 @@
 import numpy as np
 
-from survibfit.symmetry_global import _group_label
+from survibfit.symmetry_global import _group_label, irrep_characters_for_operations
 
 
 def test_group_cnh():
@@ -31,6 +31,25 @@ def test_group_d3d():
     labels = ["C3z^1", "C2_xy_3_0", "S6"]
     pg = _group_label([(lab, None, 0.0) for lab in labels])
     assert pg.startswith("D3d")
+
+
+def test_irrep_character_tables_cover_common_point_group_families():
+    cases = [
+        ("C3", ["E", "C3z^1", "C3z^2"], {"A", "E1"}),
+        ("C3v", ["E", "C3z^1", "C3z^2", "sigma_v_3_0"], {"A1", "A2", "E1"}),
+        ("C3h", ["E", "C3z^1", "C3z^2", "sigma_xy"], {"Ag", "Au", "E1g", "E1u"}),
+        ("D3", ["E", "C3z^1", "C3z^2", "C2_xy_3_0"], {"A1", "A2", "E1"}),
+        ("D3d", ["E", "C3z^1", "C3z^2", "C2_xy_3_0", "i", "S6"], {"A1g", "A1u", "A2g", "A2u", "E1g", "E1u"}),
+        ("D4d", ["E", "C4z^1", "C4z^3", "C2_xy_4_0", "S4"], {"A1'", "A1''", "A2'", "A2''", "B1'", "B1''", "B2'", "B2''", "E1'", "E1''"}),
+        ("Td", ["E", "C3_t", "C2_t", "S4", "sigma_xy"], {"A1", "A2", "E", "T1", "T2"}),
+        ("Oh", ["E", "C4_o", "C3_o", "C2_o", "i", "sigma_xy"], {"A1g", "A1u", "A2g", "A2u", "Eg", "Eu", "T1g", "T1u", "T2g", "T2u"}),
+        ("Ih", ["E", "C5_i", "C5_i2", "C3_i", "C2_i", "i"], {"Ag", "Au", "T1g", "T1u", "T2g", "T2u", "Gg", "Gu", "Hg", "Hu"}),
+    ]
+    for point_group, labels, expected in cases:
+        irreps = irrep_characters_for_operations(labels, point_group=point_group)
+        names = {name for name, chars in irreps}
+        assert expected <= names
+        assert all(chars.shape == (len(labels),) for _name, chars in irreps)
 
 
 def test_group_cinfv():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import subprocess
 from typing import Iterable
@@ -46,6 +47,7 @@ def run_gicforge(
     executable: Path | None = None,
     output_names: Iterable[str] = GICFORGE_OUTPUTS,
     symmetrize: bool = True,
+    symmetry_backend: str | None = None,
 ) -> GICForgeResult:
     """Run GICForge in `workdir` and write a normalized manifest."""
     run_dir = Path(workdir)
@@ -71,7 +73,7 @@ def run_gicforge(
     effective_symmetrize = symmetrize or gicsym_requested(run_dir)
     do_symmetry_post = effective_symmetrize or symmetry_postprocess_requested(run_dir)
     if do_symmetry_post:
-        write_gic_symmetry_files(run_dir, symmetrize_gics=effective_symmetrize)
+        write_gic_symmetry_files(run_dir, symmetrize_gics=effective_symmetrize, symmetry_backend=symmetry_backend)
     else:
         _remove_symmetry_outputs(run_dir)
     files = _collect_outputs(run_dir, output_names)
@@ -159,8 +161,41 @@ def _write_gicforge_manifest(
             "git_dirty": _git_dirty(),
         },
     ).to_dict()
+    symmetry_diagnostics = _read_optional_json(run_dir / "gic_symmetry_diagnostics.json")
+    if symmetry_diagnostics:
+        manifest.setdefault("parameters", {})["gic_symmetry"] = {
+            key: symmetry_diagnostics.get(key)
+            for key in (
+                "schema",
+                "symmetry_backend",
+                "point_group",
+                "python_point_group",
+                "fortran_point_group",
+                "operation_order",
+                "irreps",
+                "targets",
+                "counts",
+                "b_ranks",
+                "class_targets",
+                "class_counts",
+                "raw_class_targets",
+                "sources",
+                "strict_clean",
+                "tolerances",
+            )
+            if key in symmetry_diagnostics
+        }
     manifest.update({"legacy": legacy_manifest})
     return write_manifest(run_dir / "gicforge_manifest.json", manifest)
+
+
+def _read_optional_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def _git_commit() -> str | None:

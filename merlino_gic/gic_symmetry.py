@@ -10,6 +10,7 @@ import numpy as np
 from merlino_fit.survibfit.modify_geom import read_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive
+from merlino_fit.survibfit.symmetry_classifier import group_label as _group_label
 from merlino_fit.survibfit.symmetry_detector import orient_coords, symmetry_elements_from_geometry
 from merlino_fit.survibfit.symmetry_global import irrep_characters_for_operations, primitive_permutation
 from merlino_fit.topology.pipeline import build_topology_objects
@@ -32,7 +33,12 @@ class GICLine:
     terms: tuple[tuple[float, Primitive], ...]
 
 
-def write_gic_symmetry_files(workdir: Path, *, symmetrize_gics: bool | None = None) -> None:
+def write_gic_symmetry_files(
+    workdir: Path,
+    *,
+    symmetrize_gics: bool | None = None,
+    symmetry_backend: str | None = None,
+) -> None:
     run_dir = Path(workdir)
     gauin = run_dir / "gauin"
     raw_gauin = run_dir / "gauin.raw"
@@ -53,8 +59,12 @@ def write_gic_symmetry_files(workdir: Path, *, symmetrize_gics: bool | None = No
     prims, u_matrix = _primitive_basis(gics)
     oriented = _oriented_coords(atoms, coords)
     op_data = _operation_data(atoms, oriented, prims, already_oriented=True)
+    backend = _requested_symmetry_backend(run_dir, symmetry_backend)
+    python_point_group = _group_label([(label, rotation, 0.0) for label, rotation, _mapping, _primitive_op in op_data])
+    fortran_point_group = _fortran_point_group(run_dir / "provout")
+    point_group = fortran_point_group if backend == "fortran" and fortran_point_group != "UNKNOWN" else python_point_group
     raw_class_targets = _class_counts(u_matrix, prims)
-    sym_gics, class_targets = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented)
+    sym_gics, class_targets = _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, oriented, point_group=point_group)
     _write_gicsym(run_dir / "gicsym", sym_gics)
     _write_gic_symmetry_diagnostics(
         run_dir / "gic_symmetry_diagnostics.json",
@@ -65,6 +75,10 @@ def write_gic_symmetry_files(workdir: Path, *, symmetrize_gics: bool | None = No
         prims,
         oriented,
         raw_class_targets,
+        symmetry_backend=backend,
+        point_group=point_group,
+        python_point_group=python_point_group,
+        fortran_point_group=fortran_point_group,
     )
     _write_symmetrized_gauin(source_gauin, run_dir / "gauin.symm", sym_gics, prims)
     if gicsym_requested(run_dir):
@@ -174,8 +188,8 @@ def _operation_data(atoms: list[str], coords: np.ndarray, prims: list[Primitive]
     return _canonical_operation_order(op_data)
 
 
-def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.ndarray):
-    irreps = _irrep_characters([item[0] for item in op_data])
+def _symmetry_adapted_gics(atoms, gics, prims, u_matrix, op_data, coords: np.ndarray, *, point_group: str | None = None):
+    irreps = _irrep_characters([item[0] for item in op_data], point_group=point_group)
     if not irreps:
         return [(gic.name, "A", "input", u_matrix[:, idx]) for idx, gic in enumerate(gics)], _class_counts(u_matrix, prims)
     targets = _vibrational_irrep_counts(op_data, irreps, len(coords))
@@ -648,8 +662,8 @@ def _orthogonal_residual(vector: np.ndarray, basis: list[np.ndarray]) -> np.ndar
     return residual
 
 
-def _irrep_characters(labels: list[str]) -> list[tuple[str, np.ndarray]]:
-    return irrep_characters_for_operations(labels)
+def _irrep_characters(labels: list[str], point_group: str | None = None) -> list[tuple[str, np.ndarray]]:
+    return irrep_characters_for_operations(labels, point_group=point_group)
 
 
 def _vibrational_irrep_counts(op_data, irreps: list[tuple[str, np.ndarray]], natoms: int) -> dict[str, int]:
@@ -704,8 +718,12 @@ def _write_gic_symmetry_diagnostics(
     prims: list[Primitive] | None = None,
     coords: np.ndarray | None = None,
     raw_class_targets: dict[str, int] | None = None,
+    symmetry_backend: str = "python",
+    point_group: str = "UNKNOWN",
+    python_point_group: str = "UNKNOWN",
+    fortran_point_group: str = "UNKNOWN",
 ) -> None:
-    irreps = _irrep_characters([item[0] for item in op_data])
+    irreps = _irrep_characters([item[0] for item in op_data], point_group=point_group)
     targets = _vibrational_irrep_counts(op_data, irreps, natoms) if irreps else {"A": len(sym_gics)}
     counts: dict[str, int] = {irrep: 0 for irrep in targets}
     class_counts: dict[str, int] = {}
@@ -724,7 +742,12 @@ def _write_gic_symmetry_diagnostics(
             b_ranks[irrep] = int(np.linalg.matrix_rank(np.array(rows), tol=RANK_TOL)) if rows else 0
     payload = {
         "schema": "merlino.gic_symmetry.v1",
+        "symmetry_backend": symmetry_backend,
+        "point_group": point_group,
+        "python_point_group": python_point_group,
+        "fortran_point_group": fortran_point_group,
         "operation_order": [item[0] for item in op_data],
+        "irreps": [name for name, _chars in irreps],
         "targets": targets,
         "counts": counts,
         "b_ranks": b_ranks,
@@ -784,6 +807,29 @@ def _provin_text(run_dir: Path) -> str:
 def gicsym_requested(run_dir: Path) -> bool:
     text = _provin_text(run_dir)
     return "GICSYM" in text or "SYMMALL" in text
+
+
+def _requested_symmetry_backend(run_dir: Path, explicit: str | None = None) -> str:
+    if explicit is not None:
+        value = explicit.strip().lower()
+    else:
+        text = _provin_text(run_dir)
+        if "GICSYMPY" in text:
+            value = "python"
+        elif "GICSYMFT" in text or "GICSYMFORTRAN" in text:
+            value = "fortran"
+        else:
+            value = "python"
+    if value not in {"python", "fortran"}:
+        raise ValueError(f"Unsupported GICSYM symmetry backend: {explicit!r}")
+    return value
+
+
+def _fortran_point_group(provout: Path) -> str:
+    if not provout.exists():
+        return "UNKNOWN"
+    match = re.search(r"Point Group from symm\.f:\s*([A-Za-z0-9]+)", provout.read_text(encoding="utf-8", errors="replace"))
+    return match.group(1) if match else "UNKNOWN"
 
 
 def sycart_requested(run_dir: Path) -> bool:

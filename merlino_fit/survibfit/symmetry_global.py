@@ -18,7 +18,7 @@ from .symmetry_detector import (
 )
 
 
-def irrep_characters_for_operations(labels: list[str]) -> list[tuple[str, np.ndarray]]:
+def irrep_characters_for_operations(labels: list[str], point_group: str | None = None) -> list[tuple[str, np.ndarray]]:
     """Return real irrep projectors for the detected operation sequence.
 
     The returned character vectors are scaled by the irrep dimension.  This
@@ -29,7 +29,7 @@ def irrep_characters_for_operations(labels: list[str]) -> list[tuple[str, np.nda
     canonical = [_canonical_operation_label(label) for label in labels]
     if canonical == ["E"]:
         return [("A", np.ones(1))]
-    group = _group_label([(label, None, 0.0) for label in labels])
+    group = (point_group or _group_label([(label, None, 0.0) for label in labels])).strip()
     if group == "Cs":
         return _cs_irreps(canonical)
     if group == "Ci":
@@ -44,7 +44,10 @@ def irrep_characters_for_operations(labels: list[str]) -> list[tuple[str, np.nda
         return _c2h_irreps(canonical)
     if group == "D2h":
         return _d2h_irreps(canonical)
-    general = _cyclic_family_irreps(group, canonical)
+    general = _linear_family_irreps(group, canonical)
+    if general:
+        return general
+    general = _polyhedral_family_irreps(group, canonical)
     if general:
         return general
     return []
@@ -71,8 +74,8 @@ def _canonical_operation_label(label: str) -> str:
     return text
 
 
-def _chars(labels: list[str], values: dict[str, float]) -> np.ndarray:
-    return np.array([values.get(label, 1.0) for label in labels], dtype=float)
+def _chars(labels: list[str], values: dict[str, float], default: float = 1.0) -> np.ndarray:
+    return np.array([values.get(label, default) for label in labels], dtype=float)
 
 
 def _cs_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
@@ -140,11 +143,32 @@ def _d2h_irreps(labels: list[str]) -> list[tuple[str, np.ndarray]]:
     return [(name, _chars(labels, chars)) for name, chars in signs.items()]
 
 
-def _cyclic_family_irreps(group: str, labels: list[str]) -> list[tuple[str, np.ndarray]]:
-    match = re.match(r"C(\d+)$", group)
+def _linear_family_irreps(group: str, labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    match = re.match(r"([CDS])(\d+)([vhd]?)$", group)
     if not match:
         return []
-    n = int(match.group(1))
+    family, n_text, suffix = match.groups()
+    n = int(n_text)
+    if family == "S":
+        return _sn_irreps(n, labels)
+    base = _cn_irreps(n, labels)
+    if family == "C":
+        if suffix == "v":
+            return _name_with_suffix(base, labels, {"sigma": ("A1", "A2")})
+        if suffix == "h":
+            return _gerade_ungerade(base, labels)
+        return base
+    base_d = _dn_irreps(n, labels)
+    if suffix == "h":
+        return _gerade_ungerade(base_d, labels)
+    if suffix == "d":
+        if "i" in labels:
+            return _gerade_ungerade(base_d, labels)
+        return _prime_doubleprime(base_d, labels)
+    return base_d
+
+
+def _cn_irreps(n: int, labels: list[str]) -> list[tuple[str, np.ndarray]]:
     out: list[tuple[str, np.ndarray]] = [("A", np.ones(len(labels), dtype=float))]
     if n % 2 == 0:
         out.append(("B", np.array([(-1.0) ** _rotation_power(label) for label in labels], dtype=float)))
@@ -158,6 +182,129 @@ def _cyclic_family_irreps(group: str, labels: list[str]) -> list[tuple[str, np.n
     return out
 
 
+def _dn_irreps(n: int, labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    out = [
+        ("A1", np.ones(len(labels), dtype=float)),
+        ("A2", np.array([-1.0 if _is_c2_perpendicular(label) else 1.0 for label in labels], dtype=float)),
+    ]
+    if n % 2 == 0:
+        out.extend(
+            [
+                ("B1", np.array([(-1.0) ** _rotation_power(label) for label in labels], dtype=float)),
+                (
+                    "B2",
+                    np.array(
+                        [-((-1.0) ** _rotation_power(label)) if _is_c2_perpendicular(label) else (-1.0) ** _rotation_power(label) for label in labels],
+                        dtype=float,
+                    ),
+                ),
+            ]
+        )
+    max_k = (n - 1) // 2 if n % 2 else (n // 2 - 1)
+    for k in range(1, max_k + 1):
+        chars = []
+        for label in labels:
+            chars.append(0.0 if _is_c2_perpendicular(label) else 2.0 * np.cos(2.0 * np.pi * k * _rotation_power(label) / float(n)))
+        out.append((f"E{k}", 2.0 * np.array(chars, dtype=float)))
+    return out
+
+
+def _sn_irreps(n: int, labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    if n % 2:
+        return []
+    return _cn_irreps(max(1, n // 2), labels)
+
+
+def _name_with_suffix(base: list[tuple[str, np.ndarray]], labels: list[str], _policy) -> list[tuple[str, np.ndarray]]:
+    out = []
+    for name, chars in base:
+        if name == "A":
+            mirror = np.array([1.0 if label == "E" or not label.startswith("sigma") else 1.0 for label in labels], dtype=float)
+            out.append(("A1", chars * mirror))
+            out.append(("A2", chars * np.array([-1.0 if label.startswith("sigma") else 1.0 for label in labels], dtype=float)))
+        else:
+            out.append((name, chars))
+    return out
+
+
+def _gerade_ungerade(base: list[tuple[str, np.ndarray]], labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    parity = np.array([-1.0 if label == "i" or label.startswith("sigma") else 1.0 for label in labels], dtype=float)
+    out = []
+    for name, chars in base:
+        out.append((f"{name}g", chars))
+        out.append((f"{name}u", chars * parity))
+    return out
+
+
+def _prime_doubleprime(base: list[tuple[str, np.ndarray]], labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    reflection = np.array([-1.0 if label.startswith("sigma") or label.startswith("S") else 1.0 for label in labels], dtype=float)
+    out = []
+    for name, chars in base:
+        out.append((f"{name}'", chars))
+        out.append((f"{name}''", chars * reflection))
+    return out
+
+
+def _polyhedral_family_irreps(group: str, labels: list[str]) -> list[tuple[str, np.ndarray]]:
+    if group in {"Td", "O"}:
+        table = {
+            "A1": (1, 1, 1, 1, 1),
+            "A2": (1, 1, 1, -1, -1),
+            "E": (2, -1, 2, 0, 0),
+            "T1": (3, 0, -1, 1, -1),
+            "T2": (3, 0, -1, -1, 1),
+        }
+        return [(name, np.array([_poly_char(label, vals) for label in labels], dtype=float)) for name, vals in table.items()]
+    root = group.rstrip("hd")
+    if root == "T":
+        table = {
+            "A": (1, 1, 1),
+            "E": (2, -1, 2),
+            "T": (3, 0, -1),
+        }
+        return [(name, np.array([_poly_char(label, vals) for label in labels], dtype=float)) for name, vals in table.items()]
+    if group == "Oh":
+        base = _polyhedral_family_irreps("O", labels)
+        parity = np.array([-1.0 if label == "i" or label.startswith("sigma") or label.startswith("S") else 1.0 for label in labels], dtype=float)
+        out = []
+        for name, chars in base:
+            out.append((f"{name}g", chars))
+            out.append((f"{name}u", chars * parity))
+        return out
+    if group == "Ih":
+        base = _polyhedral_family_irreps("I", labels)
+        parity = np.array([-1.0 if label == "i" or label.startswith("sigma") or label.startswith("S") else 1.0 for label in labels], dtype=float)
+        return [(f"{name}g", chars) for name, chars in base] + [(f"{name}u", chars * parity) for name, chars in base]
+    if root in {"I"}:
+        table = {
+            "A": (1, 1, 1, 1, 1),
+            "T1": (3, 0, -1, (1.0 + np.sqrt(5.0)) / 2.0, (1.0 - np.sqrt(5.0)) / 2.0),
+            "T2": (3, 0, -1, (1.0 - np.sqrt(5.0)) / 2.0, (1.0 + np.sqrt(5.0)) / 2.0),
+            "G": (4, 1, 0, -1, -1),
+            "H": (5, -1, 1, 0, 0),
+        }
+        return [(name, np.array([_poly_char(label, vals) for label in labels], dtype=float)) for name, vals in table.items()]
+    return []
+
+
+def _poly_char(label: str, values: tuple[float, ...]) -> float:
+    if label == "E":
+        return float(values[0])
+    if "C3" in label:
+        return float(values[1])
+    if "C2" in label:
+        return float(values[2])
+    if "C4" in label or "S4" in label:
+        return float(values[3] if len(values) > 3 else 0.0)
+    if "C5" in label:
+        if "2" in label or "3" in label:
+            return float(values[4] if len(values) > 4 else 0.0)
+        return float(values[3] if len(values) > 3 else 0.0)
+    if label.startswith("sigma"):
+        return float(values[4] if len(values) > 4 else values[0])
+    return float(values[0])
+
+
 def _rotation_power(label: str) -> int:
     if label == "E":
         return 0
@@ -167,6 +314,10 @@ def _rotation_power(label: str) -> int:
     if label.startswith("C2"):
         return 1
     return 0
+
+
+def _is_c2_perpendicular(label: str) -> bool:
+    return label == "C2_perp" or label.startswith("C2x") or label.startswith("C2y")
 
 
 def _oop_sign(orig, mapped):
