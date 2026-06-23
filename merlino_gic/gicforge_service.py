@@ -8,16 +8,19 @@ from typing import Iterable
 from merlino_core import build_run_manifest, sha256_file, write_manifest
 from merlino_core.paths import repo_root
 from merlino_fortran import resolve_backend
-from .gic_symmetry import write_gic_symmetry_files
+from .gic_symmetry import gicsym_requested, symmetry_postprocess_requested, write_gic_symmetry_files
 
 
 GICFORGE_OUTPUTS = (
     "gicforge.out",
     "provout",
     "gauin",
+    "gauin.raw",
     "gauin.symm",
     "gicsym",
     "gic_symmetry_diagnostics.json",
+    "sycart.xyz",
+    "symmetrized.xyz",
     "msrin",
     "VPT2in",
     "bmat.out",
@@ -65,12 +68,14 @@ def run_gicforge(
         raise GICForgeError(f"GICForge failed, see {logfile}") from exc
 
     _copy_legacy_report(run_dir)
-    if symmetrize:
-        write_gic_symmetry_files(run_dir)
+    effective_symmetrize = symmetrize or gicsym_requested(run_dir)
+    do_symmetry_post = effective_symmetrize or symmetry_postprocess_requested(run_dir)
+    if do_symmetry_post:
+        write_gic_symmetry_files(run_dir, symmetrize_gics=effective_symmetrize)
     else:
         _remove_symmetry_outputs(run_dir)
     files = _collect_outputs(run_dir, output_names)
-    manifest = _write_gicforge_manifest(run_dir, exe, logfile, files, symmetrize=symmetrize)
+    manifest = _write_gicforge_manifest(run_dir, exe, logfile, files, symmetrize=effective_symmetrize)
     return GICForgeResult(
         workdir=run_dir,
         executable=exe,
@@ -91,7 +96,7 @@ def _copy_legacy_report(run_dir: Path) -> None:
 
 
 def _remove_symmetry_outputs(run_dir: Path) -> None:
-    for name in ("gauin.symm", "gicsym", "gic_symmetry_diagnostics.json"):
+    for name in ("gauin.raw", "gauin.symm", "gicsym", "gic_symmetry_diagnostics.json", "sycart.xyz", "symmetrized.xyz"):
         path = run_dir / name
         if path.exists():
             path.unlink()

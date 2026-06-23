@@ -12,6 +12,7 @@ DEBUG    : Preserve all intermediate files (no cleanup)
 #GAUSSIAN
  G16       : Make G16 Input (Need Deactivation of G26!!!)
  GICSYM    : Symmetrize GIC blocks for downstream modules
+ SYCART    : Write symmetrized Cartesian coordinates without changing frame
  SYMMALL   : Symmetrize same-type GNIC blocks (legacy alias)
  SCAN      : Scan for Soft DOF
  RIGID     : Freeze Hard Modes in Scan

@@ -827,6 +827,8 @@ C the default is to normalize GNICs
         Kwd(14)=.True.
        ElseIf(Test(1:6).eq.'GICSYM') then
         Kwd(24)=.True.
+       ElseIf(Test(1:6).eq.'SYCART') then
+        Kwd(25)=.True.
        ElseIf(Test(1:6).eq.'FINDFR') then
         Kwd(15)=.True.
        ElseIf(Test(1:6).eq.'JOINFR') then
@@ -901,6 +903,8 @@ C      write(IOut,'(A80)') CLine
      $ ''GNIC blocks (legacy alias)'')')
       If(Kwd(24)) write(IOut,'('' GICSYM    : Symmetrize GIC blocks'',
      $ '' for downstream modules'')')
+      If(Kwd(25)) write(IOut,'('' SYCART    : Write symmetrized '',
+     $ ''Cartesian coordinates without changing frame'')')
       If(Kwd(15)) write(IOut,'('' FINDFR    : Find Fragments'')')
       If(Kwd(16)) write(IOut,'('' JOINFR    : Join Fragments'')')
       If(Kwd(17)) write(IOut,'('' HBOND     : Detect H-Bonds only'')')

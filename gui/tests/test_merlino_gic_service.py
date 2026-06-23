@@ -771,11 +771,47 @@ def test_gicforge_fortran_accepts_gicsym_keyword(tmp_path):
 
     provin = (tmp_path / "provin").read_text(errors="ignore")
     provout = (tmp_path / "provout").read_text(errors="ignore")
+    gauin = (tmp_path / "gauin").read_text(errors="ignore")
     assert "# GNIC GICSYM BMAT ECKART G16 CLEAN" in provin
     assert "GICSYM    : Symmetrize GIC blocks" in provout
     assert "Symmetrized GIC summary from GICSYM" in provout
     assert any(marker in provout for marker in ("A'Str", "A1Str", "AStr"))
+    assert any(marker in gauin for marker in ("A'Str", "A1Str", "AStr"))
+    assert (tmp_path / "gauin.raw").exists()
     assert definition.symmetrized is True
+
+
+def test_gicforge_sycart_writes_symmetrized_cartesians_without_gic_symmetry(tmp_path):
+    try:
+        executable = resolve_backend("gicforge")
+    except Exception as exc:
+        pytest.skip(f"GICForge backend not available: {exc}")
+
+    atoms = ("O", "H", "H")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.9572, 0.0004, 0.0],
+            [-0.239987, 0.9262, 0.0],
+        ],
+        dtype=float,
+    )
+    definition = define_gics_from_cartesian(
+        atoms,
+        coords,
+        workdir=tmp_path,
+        executable=executable,
+        symmetrize=False,
+        symmetrize_cartesians=True,
+    )
+
+    sycart = tmp_path / "sycart.xyz"
+    assert sycart.exists()
+    assert (tmp_path / "symmetrized.xyz").exists()
+    assert "SYCART    : Write symmetrized Cartesian coordinates" in (tmp_path / "provout").read_text(errors="ignore")
+    assert "Symmetrized GIC summary from GICSYM" not in (tmp_path / "provout").read_text(errors="ignore")
+    assert not (tmp_path / "gauin.raw").exists()
+    assert definition.symmetrized is False
 
 
 def test_gicforge_fortran_locsvd_handles_ring_angles_and_dihedrals(tmp_path):
@@ -1109,6 +1145,8 @@ def test_gic_symmetry_appends_symmetrized_coordinates_to_provout_when_requested(
     assert "Coordinate" in first
     assert "Str0001" in first
     assert "Ang0001" in first
+    assert "Str0001" in (tmp_path / "gauin").read_text(encoding="utf-8")
+    assert (tmp_path / "gauin.raw").exists()
 
 
 def test_gic_symmetry_preserves_cyclopentadiene_irrep_and_class_counts(tmp_path):

@@ -32,14 +32,22 @@ class GICLine:
     terms: tuple[tuple[float, Primitive], ...]
 
 
-def write_gic_symmetry_files(workdir: Path) -> None:
+def write_gic_symmetry_files(workdir: Path, *, symmetrize_gics: bool | None = None) -> None:
     run_dir = Path(workdir)
     gauin = run_dir / "gauin"
+    raw_gauin = run_dir / "gauin.raw"
+    source_gauin = raw_gauin if raw_gauin.exists() else gauin
     xyzin = run_dir / "xyzin"
-    if not gauin.exists() or not xyzin.exists():
+    if not xyzin.exists():
         return
     atoms, coords, _comment = read_xyz(xyzin)
-    gics = _parse_gauin_gics(gauin)
+    if sycart_requested(run_dir):
+        _write_sycart_files(run_dir, atoms, coords)
+    if symmetrize_gics is None:
+        symmetrize_gics = True
+    if not symmetrize_gics or not source_gauin.exists():
+        return
+    gics = _parse_gauin_gics(source_gauin)
     if not gics:
         return
     prims, u_matrix = _primitive_basis(gics)
@@ -58,8 +66,9 @@ def write_gic_symmetry_files(workdir: Path) -> None:
         oriented,
         raw_class_targets,
     )
-    _write_symmetrized_gauin(gauin, run_dir / "gauin.symm", sym_gics, prims)
-    if _gicsym_requested(run_dir):
+    _write_symmetrized_gauin(source_gauin, run_dir / "gauin.symm", sym_gics, prims)
+    if gicsym_requested(run_dir):
+        _promote_symmetrized_gauin(gauin, run_dir / "gauin.symm")
         _append_symmetrized_provout(run_dir / "provout", sym_gics, prims)
 
 
@@ -758,12 +767,33 @@ def _write_symmetrized_gauin(source: Path, target: Path, sym_gics, prims: list[P
     target.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
-def _gicsym_requested(run_dir: Path) -> bool:
+def _provin_text(run_dir: Path) -> str:
     provin = run_dir / "provin"
     if not provin.exists():
-        return False
-    text = provin.read_text(encoding="utf-8", errors="replace").upper()
+        return ""
+    return provin.read_text(encoding="utf-8", errors="replace").upper()
+
+
+def gicsym_requested(run_dir: Path) -> bool:
+    text = _provin_text(run_dir)
     return "GICSYM" in text or "SYMMALL" in text
+
+
+def sycart_requested(run_dir: Path) -> bool:
+    return "SYCART" in _provin_text(run_dir)
+
+
+def symmetry_postprocess_requested(run_dir: Path) -> bool:
+    return gicsym_requested(run_dir) or sycart_requested(run_dir)
+
+
+def _promote_symmetrized_gauin(gauin: Path, gauin_symm: Path) -> None:
+    if not gauin.exists() or not gauin_symm.exists():
+        return
+    raw = gauin.with_name("gauin.raw")
+    if not raw.exists():
+        raw.write_text(gauin.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+    gauin.write_text(gauin_symm.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
 
 
 def _append_symmetrized_provout(path: Path, sym_gics, prims: list[Primitive]) -> None:
@@ -792,6 +822,57 @@ def _append_symmetrized_provout(path: Path, sym_gics, prims: list[Primitive]) ->
         block.append(f" {irrep:<8s} {source:<27s} {_format_gic_line(name, column, prims).strip()}")
     block.append(PROVOUT_SYMM_END)
     path.write_text("\n".join(clean + block) + "\n", encoding="utf-8")
+
+
+def _orient_with_frame(coords: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    coords = np.asarray(coords, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    total = float(np.sum(weights))
+    com = np.sum(coords * weights[:, None], axis=0) / total
+    centered = coords - com
+    inertia = np.zeros((3, 3), dtype=float)
+    for weight, vector in zip(weights, centered):
+        inertia += weight * ((float(np.dot(vector, vector)) * np.eye(3)) - np.outer(vector, vector))
+    _evals, evecs = np.linalg.eigh(inertia)
+    order = np.argsort(_evals)
+    frame = evecs[:, order]
+    if np.linalg.det(frame) < 0.0:
+        frame[:, -1] *= -1.0
+    return centered @ frame, com, frame
+
+
+def _write_sycart_files(run_dir: Path, atoms: list[str], coords: np.ndarray) -> None:
+    weights = np.array([atomic_number(atom) for atom in atoms], dtype=float)
+    oriented, com, frame = _orient_with_frame(coords, weights)
+    elements, _classes, permutations = symmetry_elements_from_geometry(
+        atoms,
+        oriented,
+        tol=SYMM_TOL,
+        max_n=8,
+        auto_max_n=True,
+        inertia_tol=SYMM_INERTIA_TOL,
+    )
+    if not elements or not permutations:
+        return
+    sym_oriented = np.zeros_like(oriented)
+    for element, mapping in zip(elements, permutations):
+        rotation = element[1]
+        transformed = oriented @ rotation.T
+        permuted = np.zeros_like(transformed)
+        for atom_index, mapped_index in enumerate(mapping):
+            permuted[atom_index] = transformed[mapped_index]
+        sym_oriented += permuted
+    sym_oriented /= float(len(elements))
+    sym_coords = np.round(sym_oriented @ frame.T + com[None, :], decimals=8)
+    _write_xyz(run_dir / "sycart.xyz", atoms, sym_coords, "GICForge SyCart symmetrized Cartesian coordinates")
+    _write_xyz(run_dir / "symmetrized.xyz", atoms, sym_coords, "GICForge SyCart symmetrized Cartesian coordinates")
+
+
+def _write_xyz(path: Path, atoms: list[str], coords: np.ndarray, comment: str) -> None:
+    lines = [str(len(atoms)), comment]
+    for atom, (x, y, z) in zip(atoms, coords):
+        lines.append(f"{atom:>2s} {x:16.8f} {y:16.8f} {z:16.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _format_gic_line(name: str, column: np.ndarray, prims: list[Primitive]) -> str:

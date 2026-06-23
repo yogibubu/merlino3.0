@@ -222,6 +222,7 @@ def define_gics_from_cartesian(
     executable: Path | None = None,
     runner: RunGICForge | None = None,
     symmetrize: bool = True,
+    symmetrize_cartesians: bool = False,
     extra_keywords: tuple[str, ...] = (),
 ) -> GICDefinition:
     """Construct and freeze a GIC definition from Cartesian geometry.
@@ -235,7 +236,14 @@ def define_gics_from_cartesian(
         raise GICDefinitionError("GIC definition needs at least one atom")
     run_dir = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="merlino_gic_define_"))
     run_dir.mkdir(parents=True, exist_ok=True)
-    _write_gicforge_inputs(run_dir, atoms, coords, symmetrize=symmetrize, extra_keywords=extra_keywords)
+    _write_gicforge_inputs(
+        run_dir,
+        atoms,
+        coords,
+        symmetrize=symmetrize,
+        symmetrize_cartesians=symmetrize_cartesians,
+        extra_keywords=extra_keywords,
+    )
     run = runner or run_gicforge
     if executable is not None and runner is None:
         result = run_gicforge(run_dir, executable=executable, symmetrize=symmetrize)
@@ -672,11 +680,14 @@ def _write_gicforge_inputs(
     coords: np.ndarray,
     *,
     symmetrize: bool,
+    symmetrize_cartesians: bool = False,
     extra_keywords: tuple[str, ...] = (),
 ) -> None:
     base_keywords = ["GNIC", "BMAT", "ECKART", "G16", "CLEAN"]
     if symmetrize:
         base_keywords.insert(1, "GICSYM")
+    if symmetrize_cartesians:
+        base_keywords.insert(1, "SYCART")
     keywords = "# " + " ".join((*base_keywords, *extra_keywords))
     (workdir / "provin").write_text(
         f"{keywords}\n\n"
@@ -823,7 +834,16 @@ def _gic_definition_provenance(run_dir: Path, result: GICForgeResult, gauin: Pat
         path = run_dir / name
         if path.exists():
             provenance[f"{name}_sha256"] = sha256_file(path)
-    for name in ("gauin", "gauin.symm", "gicsym", "gic_symmetry_diagnostics.json", "bmat.out"):
+    for name in (
+        "gauin",
+        "gauin.raw",
+        "gauin.symm",
+        "gicsym",
+        "gic_symmetry_diagnostics.json",
+        "sycart.xyz",
+        "symmetrized.xyz",
+        "bmat.out",
+    ):
         path = run_dir / name
         if path.exists():
             provenance[f"{name}_sha256"] = sha256_file(path)

@@ -155,6 +155,11 @@ KWD_SPEC = {
                 "default": False,
                 "description": "Symmetrize GIC blocks for downstream modules",
             },
+            "SYCART": {
+                "type": "flag",
+                "default": False,
+                "description": "Write symmetrized Cartesian coordinates without changing the input frame",
+            },
             "SYMMALL": {
                 "type": "flag",
                 "default": False,

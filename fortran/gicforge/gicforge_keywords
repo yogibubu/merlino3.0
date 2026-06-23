@@ -16,6 +16,7 @@ CLEAN     : Clean GNIC values
  LOOSE     : Loose Symmetry for Gaussian
  BDPCS3    : Make BDPCS3 Bond Lengths
  GICSYM    : Symmetrize GIC blocks for downstream modules
+ SYCART    : Write symmetrized Cartesian coordinates without changing frame
  SYMMALL   : Symmetrize same-type GNIC blocks (legacy alias)
  FINDFR    : Find Fragments
  JOINFR    : Join Fragments
