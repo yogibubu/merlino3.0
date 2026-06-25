@@ -38,6 +38,29 @@ class ContinuousGraphAdapter:
                 self.BO[i, j] = self.BO[j, i] = bo
 
 
+def test_discrete_graph_ignores_geminal_hh_contact():
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.9, 0.0, 0.55],
+            [0.9, 0.0, -0.55],
+        ],
+        dtype=float,
+    )
+    graph = ContinuousGraphAdapter(coords, [6, 1, 1])
+    discrete = DiscreteGraph(graph)
+    assert discrete.adjacency[1] == {0}
+    assert discrete.adjacency[2] == {0}
+
+
+def test_discrete_graph_keeps_isolated_h2_bond():
+    coords = np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]], dtype=float)
+    graph = ContinuousGraphAdapter(coords, [1, 1])
+    discrete = DiscreteGraph(graph)
+    assert discrete.adjacency[0] == {1}
+    assert discrete.adjacency[1] == {0}
+
+
 def _parse_gaussian_topology_overrides(xyzin: Path):
     lines = xyzin.read_text().splitlines()
     try:

@@ -3,6 +3,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{url}
+\emergencystretch=2em
 
 \signature{Vincenzo Barone\\
 INSTM, National Interuniversity Consortium for Materials Science and Technology\\
@@ -21,57 +22,74 @@ via G. Giusti 9\\
 \begin{document}
 
 \begin{letter}{Editor\\
-Journal of Chemical Theory and Computation}
+The Journal of Chemical Physics}
 
 \opening{Dear Editor,}
 
 Please consider the manuscript entitled
-``Non-Redundant and Symmetry-Adapted Coordinates for Black-Box Molecular
-Structure Refinement'' for publication in the \emph{Journal of Chemical
-Theory and Computation}.
+``Algorithmic Generation and Exploitation of Topology-Aware Models for
+Semiexperimental Structure Refinement'' for publication in \emph{The Journal
+of Chemical Physics}.
 
-The manuscript addresses a persistent limitation of semiexperimental molecular
-structure refinement: the fitted geometry often depends on a user-defined
-Z-matrix or on manually selected internal-coordinate models. This dependence is
-benign for simple acyclic molecules, but it becomes problematic for rings,
-fused systems, bridged frameworks, planar molecules, and cases with incomplete
-isotopic substitution data.
+The manuscript addresses model formulation, not only model solution. Once a
+least-squares model has been specified, modern semiexperimental refinement
+programs can solve it reliably; the harder and less formalized step is the
+generation of that model. The active coordinates, symmetry restrictions,
+weakly determined directions, parameter classes, and use of reference
+structural information still often depend on expert choices, especially for
+cyclic, fused, and bridged molecular graphs.
 
-We introduce \texttt{SEfit}, a framework in which the structure is read as
-Cartesian coordinates and the active refinement space is generated
-automatically from molecular topology and symmetry. Two non-redundant,
-symmetry-adapted coordinate representations are available: generalized internal
-coordinates (GICs) built from homogeneous primitive blocks, and
-symmetry-adapted Cartesian displacements with
-translations and rotations removed. Chemical constraints, predicates, and
-parameter classes remain defined in primitive internal coordinates and are
-projected onto the chosen active basis, so the method preserves chemical
-interpretability without requiring a Z-matrix.
+We introduce \texttt{MORPHEUS} (Model Optimization and Refinement from
+Perceived Hierarchy, Equivalence, Uncertainty, and Symmetry), a topology-aware
+framework that formulates statistically admissible non-redundant refinement
+models from Cartesian geometry, molecular topology, symmetry, isotopic
+coverage, and computational reference data. More precisely, the generated
+models are topology-derived, symmetry-consistent, and rank-consistent: topology
+defines the primitive coordinate space, symmetry selects the admissible active
+subspace, isotopic coverage determines which directions are supported, and
+reference information enters through explicit constraints, predicates, or
+parameter classes. Two non-redundant, symmetry-adapted coordinate
+representations are available: generalized internal coordinates (GICs) built
+from homogeneous primitive blocks, and symmetry-adapted Cartesian displacements
+with translations and rotations removed.
 
 The work retains the essential ingredients of modern semiexperimental
 structure refinement, including moment-of-inertia fitting, vibrational and
 electronic corrections, parameter classes, reduced-dimensionality hydrogen
 models, covariance propagation, Kraitchman diagnostics, and human-readable
-reports. Its central contribution is to move coordinate construction and
-constraint handling to a fully automatic Cartesian/topology layer.
+reports. Its central contribution is to formalize the construction of the
+refinement model itself as an algorithm: the active representation and the
+constraint or parameter-class relations are topology-derived,
+symmetry-consistent, rank-consistent, and compatible with isotopic coverage and
+reference structural information.
+During refinement, the perceived molecular topology is locked after model
+formulation; trial steps that would create or remove bonds, including
+spurious H--H contacts, are rejected, so the coordinate model, the final
+geometry report, and the uncertainty propagation remain chemically consistent.
+When the isotopologue set is incomplete, computational reference geometries or
+curated fragment libraries enter only through explicit
+constraints, predicates, or descriptor-based parameter classes.
 
-The approach is validated on glycolaldehyde, glycine I, glycine II,
-cyclopentadiene, nitrobenzene, azulene, and norcamphor. These examples span
-standard acyclic, simple and coupled functional-constraint, cyclic, planar
-aromatic, fused-ring, and bridged cases.
-The results show that the
+The approach is validated on glycolaldehyde, maleic, phthalic, and succinic
+anhydrides, cyclopentadiene, nitrobenzene, azulene, norcamphor, glycine I/II,
+and testosterone. These examples span standard acyclic, cyclic, planar
+aromatic, fused-ring, bridged, homologous anhydride, reduced-dimensionality,
+and large-molecule cases. Glycine illustrates a complete QC-to-refinement route in
+which synthon-based diagnostics generate the constraints used by the fit,
+whereas testosterone is used as a scale demonstration for a large fused-ring
+system. The results show that the
 symmetry-adapted GIC and Cartesian active spaces give consistent ranks,
 effective dimensionalities, and rotational residuals, while final bond lengths,
 angles, dihedrals, and their uncertainties are obtained from the optimized
-Cartesian structures with rigorous error propagation.
+Cartesian structures with rigorous error propagation. The point is not that a
+new least-squares engine lowers residuals after the model is built; it is that
+the same semiexperimental information is obtained without hand-building the
+coordinate and constraint model.
 
-We believe the manuscript is appropriate for the \emph{Journal of Chemical
-Theory and Computation} (JCTC) because it presents a general computational
-methodology for coordinate-dependent inverse problems, not only a
-molecule-specific refinement. The same coordinate layer is designed to support
-semiexperimental structures, Gaussian input generation, Wilson G/F matrix and
-potential-energy-distribution (PED) analysis, and related vibrational
-workflows.
+We believe the manuscript is appropriate for \emph{The Journal of Chemical
+Physics} because it presents a general computational methodology for
+spectroscopy-driven molecular structure refinement, not a molecule-specific
+refinement.
 
 The manuscript is original, has not been published previously, and is not under
 consideration elsewhere. The author has approved the submission and declares no

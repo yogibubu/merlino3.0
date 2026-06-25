@@ -172,7 +172,24 @@ Implementation rule:
    input and output files.
 9. Add the semiexperimental geometry data model and least-squares interface.
 10. Rewire GUI controllers to call service interfaces.
-11. Remove compatibility wrappers only after tests cover the new imports.
+11. Plan the project rename from Merlino to Oracle as a compatibility-managed
+    migration: suite name, documentation, manifests, GUI labels and public CLI
+    aliases first; package/module renames only after stable `merlino_*`
+    compatibility imports and regression tests exist.
+    Working expansion:
+    **ORACLE = Operational Recognition of Atomistic Connectivity and Local
+    Environments**.
+    ORACLE is the full computational-chemistry framework: perception,
+    topology, synthons/local environments, coordinate representations,
+    symmetry-aware descriptors, computational spectroscopy, data/ML-assisted
+    workflows, and downstream engines. Within ORACLE, the MORPHEUS block
+    should identify the GICForge+SEfit layer for non-redundant internal
+    coordinate generation, symmetry handling, constraints/classes/predicates,
+    and semiexperimental refinement/model generation.
+    Include a separate branding task to design a new polished Oracle logo
+    suitable for the GUI, documentation, repository, presentations and future
+    MORPHEUS/ERC material.
+12. Remove compatibility wrappers only after tests cover the new imports.
 
 Each step should end with a small commit and a green validation run.
 

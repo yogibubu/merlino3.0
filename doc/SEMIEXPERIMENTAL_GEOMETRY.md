@@ -38,6 +38,31 @@ This makes the workflow more general for rings, fused systems, bridge atoms,
 planar molecules and cases where a conventional hand-built coordinate template
 would be ambiguous or ill-conditioned.
 
+## Multi-molecule Class-correction Layer
+
+MORPHEUS also has a first ensemble layer for homologous or chemically related
+molecules.  Instead of fitting each molecule in isolation, several ordinary
+semiexperimental requests can be combined by refining shared corrections to
+computational reference coordinates:
+
+```text
+q_SE(m,k) = q_QC(m,k) + Delta[class(m,k)]
+```
+
+The absolute coordinates are still molecule-specific.  Only the correction
+relative to the QC reference is shared within a declared class, for example a
+skeleton C-C stretch class or a carbonyl C-O class.  This is intended for large
+molecules with poor isotopic coverage, where several related molecules can
+provide more information about transferable QC biases than any one parent-only
+data set.
+
+The current implementation is the public Python API
+`fit_ensemble_class_corrections` in `merlino_semiexp.ensemble`.  It is a
+linearized global least-squares stage around the reference geometries and
+reports class corrections, covariance, rank, conditioning, and per-molecule
+residual reduction.  The full design contract and next development steps are
+kept in `doc/SEMIEXPERIMENTAL_ENSEMBLE_REFINEMENT.md`.
+
 ## Recommended Defaults
 
 The recommended CLI is:
@@ -103,6 +128,47 @@ These defaults are intentional:
 Use `--observable rotational_constants` only when the scientific comparison
 must be made directly in MHz.
 
+## Constraints, Predicates And Classes
+
+Reduced-dimensionality information can enter the refinement in three distinct
+ways:
+
+- Hard constraints remove directions from the fit. Use them when a coordinate
+  is to be treated as exact, for example a frozen local H frame in a data set
+  without H/D substitution.
+- Parameter classes tie matched coordinates to a common correction. Use them
+  when a chemical descriptor says that several coordinates should move
+  together, but the common correction is still refined.
+- QM predicates add weighted reference observations. Use them when a reference
+  geometry should guide a weakly determined direction with an explicit
+  uncertainty, not force it exactly.
+
+Predicates may target final GIC labels or primitive coordinates. Primitive
+predicates are preferred for transferable literature data because they are
+independent of the generated GIC numbering:
+
+```toml
+[[qm_predicates]]
+pattern = "R(6,2)"
+value = 1.3856
+sigma = 0.002
+source = "reBO Table 1"
+
+[[qm_predicates]]
+pattern = "A(7,6,2)"
+value = 116.78
+sigma = 0.2
+source = "reBO Table 1"
+```
+
+Primitive predicate patterns are canonicalized before evaluation. Thus
+`R(2,6)` and `R(6,2)` are the same bond predicate; `A(1,2,3)` and
+`A(3,2,1)` are the same valence-angle predicate; reversible dihedral orderings
+are normalized as well. Out-of-plane predicates are not arbitrarily sorted
+because their atom order defines the signed orientation. Bond values are in
+angstrom; angular predicates are written in degrees and converted internally
+to radians together with their uncertainties.
+
 The default coordinate model is:
 
 ```bash
@@ -133,6 +199,21 @@ symmetric directions. It does not require a Hessian, a force-field calculation
 or a Wilson B-matrix pseudoinverse. Primitive constraints are still enforced
 through analytic primitive derivatives, and the final errors are propagated to
 ordinary internal coordinates from the fitted Cartesian covariance.
+
+The phthalic anhydride example is the recommended template for mixed
+estimation with primitive predicates:
+
+```bash
+python -m merlino semiexp \
+  --job examples/semiexp/phthalic_anhydride/phthalic_anhydride_predicates.mse.toml \
+  --outdir working/semiexp/phthalic_anhydride
+```
+
+In that case the rotational constants alone can be fitted with a very small
+rotational residual, but the model is rank deficient. Freezing local hydrogen
+frames stabilizes H positions but does not add information on the heavy-atom
+framework. Weighted reBO predicates give a full-rank model with the published
+statistical assumptions: 0.002 A for bond lengths and 0.2 degree for angles.
 
 ## Input
 
@@ -413,11 +494,18 @@ The default GIC fit model is:
     public GICForge API. `GICSYM` provides the frozen totally symmetric GIC
     subspace; `SYCART` provides symmetrized Cartesian coordinates when the
     Cartesian symmetry model is selected. Line-search trials reuse the current
-    GICForge coordinate model. Every accepted GIC step is validated by rerunning
-    GICForge and comparing the point-group, irrep and coordinate-family
-    signature with the reference model; topology-changing steps are rejected
-    and the trust radius is reduced. The Cartesian-GIC projector is refreshed
-    analytically only when needed and otherwise updated by a secant correction.
+    GICForge coordinate model. After fixed-primitive and predicate projections,
+    SEfit perceives the initial molecular topology once and locks its atomic
+    numbers, bond list and adjacency graph. Every accepted GIC or `SYCART`
+    trial geometry is checked against this lock; steps that add or remove
+    bonds, including spurious H--H or X--H contacts, are rejected and the trust
+    radius is reduced. The final bond/angle/dihedral report is also generated
+    from the locked topology rather than by re-perceiving a possibly distorted
+    final structure. GICForge itself performs the same input-topology preflight
+    before either the Fortran or Python backend is used, so the public API has
+    the same failure mode in both implementations. The Cartesian-GIC projector
+    is refreshed analytically only when needed and otherwise updated by a
+    secant correction.
 12. Recompute covariance, correlation, Hessian eigenvalues and diagnostics at
     the final geometry.
 

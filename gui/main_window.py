@@ -56,6 +56,7 @@ from .symmetry_panel import (
 )
 from .similarity_window import SimilarityWindow
 from .fragment_pipeline_window import FragmentPipelineWindow
+from .ensemble_window import EnsembleSEWindow
 from topology.elements import atomic_number
 from geometry.isotopes_table import get_default_isotope, get_isotopes
 from merlino_core.isotopologues import XyzinIsotopologueRecord, merge_xyzin_isotopologue_records
@@ -96,6 +97,7 @@ class MainWindow(QMainWindow):
         self._backup_xyzin = self.working_dir / ".xyzin_backup"
         self.advanced_window = None
         self.dvr_window = None
+        self.ensemble_window = None
         self.bdpcs3_version = "updated"
         self._last_xyzin_stamp = None
         self._refresh_timer = None
@@ -164,6 +166,10 @@ class MainWindow(QMainWindow):
         act_fragment = QAction("Fragment pipeline", self)
         act_fragment.triggered.connect(self._open_fragment_pipeline_window)
         self.toolbar.addAction(act_fragment)
+        self.toolbar.addSeparator()
+        act_ensemble = QAction("Ensemble SE", self)
+        act_ensemble.triggered.connect(self._open_ensemble_window)
+        self.toolbar.addAction(act_ensemble)
         self.toolbar.addSeparator()
         act_dvr = QAction("DVR", self)
         act_dvr.triggered.connect(self._open_dvr_window)
@@ -595,6 +601,7 @@ class MainWindow(QMainWindow):
             ("thermo", "Thermo"),
             ("dos", "DOS/Q(T)"),
             ("topology", "Topology"),
+            ("semiexp_ensemble", "MORPHEUS ensemble SE"),
             ("bdpcs3", "BDPCS3"),
             ("hpcs2", "HPCS2 (PCS2 geometry from HPCS2 base)"),
         ]
@@ -830,6 +837,10 @@ class MainWindow(QMainWindow):
                     working_dir=self.working_dir,
                 )
                 self._log_event("action: topology")
+                return
+            if action == "semiexp_ensemble":
+                self._open_ensemble_window()
+                self._log_event("action: semiexp ensemble")
                 return
             if action == "symmetry":
                 symm_tol = self._prompt_symmetry_tolerance()
@@ -1211,6 +1222,13 @@ class MainWindow(QMainWindow):
     def _open_fragment_pipeline_window(self):
         dlg = FragmentPipelineWindow(self.working_dir, self)
         dlg.exec()
+
+    def _open_ensemble_window(self):
+        if self.ensemble_window is None:
+            self.ensemble_window = EnsembleSEWindow(self.working_dir, self)
+        self.ensemble_window.show()
+        self.ensemble_window.raise_()
+        self.ensemble_window.activateWindow()
 
     def _open_isotopologues_dialog(self):
         if not self.xyzin_path.exists():

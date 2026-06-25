@@ -4,28 +4,155 @@
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{amsmath}
+\usepackage{graphicx}
 \usepackage{hyperref}
+\usepackage{listings}
+
+\lstset{
+  basicstyle=\small\ttfamily,
+  columns=fullflexible,
+  breaklines=true,
+  frame=single
+}
+
+\renewcommand{\thesection}{S\arabic{section}}
+\renewcommand{\thetable}{S\arabic{table}}
+\renewcommand{\thefigure}{S\arabic{figure}}
 
 \title{Supporting Information for\\
-Non-Redundant and Symmetry-Adapted Coordinates for Black-Box Molecular Structure Refinement}
+Algorithmic Generation and Exploitation of Topology-Aware Models for Semiexperimental Structure Refinement}
 \author{Vincenzo Barone}
 \date{}
 
 \begin{document}
 \maketitle
 
-\section*{Glycine I C$_s$ Constraint Benchmark}
+\section{Global Benchmark Diagnostics}
 
-Table~\ref{tab:si-glycine-I-rotconstants} reports the Gly-I constrained
-benchmark. The fit uses moments of inertia as observables and all three
-rotational components because the C$_s$ structure is not a planar rotor in the
-inertial sense: the two methylene and two amino hydrogens lie outside the
-heavy-atom plane. The ground-state constants and statistical weights are from
-Godfrey and Brown, J. Am. Chem. Soc. 117, 2019-2023 (1995), Table 1. The
-corrected constants are $B_e=B_0+\Delta B_\mathrm{vib}$ with the Gly-Ip
-zero-point corrections of Kasalov{\'a} et al. The numerical data entering the
-fit are collected in Table~\ref{tab:si-glycine-I-inputdata} so that the
-corrected constants can be reproduced without consulting the original tables.
+Tables~\ref{tab:benchmark-summary} and~\ref{tab:planar-pair-diagnostics}
+collect the numerical values underlying the graphical benchmark summaries in
+the main text.
+
+\input{generated/benchmark_summary.tex}
+
+\input{generated/planar_pair_diagnostics.tex}
+
+\section{Atom Numbering Used in the Tables}
+
+Figure~\ref{fig:si-atom-numbering} reproduces the atom numbering shown in the
+main text for use with the structural tables and diagnostic comparisons. The
+same Cartesian numbering is used by the topology perception, coordinate
+generation, and least-squares reporting steps. The p-EBN structure is included
+as a legacy MSR-import companion case for numbering consistency.
+
+\begin{figure}
+\centering
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/glycolaldehyde_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/cyclopentadiene_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/nitrobenzene_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/p-EBN_numbering.pdf}\\[-0.4em]
+\end{minipage}
+
+\vspace{0.5em}
+
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/azulene_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/norcamphor_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/glycine_I_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/glycine_II_numbering.pdf}\\[-0.4em]
+\end{minipage}
+
+\vspace{0.5em}
+
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/maleic_anhydride_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/phthalic_anhydride_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/succinic_anhydride_numbering.pdf}\\[-0.4em]
+\end{minipage}
+\begin{minipage}{0.24\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/testosterone_qc.jpg}\\[-0.4em]
+\end{minipage}
+\caption{Atom numbering used for the benchmark and companion structures:
+glycolaldehyde, cyclopentadiene, nitrobenzene, p-EBN, azulene, norcamphor,
+glycine I, glycine II, and the maleic, phthalic, and succinic anhydride
+series. Testosterone is included as the 49-atom fused-ring scale check.}
+\label{fig:si-atom-numbering}
+\end{figure}
+
+\begin{table}
+\caption{Comparison of MORPHEUS working-coordinate models. ``Work.'' is the number
+of non-redundant GICs or symmetry-adapted Cartesian vibrational directions,
+``Sym.'' is the number of totally symmetric working coordinates before
+primitive-constraint projection, and ``Eff.'' is the number of independent
+least-squares variables after projection. Residuals are RMS/maximum absolute
+values in MHz.}
+\label{tab:si-coordinate-models}
+\small
+\begin{tabular}{llrrrrrl}
+\toprule
+System & Model & Work. & Sym. & Eff. & Rank & Cond. & Residuals \\
+\midrule
+Cyclopentadiene & GICs & 27 & 10 & 10 & 10 & 454.5 & 0.0635/0.2289 \\
+Cyclopentadiene & Sym. Cart. & 27 & 10 & 10 & 10 & 635.4 & 0.0635/0.2289 \\
+p-EBN & GICs & 39 & 14 & 6 & 6 & 2440.2 & 0.1190/0.5674 \\
+Azulene & GICs & 48 & 17 & 10 & 10 & 956.7 & 0.0731/0.2900 \\
+Azulene & Sym. Cart. & 48 & 17 & 10 & 10 & 744.8 & 0.0731/0.2900 \\
+Norcamphor & GICs & 48 & 48 & 18 & 18 & 3700.3 & 0.0710/0.2091 \\
+Norcamphor & Sym. Cart. & 48 & 48 & 18 & 18 & 1615.8 & 0.0710/0.2091 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{\texorpdfstring{Glycine I C$_s$ Constraint Benchmark}{Glycine I Cs Constraint Benchmark}}
+
+Table~\ref{tab:si-glycine-I-rotconstants} reports the Gly-I benchmark run from
+the QC reference Cartesian geometry with no stored structural constraints. The fit uses
+moments of inertia as observables and all three rotational components because
+the C$_s$ structure is not a planar rotor in the inertial sense: the two
+methylene and two amino hydrogens lie outside the heavy-atom plane. The
+ground-state constants and statistical weights are from Godfrey and Brown,
+J. Am. Chem. Soc. 117, 2019-2023 (1995), Table 1. The corrected constants are
+$B_e=B_0+\Delta B_\mathrm{vib}$ with the Gly-Ip zero-point corrections of
+Kasalov{\'a} et al. The MORPHEUS advisor generated the following four hard
+constraints from the QC reference geometry and isotope-availability pattern:
+\begin{verbatim}
+HNH(Frozen,Value=105.634453352622)=A(3,2,10)
+NH2WAG(Frozen,Value=55.901476176288)=U(1,2,3,10)
+ROH(Frozen,Value=0.965159162788)=R(6,7)
+ACOH(Frozen,Value=106.584216097335)=A(4,6,7)
+\end{verbatim}
+The numerical data entering the fit are collected in
+Table~\ref{tab:si-glycine-I-inputdata} so that the corrected constants can be
+reproduced without consulting the original tables.
 
 \begin{longtable}{llrrrr}
 \caption{Glycine I rotational input data. $B_0$, $\sigma(B_0)$, $\Delta B_\mathrm{vib}$, and $B_e=B_0+\Delta B_\mathrm{vib}$ are in MHz. The $^{13}$C(1) and $^{13}$C(2) labels of Godfrey and Brown correspond here to C13\_carboxyl and C13\_methylene, respectively.}\label{tab:si-glycine-I-inputdata}\\
@@ -65,26 +192,26 @@ Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
 Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
 \midrule
 \endhead
-parent & A & 10420.1910 & 10420.2475 & -0.0565 \\
+parent & A & 10420.1910 & 10420.2481 & -0.0570 \\
 parent & B & 3907.4785 & 3907.4786 & -0.0001 \\
 parent & C & 2934.6809 & 2934.6808 & +0.0001 \\
-C13\_carboxyl & A & 10418.7430 & 10418.7401 & +0.0028 \\
+C13\_carboxyl & A & 10418.7430 & 10418.7403 & +0.0027 \\
 C13\_carboxyl & B & 3900.0642 & 3900.0634 & +0.0008 \\
 C13\_carboxyl & C & 2930.3766 & 2930.3769 & -0.0003 \\
 C13\_methylene & A & 10303.8140 & 10303.7637 & +0.0503 \\
 C13\_methylene & B & 3890.0010 & 3889.9809 & +0.0201 \\
-C13\_methylene & C & 2915.5160 & 2915.5485 & -0.0325 \\
+C13\_methylene & C & 2915.5160 & 2915.5484 & -0.0324 \\
 CD2 & A & 9388.2920 & 9388.2920 & +0.0000 \\
 CD2 & B & 3830.4453 & 3830.4453 & -0.0000 \\
 CD2 & C & 2853.8022 & 2853.8022 & -0.0000 \\
-N15 & A & 10420.2100 & 10420.2475 & -0.0375 \\
-N15 & B & 3792.5870 & 3792.5435 & +0.0435 \\
-N15 & C & 2869.3490 & 2869.3717 & -0.0227 \\
+N15 & A & 10420.2100 & 10420.2444 & -0.0344 \\
+N15 & B & 3792.5870 & 3792.5436 & +0.0434 \\
+N15 & C & 2869.3490 & 2869.3715 & -0.0225 \\
 \bottomrule
 \end{longtable}
 
 \begin{longtable}{llrr}
-\caption{Selected primitive structural parameters for the glycine I C$_s$ benchmark. Bond lengths are in \AA; angles and dihedrals are in degrees.}\label{tab:si-glycine-I-geometry}\\
+\caption{Selected primitive structural parameters for the glycine I C$_s$ benchmark with MORPHEUS-generated constraints. Bond lengths are in \AA; angles and dihedrals are in degrees.}\label{tab:si-glycine-I-geometry}\\
 \toprule
 Parameter & Description & Value & Std. error \\
 \midrule
@@ -93,36 +220,38 @@ Parameter & Description & Value & Std. error \\
 Parameter & Description & Value & Std. error \\
 \midrule
 \endhead
-R(1,2) & C--N & 1.44060 & 0.00076 \\
-R(1,4) & C--C & 1.51133 & 0.00086 \\
+R(1,2) & C--N & 1.44285 & 0.00076 \\
+R(1,4) & C--C & 1.51134 & 0.00085 \\
 R(1,8) & C--H & 1.09081 & 0.00021 \\
 R(1,9) & C--H & 1.09081 & 0.00021 \\
-R(2,3) & N--H & 1.00666 & 0.00011 \\
-R(2,10) & N--H & 1.00666 & 0.00011 \\
-R(4,5) & C--O & 1.20588 & 0.00184 \\
-R(4,6) & C--O & 1.35332 & 0.00128 \\
-R(6,7) & O--H & 0.96600 & 0.00000 \\
-A(2,1,4) & N--C--C & 115.414 & 0.062 \\
-A(8,1,9) & H--C--H & 105.922 & 0.031 \\
-A(3,2,10) & H--N--H & 104.980 & 0.000 \\
-A(1,4,5) & C--C--O & 124.989 & 0.094 \\
-A(1,4,6) & C--C--O & 111.832 & 0.123 \\
-A(5,4,6) & O--C--O & 123.180 & 0.061 \\
-A(4,6,7) & C--O--H & 106.040 & 0.000 \\
+R(2,3) & N--H & 1.00228 & 0.00011 \\
+R(2,10) & N--H & 1.00228 & 0.00011 \\
+R(4,5) & C--O & 1.20529 & 0.00184 \\
+R(4,6) & C--O & 1.35001 & 0.00128 \\
+R(6,7) & O--H & 0.96516 & 0.00000 \\
+A(2,1,4) & N--C--C & 115.266 & 0.062 \\
+A(8,1,9) & H--C--H & 105.923 & 0.031 \\
+A(3,2,10) & H--N--H & 105.634 & 0.000 \\
+A(1,4,5) & C--C--O & 125.338 & 0.095 \\
+A(1,4,6) & C--C--O & 111.640 & 0.123 \\
+A(5,4,6) & O--C--O & 123.022 & 0.060 \\
+A(4,6,7) & C--O--H & 106.584 & 0.000 \\
 D(2,1,4,5) & N--C--C--O & 180.000 & 0.000 \\
 D(1,4,6,7) & C--C--O--H & 0.000 & 0.000 \\
-D(8,1,4,5) & H--C--C--O & -56.780 & 0.031 \\
-D(9,1,4,5) & H--C--C--O & 56.780 & 0.031 \\
+D(8,1,4,5) & H--C--C--O & -56.781 & 0.030 \\
+D(9,1,4,5) & H--C--C--O & 56.781 & 0.030 \\
 \bottomrule
 \end{longtable}
 
-\section*{Glycine II Functional-Constraint Benchmark}
+\section{Glycine II Functional-Constraint Benchmark}
 
-Table~\ref{tab:si-glycine-rotconstants} reports the Gly-II DPCS3-constrained
+Table~\ref{tab:si-glycine-rotconstants} reports the Gly-II advisor-constrained
 benchmark discussed in the main text. The fit uses moments of inertia as
 observables, but the diagnostic table is reported in MHz. The corrected
 experimental constants are $B_e=B_0+\Delta B_\mathrm{vib}$ with the Gly-IIn
-zero-point corrections.
+zero-point corrections. The Cartesian input does not store constraints; the
+five functional constraints are generated by the MORPHEUS advisor from the QC
+geometry and the isotopologue coverage.
 
 \begin{longtable}{llrrr}
 \caption{Complete rotational-constant comparison for glycine II. Corrected experimental constants, calculated constants, and differences are in MHz.}\label{tab:si-glycine-rotconstants}\\
@@ -167,19 +296,17 @@ OD\_ND2 & C & 2806.0910 & 2806.1569 & -0.0659 \\
 \bottomrule
 \end{longtable}
 
-\section*{Cyclopentadiene Benchmark}
+\section{Cyclopentadiene Benchmark}
 
 Table~\ref{tab:si-cyclopentadiene-rotconstants} reports the complete
 comparison between corrected experimental rotational constants and constants
 calculated from the final semiexperimental structure. The workflow uses
 generalized internal coordinates (GICs) or symmetry-adapted Cartesian
-coordinates generated within \texttt{SEfit}. The data set contains 14 isotopologues and
-all three principal rotational constants for each isotopologue. The refinement
-uses the same spectroscopic information derived from the \texttt{MSR}
-molecular-structure-refinement workflow, but the molecular structure is
-represented only by Cartesian coordinates and automatically generated
-non-redundant symmetry-adapted GICs; no Z-matrix or manually constructed
-internal-coordinate path is used.
+coordinates generated within \texttt{MORPHEUS}. The data set contains 14
+isotopologues and all three principal rotational constants for each
+isotopologue. The MORPHEUS refinement uses only a Cartesian representation of the
+molecular structure, whereas the MSR refinement used manual Z-matrix
+coordinates and constraints.
 
 \begin{longtable}{llrrr}
 \caption{Complete rotational-constant comparison for the cyclopentadiene benchmark derived from MSR data. Corrected experimental and calculated constants are in MHz.}\label{tab:si-cyclopentadiene-rotconstants}\\
@@ -236,7 +363,7 @@ msr\_symm\_14 & C & 3469.286997 & 3469.303412 & -0.016415 \\
 \bottomrule
 \end{longtable}
 
-\section*{Nitrobenzene Planar Benchmark}
+\section{Nitrobenzene Planar Benchmark}
 
 Nitrobenzene is a planar aromatic benchmark. The least-squares fit used the
 independent $AB$ moment pair, corresponding to $(I_a,I_b)$, while the $C$
@@ -326,9 +453,30 @@ O18 & 13 O & $c$ & 0.00896 & 0.00000 & +0.00896 \\
 \bottomrule
 \end{longtable}
 
-\section*{Azulene Comparison with the Reference Refinement}
+\section{p-EBN Legacy MSR-Import Benchmark}
 
-The azulene calculation used the MSR-comparable isotopologue subset and the same fixed structural information as primitive-coordinate constraints. The fixed C--H information in the MSR fit corresponds to C1--H11, its C$_{2v}$ partner C3--H13, and C2--H12; the remaining C--H distances are refined. In the original MSR Z-matrix, one ring-closing C--C distance is a derived quantity rather than a primary coordinate, whereas the Cartesian/GIC workflow evaluates all reported topological distances from the final Cartesian geometry. All coordinates were generated automatically from Cartesian structures; no Z-matrix was used. Because azulene is planar, the fit used the independent $AB$ moment pair and retained the $C$ constants as diagnostics. Tables~\ref{tab:si-azulene-rotconstants} and~\ref{tab:si-azulene-msr-parameters} report the complete rotational-constant comparison and the full structural comparison with the reference MSR values, respectively.
+The p-EBN case was recovered from the legacy MSR-import fixtures and rerun
+with the current MORPHEUS workflow. The current run imports the Z-matrix
+geometry, isotopologue definitions, rotational constants, vibrational
+corrections, weights, and frozen Z-matrix parameters. The historical
+Z-matrix-style equality-constraint block is not part of the current public MORPHEUS
+constraint API and was therefore not imposed in this compatibility run.
+Table~\ref{tab:si-p-ebn-fit-diagnostics} summarizes the fit, and
+Tables~\ref{tab:si-p-ebn-rotconstants}--\ref{tab:si-p-ebn-geometry} report the
+rotational constants, Kraitchman diagnostic, and selected structural
+parameters.
+
+\input{generated/p_ebn_fit_diagnostics.tex}
+
+\input{generated/p_ebn_rotational_constants.tex}
+
+\input{generated/p_ebn_kraitchman.tex}
+
+\input{generated/p_ebn_geometry_parameters.tex}
+
+\section{Azulene Comparison with the Reference Refinement}
+
+The azulene calculation used fixed C1--H11, C3--H13, and C2--H12 bond lengths; the remaining C--H distances are refined. All internal coordinates were generated algorithmically from Cartesian structures. Because azulene is planar, the fit used the independent $AB$ moment pair and retained the $C$ constants as diagnostics. 
 
 \begin{longtable}{llrrr}
 \caption{Complete rotational-constant comparison for the azulene MSR-comparable subset. Corrected experimental and calculated constants are in MHz.}\label{tab:si-azulene-rotconstants}\\
@@ -380,13 +528,14 @@ azulene-6-13C & C & 866.765213 & 866.731282 & +0.033931 \\
 \end{longtable}
 
 \begin{longtable}{llrrrr}
-\caption{Complete structural comparison for azulene. Bond lengths are in \AA; angles are in degrees. The MSR column corresponds to the reference values after matching the $R(1,9)$/$R(4,5)$ pair to the Cartesian/GIC atom labels.}\label{tab:si-azulene-msr-parameters}\\
+\caption{Complete structural comparison between MSR and MORPHEUS results for azulene employing
+analogous constraints. Bond lengths are in \AA; angles are in degrees.}\label{tab:si-azulene-msr-parameters}\\
 \toprule
-Parameter & Unit & \texttt{SEfit} & $\sigma$ & MSR & Difference \\
+Parameter & Unit & \texttt{MORPHEUS} & $\sigma$ & MSR & Difference \\
 \midrule
 \endfirsthead
 \toprule
-Parameter & Unit & \texttt{SEfit} & $\sigma$ & MSR & Difference \\
+Parameter & Unit & \texttt{MORPHEUS} & $\sigma$ & MSR & Difference \\
 \midrule
 \endhead
 $R(1,9)$ & \AA & 1.39745 & 0.00599 & 1.39900 & -0.00155 \\
@@ -415,111 +564,386 @@ $A(5,6,16)$ & degree & 114.95254 & 0.08847 & 115.07000 & -0.11746 \\
 \bottomrule
 \end{longtable}
 
-\section*{Reproducibility Package}
+\section{Anhydride Literature-Data Series}
 
-All semiexperimental runs write the same output contract: plain-text reports,
-HTML reports (HyperText Markup Language), final Cartesian geometry,
-working-coordinate and primitive-parameter
-tables, rotational-constant and residual tables, covariance/correlation and
-influence diagnostics, singular-value-decomposition (SVD) diagnostics of the weighted Jacobian, constraint
-audit tables, diagnostic warning tables, Hessian eigenvalues, Kraitchman diagnostics, optional
-leave-one-isotopologue-out diagnostics, LaTeX table fragments, a restartable
-checkpoint, and a manifest. The \path{semiexp_manifest.json} file stores input
-and output hashes, selected coordinate model, rotational components,
-constraints, parameter classes, robust-loss settings, checkpoint location, and
-convergence diagnostics.
+The three anhydrides form a homologous series used to test how
+\texttt{MORPHEUS} handles progressively less complete experimental
+information. In all cases the structural refinement starts from a Cartesian
+parent geometry and tabulated rotational constants. When $B_0$ and
+$\Delta B_\mathrm{vib}$ are available, the corrected semiexperimental
+observables are defined directly as $B_e=B_0+\Delta B_\mathrm{vib}$, with any
+electronic correction added as a separate term when reported. No line list,
+SPFIT input, or molecule-specific coordinate model is required by the
+refinement step.
 
-\begin{longtable}{p{0.18\textwidth}p{0.47\textwidth}p{0.25\textwidth}}
-\caption{Input files and coordinate choices for the benchmark calculations.
-Paths are relative to the Merlino repository unless an absolute legacy input
-path is shown. The same runs can be launched from the graphical user interface
-(GUI) by selecting the
-indicated backend, coordinate model, and input files.}\label{tab:si-reproducibility}\\
+\begin{table}
+\caption{Summary of the anhydride literature-data tests. ``GICs'' is the
+number of final non-redundant coordinates generated by MORPHEUS, ``Act.'' is
+the number of active totally symmetric coordinates before projection of hard
+constraints, and ``Eff.'' is the final rank/effective number of fitted
+variables. Residuals are RMS/maximum absolute rotational residuals in MHz.}
+\label{tab:si-anhydride-series}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrl}
 \toprule
-Case & Input and constraints & Coordinate choice \\
+System & Auxiliary relation & GICs & Act. & Eff. & Cond. & Residuals \\
+\midrule
+Maleic anhydride & none & 21 & 8 & 8 & 839 & 0.0359/0.1453 \\
+Phthalic anhydride & weighted $r_e^\mathrm{BO}$ predicates & 39 & 14 & 14 & 4.05 & 0.5013/0.8482 \\
+Succinic anhydride & fixed local H frame & 27 & 9 & 5 & 498 & 0.0353/0.0731 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Maleic anhydride is the complete-data limiting case: the isotopic set is rich
+enough that no auxiliary structural relation is needed. Phthalic anhydride
+uses weighted primitive-coordinate predicates because the literature analysis
+itself treats the $r_e^\mathrm{BO}$ distances and angles as mixed-estimation
+information. Succinic anhydride has only heavy-atom substitutions; the
+hydrogen frame is therefore unsupported by direct isotope information. The
+production comparison in Table~\ref{tab:si-anhydride-series} uses fixed local
+hydrogen parameters. Runs with only soft C--H predicates reproduce the intended
+local predicate values but can enter a nonphysical hydrogen-frame valley before
+final topology reporting, which is the expected distinction between soft
+observations and hard removal of unsupported directions.
+
+\subsection{Maleic Anhydride Literature-Data Reproduction}
+
+Maleic anhydride was added as a reproducibility test based entirely on the
+published semiexperimental dataset of Vogt, Demaison, and Rudolph. The
+starting geometry was reconstructed from their reported $r_e^\mathrm{SE}$
+parameters, and the ten isotopologue records use the published $B_0$
+constants and rovibrational corrections. The small electronic correction was
+included by using the tabulated $B_e$ values, equivalently as
+$\Delta B_\mathrm{el}=B_e-B_0-\Delta B_\mathrm{vib}$. No Z-matrix, manual
+coordinate model, constraints, predicates, or parameter classes were used.
+
+\subsection{Input and Manifest Excerpt}
+
+The complete example distributed with the code consists only of the parent
+Cartesian geometry and the isotopologue records. The command used for the
+calculation was
+\begin{lstlisting}
+python -m merlino semiexp \
+  --xyz examples/semiexp/maleic_anhydride/parent.xyz \
+  --observations examples/semiexp/maleic_anhydride/isotopologues.toml \
+  --outdir working/semiexp/maleic_anhydride \
+  --coordinate-model gic \
+  --observable moments \
+  --components AB \
+  --robust-loss huber
+\end{lstlisting}
+The starting geometry was the following Cartesian file, reconstructed from
+the published semiexperimental structure and used only as an initial point:
+\begin{lstlisting}
+9
+maleic anhydride rse start reconstructed from Vogt Demaison Rudolph Struct Chem 2011 Table 1
+O   0.0000000000  0.0000000000  0.0000000000
+C   1.1240088423 -0.8088727727  0.0000000000
+C   0.6662000000 -2.2214374877  0.0000000000
+C  -0.6662000000 -2.2214374877  0.0000000000
+C  -1.1240088423 -0.8088727727  0.0000000000
+O   2.2290423505 -0.3689031082  0.0000000000
+O  -2.2290423505 -0.3689031082  0.0000000000
+H   1.3567205284 -3.0472907736  0.0000000000
+H  -1.3567205284 -3.0472907736  0.0000000000
+\end{lstlisting}
+Each isotopologue record contains the observed $B_0$ constants and the
+corrections needed to form the effective equilibrium constants. For example,
+the parent species is represented as
+\begin{lstlisting}
+[[isotopologues]]
+label = "Main"
+substitutions = ""
+[isotopologues.constants]
+A_MHz = 6842.489000
+B_MHz = 2467.614000
+C_MHz = 1813.628000
+[isotopologues.vibrational_correction]
+delta_A_MHz = 49.780000
+delta_B_MHz = 14.180000
+delta_C_MHz = 11.160000
+convention = "add"
+[isotopologues.electronic_correction]
+delta_A_MHz = 0.421000
+delta_B_MHz = 0.066000
+delta_C_MHz = 0.012000
+convention = "add"
+\end{lstlisting}
+and substituted species are specified by isotope substitutions rather than by
+new structural models, for example
+\begin{lstlisting}
+[[isotopologues]]
+label = "13C2d2"
+substitutions = "2:13;8:2;9:2"
+\end{lstlisting}
+The full output manifest is archived with the example. The excerpt below shows
+the information needed to audit model construction and the absence of manual
+constraints:
+\begin{lstlisting}
+[method]
+program = MORPHEUS
+method = semiexperimental equilibrium-geometry least squares
+coordinate_model = gic
+coordinate_basis = MORPHEUS non-redundant symmetry-adapted GICs; active subspace is totally symmetric
+observable = moments
+components = Ia,Ib
+isotopologues = Main, d2, 13C2, 13C3, 18O1, 18O6, 13C2d2, 13C3d2, 18O1d2, 18O6d2
+
+[constraints]
+fixed_parameter = none
+parameter_class = none
+qm_predicate = none
+
+[constraint_diagnostics]
+input_records = 0
+input_expression_constraints = 0
+input_coordinate_definitions = 0
+symmetry_expanded_fixed_primitives = 0
+parameter_classes = 0
+\end{lstlisting}
+The final diagnostic excerpt reports the rank-consistent fitted model:
+\begin{lstlisting}
+[fit_statistics]
+convergence = step_tolerance
+iterations = 71
+n_optimized_parameters = 8
+rank = 8
+condition_number = 838.856024878
+robust_loss = huber
+coordinate_builder_calls = 1
+
+[rotational_residual_statistics]
+n_rotational_constants = 30
+rotational_rms_MHz = 0.0359332113823
+rotational_max_abs_MHz = 0.145260439303
+
+[working_coordinates]
+coordinate_count = 21
+index active class value sigma label
+1 yes - 3.22390949563 0.000251446997267 GIC001 MORPHEUS A1Str0001 irrep=A1
+...
+8 yes - -0.00433581007571 0.000311593700452 GIC008 MORPHEUS A1Ang0003 irrep=A1
+9 no - -2.02080870849 0 GIC009 MORPHEUS A2Tor0001 irrep=A2
+...
+21 no - 6.53687463342e-16 0 GIC021 MORPHEUS B2Ang0003 irrep=B2
+\end{lstlisting}
+
+\begin{table}
+\caption{Maleic anhydride refinement diagnostics. The GIC fit used moments of
+inertia for the independent $AB$ planar pair; the omitted $C$ constants are
+reported as diagnostics.}
+\label{tab:si-maleic-diagnostics}
+\begin{tabular}{lr}
+\toprule
+Quantity & Value \\
+\midrule
+Generated non-redundant GICs & 21 \\
+Totally symmetric $A_1$ coordinates & 8 \\
+Independent fitted variables & 8 \\
+Rank & 8 \\
+Condition number & 838.856 \\
+Rotational RMS residual / MHz & 0.03593 \\
+Maximum absolute residual / MHz & 0.14526 \\
+Iterations & 71 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{longtable}{llrrr}
+\caption{Complete rotational-constant comparison for maleic anhydride.
+Corrected experimental and calculated constants are in MHz. The corrected
+experimental constants reproduce the published $B_e$ values.}
+\label{tab:si-maleic-rotconstants}\\
+\toprule
+Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
 \midrule
 \endfirsthead
 \toprule
-Case & Input and constraints & Coordinate choice \\
+Isotopologue & Constant & Corrected exp. & Calculated & Difference \\
 \midrule
 \endhead
-Glycolaldehyde &
-\path{working/semiexp/glycolaldehyde/glycolaldehyde_reference.mse.toml}; no fixed primitive constraints. &
-GIC, ABC \\
-Glycine I &
-\path{benchmarks/semiexp_msr/inputs/glycine/glycine_I_cs_table5_constraints.msr}; C$_s$ Cartesian geometry, Godfrey-Brown $B_0$ constants and weights, Gly-Ip vibrational corrections, and four Gaussian-style functional constraints with \texttt{Value=} targets. &
-GIC, ABC \\
-Glycine II &
-\path{benchmarks/semiexp_msr/inputs/glycine/glycine_II_dpcs3_table5_constraints.msr}; non-Cs DPCS3 Cartesian geometry, Gly-IIn vibrational corrections, and five Gaussian-style functional constraints with \texttt{Value=} targets. &
-GIC, ABC \\
-Cyclopentadiene &
-\path{benchmarks/semiexp_msr/inputs/cyclopentadiene/parent.xyz} and
-\path{benchmarks/semiexp_msr/inputs/cyclopentadiene/isotopologues.toml}; no fixed primitive constraints. &
-symmetry-Cartesian, ABC \\
-Nitrobenzene &
-Legacy-compatible MSR input \path{benchmarks/semiexp_msr/inputs/nitrobenzene/nitrobenzene_all_msr.inp}; frozen variables are converted to primitive constraints and no Z-matrix is used after import; planar components selected automatically. &
-GIC, auto planar pair \\
-Azulene &
-\path{working/semiexp/azulene/azulene_msr_like.mse.toml}; C--H distances and selected valence angles fixed as primitive constraints. &
-GIC, AB \\
-Norcamphor &
-Reference-constrained norcamphor input; 30 primitive hydrogen constraints reproduce the reduced-dimensionality MSR information. &
-GIC, ABC \\
+Main & A & 6892.6900 & 6892.7047 & -0.0147 \\
+Main & B & 2481.8600 & 2481.8511 & +0.0089 \\
+Main & C & 1824.8000 & 1824.7976 & +0.0024 \\
+d$_2$ & A & 6148.0000 & 6148.0220 & -0.0220 \\
+d$_2$ & B & 2437.5100 & 2437.5096 & +0.0004 \\
+d$_2$ & C & 1745.4800 & 1745.4787 & +0.0013 \\
+$^{13}$C2 & A & 6891.4300 & 6891.4558 & -0.0258 \\
+$^{13}$C2 & B & 2466.6500 & 2466.6492 & +0.0008 \\
+$^{13}$C2 & C & 1816.4800 & 1816.4793 & +0.0007 \\
+$^{13}$C3 & A & 6739.8700 & 6739.8341 & +0.0359 \\
+$^{13}$C3 & B & 2476.4200 & 2476.4210 & -0.0010 \\
+$^{13}$C3 & C & 1811.0000 & 1811.0031 & -0.0031 \\
+$^{18}$O1 & A & 6738.2200 & 6738.1958 & +0.0242 \\
+$^{18}$O1 & B & 2481.8500 & 2481.8511 & -0.0011 \\
+$^{18}$O1 & C & 1813.7800 & 1813.7867 & -0.0067 \\
+$^{18}$O6 & A & 6839.8800 & 6839.9516 & -0.0716 \\
+$^{18}$O6 & B & 2367.8700 & 2367.8784 & -0.0084 \\
+$^{18}$O6 & C & 1758.9400 & 1758.9566 & -0.0166 \\
+$^{13}$C2d$_2$ & A & 6146.3100 & 6146.1647 & +0.1453 \\
+$^{13}$C2d$_2$ & B & 2422.8100 & 2422.8401 & -0.0301 \\
+$^{13}$C2d$_2$ & C & 1737.7900 & 1737.7951 & -0.0051 \\
+$^{13}$C3d$_2$ & A & 6033.8400 & 6033.8538 & -0.0138 \\
+$^{13}$C3d$_2$ & B & 2432.2700 & 2432.2723 & -0.0023 \\
+$^{13}$C3d$_2$ & C & 1733.4900 & 1733.4936 & -0.0036 \\
+$^{18}$O1d$_2$ & A & 6013.3300 & 6013.3614 & -0.0314 \\
+$^{18}$O1d$_2$ & B & 2437.5200 & 2437.5096 & +0.0104 \\
+$^{18}$O1d$_2$ & C & 1734.4500 & 1734.4516 & -0.0016 \\
+$^{18}$O6d$_2$ & A & 6099.5800 & 6099.4994 & +0.0806 \\
+$^{18}$O6d$_2$ & B & 2327.3500 & 2327.3468 & +0.0032 \\
+$^{18}$O6d$_2$ & C & 1684.5800 & 1684.5745 & +0.0055 \\
 \bottomrule
 \end{longtable}
 
-\paragraph{Canonical commands.}
+\begin{table}
+\caption{Selected maleic anhydride structural parameters from the MORPHEUS
+reproduction compared with the published $r_e^\mathrm{SE}$ structure. Bond
+lengths are in \AA; angles are in degrees.}
+\label{tab:si-maleic-geometry}
+\begin{tabular}{llrrr}
+\toprule
+Parameter & Atoms & MORPHEUS & Published & Difference \\
+\midrule
+O--C & 1--2 & 1.38489 & 1.3848 & +0.00009 \\
+C--C & 2--3 & 1.48479 & 1.4849 & -0.00011 \\
+C=C & 3--4 & 1.33241 & 1.3324 & +0.00001 \\
+C=O & 2--6 & 1.18945 & 1.1894 & +0.00005 \\
+C--H & 3--8 & 1.07652 & 1.0765 & +0.00002 \\
+C--O--C & 2--1--5 & 108.513 & 108.52 & -0.007 \\
+O--C--C & 1--2--3 & 107.784 & 107.78 & +0.004 \\
+O--C--O & 1--2--6 & 122.537 & 122.55 & -0.013 \\
+C--C--O & 3--2--6 & 129.679 & 129.67 & +0.009 \\
+C--C--H & 4--3--8 & 129.896 & 129.90 & -0.004 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{verbatim}
-python -m merlino semiexp \
-  --job working/semiexp/glycolaldehyde/glycolaldehyde_reference.mse.toml \
-  --outdir working/semiexp/glycolaldehyde/run_reference \
-  --coordinate-model gic
+\section{Testosterone Large-Molecule Scale Check}
 
-CYC=benchmarks/semiexp_msr/inputs/cyclopentadiene
-OUT=working/semiexp/cyclopentadiene/run_msr_symm_cartesian_symmetry
-python -m merlino semiexp \
-  --xyz "$CYC/parent.xyz" \
-  --observations "$CYC/isotopologues.toml" \
-  --outdir "$OUT" \
-  --coordinate-model cartesian_symmetry
+The testosterone calculation in the main text is not an isotope-rich
+semiexperimental structure determination. It is a scale and automation check
+using the published data of Uribe et al. for the detected T1-H2$^{-}$-gp
+conformer. Its purpose is to document the full large-molecule chain: the
+QC protocol provides an accurate equilibrium reference geometry, the
+accelerated $\Delta B_\mathrm{vib}$ workflow makes vibrational corrections
+	available at this size, and MORPHEUS adds the algorithmic refinement-model layer.
+The only experimental input is the parent ground-state rotational constant
+set. The semiexperimental target is obtained by subtracting the B3 vibrational
+corrections reported in the same table:
+\[
+B_e^\mathrm{SE}=B_0-\Delta B_\mathrm{vib}.
+\]
+Thus the data used by MORPHEUS are $B_0=(801.5,171.9,156.6)$ MHz and
+$\Delta B_\mathrm{vib}=(8.1,1.6,1.4)$ MHz for $(A,B,C)$, giving
+$B_e^\mathrm{SE}=(793.4,170.3,155.2)$ MHz.
 
-GLY=benchmarks/semiexp_msr/inputs/glycine
-python -m merlino semiexp \
-  --job "$GLY/glycine_I_cs_table5_constraints.msr" \
-  --outdir working/semiexp/glycine_I_cs_table5_gic_fortran \
-  --backend fortran77 \
-  --coordinate-model gic \
-  --observable moments \
-  --rotational-components auto
+The calculation starts from the QC Cartesian geometry and does not require
+a Z-matrix, hand-selected internal coordinates, or a stored refinement model.
+Topology perception identifies the C$_{19}$H$_{28}$O$_2$ molecular graph,
+MORPHEUS builds the 141-coordinate non-redundant GIC space, and the
+MORPHEUS class layer applies the reduced-dimensionality model after symmetry
+and rank reduction. For this parent-only diagnostic, all angular, torsional,
+and out-of-plane GIC families are fixed. Stretch combinations involving C--H,
+O--H, and C--O primitives are also fixed. The retained C--C skeletal stretch
+block is then assigned to one shared parameter class, so the fit contains one
+effective variable. This is a hard class constraint: it does not add an
+observation or a statistical prior, but replaces the selected active
+coordinates by a single shared displacement direction before the least-squares
+normal equations are formed.
 
-python -m merlino semiexp \
-  --job "$GLY/glycine_II_dpcs3_table5_constraints.msr" \
-  --outdir working/semiexp/glycine_II_dpcs3_table5_repo_gic_fortran \
-  --backend fortran77 \
-  --coordinate-model gic \
-  --observable moments \
-  --rotational-components auto
+\begin{table}
+\caption{Testosterone T1-H2$^{-}$-gp rotational constants used for the
+large-molecule scale check. Constants and residuals are in MHz. The QC
+column is the unrefined rotational constant calculated from the input
+geometry; the class-refined column is the parent-only MORPHEUS result with a
+single C--C skeletal stretch class.}
+\label{tab:si-testosterone-rotconstants}
+\begin{tabular}{lrrrrrr}
+\toprule
+Constant & $B_0$ & $\Delta B_\mathrm{vib}$ & $B_e^\mathrm{SE}$ & QC & Class-refined & Final diff. \\
+\midrule
+$A$ & 801.5 & 8.1 & 793.4 & 788.762 & 793.427 & -0.027 \\
+$B$ & 171.9 & 1.6 & 170.3 & 169.626 & 169.667 & +0.633 \\
+$C$ & 156.6 & 1.4 & 155.2 & 154.637 & 154.909 & +0.291 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-NIT=benchmarks/semiexp_msr/inputs/nitrobenzene/nitrobenzene_all_msr.inp
-python -m merlino semiexp \
-  --job "$NIT" \
-  --outdir nitrobenzene_merlino_pair_auto \
-  --coordinate-model gic \
-  --rotational-components auto
+\begin{table}
+\caption{Testosterone model-construction diagnostics. The class-refined
+calculation used rotational constants as observables and all three parent
+components.}
+\label{tab:si-testosterone-diagnostics}
+\begin{tabular}{lr}
+\toprule
+Quantity & Value \\
+\midrule
+Atoms & 49 \\
+Non-redundant GICs & 141 \\
+Retained active C--C stretch combinations & 5 \\
+Effective fitted variables & 1 \\
+Rank & 1 \\
+Condition number & 1.0 \\
+Unrefined QC RMS residual / MHz & 2.725 \\
+Class-refined RMS residual / MHz & 0.402 \\
+Iterations & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-python -m merlino semiexp \
-  --job working/semiexp/azulene/azulene_msr_like.mse.toml \
-  --outdir working/semiexp/azulene/run_msr_like_planar_AB \
-  --coordinate-model gic \
-  --rotational-components AB
+\begin{lstlisting}
+parameter_class = CC_skeleton; mode=shared;
+patterns = R(1,2)|R(1,6)|R(2,3)|R(2,45)|R(3,4)|R(3,10)|...
 
-python -m merlino semiexp \
-  --job working/semiexp/norcamphor/reference_constraints.mse.toml \
-  --outdir working/semiexp/norcamphor/run_reference_constraints \
-  --coordinate-model gic
+parameter_class = non_CC_stretches; mode=fixed;
+patterns = all retained stretch combinations involving C-H, O-H, or C-O
 
-python -m merlino semiexp-benchmark --paper
-\end{verbatim}
+parameter_class = Angles_fixed; mode=fixed; patterns=AAng
+parameter_class = Torsions_fixed; mode=fixed; patterns=ATor
+parameter_class = OOP_fixed; mode=fixed; patterns=AOop
+\end{lstlisting}
+
+The important point is that the class is applied in the final working basis,
+not as a molecule-specific Z-matrix instruction. The user supplies Cartesian
+coordinates and the literature rotational data; the topology labels determine
+which retained GICs belong to the C--C skeletal class.
+
+The exact repository command used for this diagnostic is archived in the
+testosterone example directory as \path{run_testosterone_cc_class.sh}. It can be
+run from the repository root and reads the QC Cartesian geometry, the
+published parent rotational constants, and the published vibrational
+corrections:
+\begin{lstlisting}
+sh examples/semiexp/testosterone/run_testosterone_cc_class.sh
+\end{lstlisting}
+
+\section{Characteristics of the Test Cases}
+
+\begin{table}
+\caption{Constraints and coordinate choices (symmetry-adapted internal or Cartesian coordinates, SAI and SAC, respectively) used for the benchmark calculations.}
+\label{tab:si-reproducibility}
+
+\begin{tabular}{lll}
+\toprule
+Case & Constraints & Coordinates \\
+\midrule
+Glycolaldehyde  & No fixed primitive constraints         & SAI, ABC \\
+Cyclopentadiene & No fixed primitive constraints         & SAI and SAC, ABC \\
+Nitrobenzene    & No fixed primitive constraints         & SAI, AB \\
+p-EBN           & Legacy frozen Z-matrix parameters      & SAI, AB \\
+Azulene         & C--H bond lengths and selected angles  & SAI, AB \\
+Norcamphor      & H-atom constraints                     & SAI and SAC, ABC \\
+Glycine I       & Four generated QC-reference constraints        & SAI, ABC \\
+Glycine II      & Five generated QC constraints      & SAI, ABC \\
+Maleic anhydride & No fixed primitive constraints        & SAI and SAC, AB \\
+Phthalic anhydride & Weighted $r_e^\mathrm{BO}$ predicates & SAI, AC \\
+Succinic anhydride & Fixed local H-frame parameters       & SAI, AC \\
+Testosterone & One shared C--C skeletal stretch class   & SAI, ABC \\
+\bottomrule
+\end{tabular}
+
+\end{table}
 
 \end{document}

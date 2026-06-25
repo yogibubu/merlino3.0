@@ -12,6 +12,8 @@ import numpy as np
 
 from merlino_core import sha256_file
 from merlino_core.paths import repo_root
+from merlino_fit.topology.covalent_radii import covalent_radius
+from merlino_fit.topology.pipeline import build_topology_objects
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
 from merlino_fit.survibfit.primitives import Primitive, eval_primitives
 from topology.elements import atomic_number, atomic_symbol
@@ -300,6 +302,7 @@ def define_gics_from_cartesian(
     coords = _validated_coordinates(coordinates_angstrom, len(atoms))
     if not atoms:
         raise GICDefinitionError("GIC definition needs at least one atom")
+    _validate_gicforge_input_topology(atoms, coords)
     run_dir = Path(workdir) if workdir is not None else Path(tempfile.mkdtemp(prefix="merlino_gic_define_"))
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_gicforge_inputs(
@@ -333,6 +336,40 @@ def define_gics_from_cartesian(
     )
     definition.write(run_dir / "gic_definition.json")
     return definition
+
+
+def _validate_gicforge_input_topology(atoms: tuple[str, ...], coords: np.ndarray) -> None:
+    z_numbers: list[int] = []
+    for atom in atoms:
+        z = atomic_number(atom)
+        if z is None:
+            raise GICDefinitionError(f"Unknown element symbol {atom}")
+        z_numbers.append(int(z))
+    try:
+        _continuous, graph, _ringset, _synthons, _aromaticity = build_topology_objects(coords, np.asarray(z_numbers, dtype=int))
+    except Exception as exc:
+        raise GICDefinitionError(f"GICForge input topology validation failed: {exc}") from exc
+    bonded = {tuple(sorted((int(i), int(j)))) for i, j in graph.bonds}
+    contacts: list[str] = []
+    for i, zi in enumerate(z_numbers):
+        if zi != 1:
+            continue
+        ri = covalent_radius(zi)
+        if ri is None:
+            continue
+        for j in range(i + 1, len(z_numbers)):
+            if z_numbers[j] != 1 or (i, j) in bonded:
+                continue
+            rj = covalent_radius(z_numbers[j])
+            if rj is None:
+                continue
+            distance = float(np.linalg.norm(coords[i] - coords[j]))
+            if distance <= 1.25 * (float(ri) + float(rj)):
+                contacts.append(f"{i + 1}-{j + 1} ({distance:.3f} A)")
+    if contacts:
+        preview = ", ".join(contacts[:8])
+        extra = f"; {len(contacts) - 8} additional H-H contacts" if len(contacts) > 8 else ""
+        raise GICDefinitionError(f"GICForge input topology validation failed: spurious nonbonded H-H contact {preview}{extra}")
 
 
 def read_gic_definition_from_gauin(

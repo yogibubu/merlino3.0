@@ -26,6 +26,7 @@ from merlino_gic.gic_symmetry import SYMM_INERTIA_TOL as GIC_SYMM_INERTIA_TOL
 from merlino_gic.gic_symmetry import SYMM_TOL as GIC_SYMM_TOL
 from merlino_core.numerics import limit_step, objective, rank_condition
 from topology.elements import atomic_symbol
+from merlino_fit.topology.covalent_radii import covalent_radius
 from merlino_fit.topology.pipeline import build_topology_objects
 from merlino_fit.survibfit.modify_geom import write_xyz
 from merlino_fit.survibfit.pipeline import b_matrix_analytic
@@ -270,6 +271,13 @@ class SecantProjectorUpdate:
     accepted: bool
 
 
+@dataclass(frozen=True)
+class TopologyLock:
+    atomic_numbers: tuple[int, ...]
+    bonds: tuple[tuple[int, int], ...]
+    adjacency: tuple[tuple[int, ...], ...]
+
+
 @dataclass
 class GICForgeSEBackend:
     atoms: tuple[str, ...]
@@ -421,6 +429,7 @@ def fit_semiexperimental_geometry(
             labels=labels,
             expression_definitions=expression_definitions,
         )
+    topology_lock = _topology_lock(atoms, coords)
     reference_gic_signature = _gic_model_signature(labels)
     measurement_model = _build_measurement_model(request, atoms, coords, prims, u_matrix, labels)
     active_mask = _active_mask(labels, fixed_gic_patterns, request.parameter_classes) & _gicforge_a1_mask(labels)
@@ -622,6 +631,7 @@ def fit_semiexperimental_geometry(
             )
             last_b_projector_secant_error = secant_update.relative_error
             try:
+                _validate_locked_topology(atoms, line_search.coords, topology_lock, context="GIC semiexperimental fit")
                 validation_model = _gic_model(line_search.coords, z_numbers, request, gicforge_backend)
                 _validate_gic_model_signature(validation_model[2], reference_gic_signature)
             except Exception:
@@ -800,6 +810,7 @@ def fit_semiexperimental_geometry(
     else:
         iteration = loop_max_iter
 
+    _validate_locked_topology(atoms, coords, topology_lock, context="final GIC semiexperimental fit")
     try:
         final_model = _gic_model(coords, z_numbers, request, gicforge_backend)
         _validate_gic_model_signature(final_model[2], reference_gic_signature)
@@ -902,6 +913,7 @@ def fit_semiexperimental_geometry(
         active_mask=active_mask,
         transform=transform,
         covariance=covariance,
+        topology_lock=topology_lock,
     )
     kraitchman_rows = kraitchman_comparison(atoms, coords, request.observations)
     kraitchman_seed = kraitchman_seed_geometry(atoms, coords, request.observations, kraitchman_rows)
@@ -1047,6 +1059,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
             labels=(),
             expression_definitions=expression_definitions,
         )
+    topology_lock = _topology_lock(atoms, coords)
     _validate_observations(request.observations, len(atoms))
     mode_model = cartesian_symmetry_coordinate_model(tuple(atoms), coords0)
     labels = mode_model.labels
@@ -1224,6 +1237,50 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         last_trust_ratio = line_search.ratio
         last_line_search_scale = line_search.scale
         if line_search.accepted:
+            try:
+                _validate_locked_topology(
+                    atoms,
+                    line_search.coords,
+                    topology_lock,
+                    context="symmetry-Cartesian semiexperimental fit",
+                )
+            except Exception:
+                rejected_steps += 1
+                stalled_rejections += 1
+                current_damping, trust_radius = _rejected_trust_update(current_damping, trust_radius, max_step)
+                iteration_traces.append(
+                    _iteration_trace_row(
+                        iteration,
+                        "topology_rejected",
+                        current_objective,
+                        line_search,
+                        current_damping,
+                        trust_radius,
+                        line_search.scale * float(np.linalg.norm(dq_scaled)),
+                        gradient_inf_norm,
+                        jac_weighted_scaled,
+                        line_search.coords,
+                        fixed_primitives,
+                        fixed_primitive_targets,
+                        linear_constraints=linear_constraints,
+                        expression_constraints=expression_constraints,
+                        expression_targets=expression_targets,
+                        prims=(),
+                        u_matrix=np.zeros((0, 0), dtype=float),
+                        labels=(),
+                        expression_definitions=expression_definitions,
+                        robust_scale=robust_scale_used,
+                        robust_downweighted_observations=robust_downweighted_observations,
+                        robust_downweighted_isotopologues=robust_downweighted_isotopologues,
+                        coordinate_model_age=0,
+                        b_projector_secant_error=0.0,
+                        linear_solver=trust_step.solver,
+                    )
+                )
+                if _trust_region_is_stalled(current_damping, trust_radius, stalled_rejections, max_step):
+                    convergence_reason = "line_search_stalled"
+                    break
+                continue
             coords = line_search.coords
             accepted_steps += 1
             stalled_rejections = 0
@@ -1328,6 +1385,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
     else:
         iteration = loop_max_iter
 
+    _validate_locked_topology(atoms, coords, topology_lock, context="final symmetry-Cartesian semiexperimental fit")
     active_mask = _active_mask(labels, fixed_mode_patterns, request.parameter_classes)
     active_mask &= mode_model.active_totally_symmetric_mask
     active_mask &= _auto_pruned_active_mask(labels, auto_pruned_patterns)
@@ -1414,6 +1472,7 @@ def _fit_semiexperimental_geometry_cartesian_symmetry(
         coords,
         cartesian_from_parameters=cartesian_from_parameters,
         covariance=covariance,
+        topology_lock=topology_lock,
     )
     kraitchman_rows = kraitchman_comparison(atoms, coords, request.observations)
     kraitchman_seed = kraitchman_seed_geometry(atoms, coords, request.observations, kraitchman_rows)
@@ -2272,22 +2331,30 @@ def _geometry_parameters(
     transform: np.ndarray | None = None,
     cartesian_from_parameters: np.ndarray | None = None,
     covariance: np.ndarray | None = None,
+    topology_lock: TopologyLock | None = None,
 ) -> tuple[SemiexperimentalGeometryParameter, ...]:
     coords = np.asarray(coords, dtype=float)
-    z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
-    try:
-        _continuous, graph, _ringset, _synthons, _aromaticity = build_topology_objects(coords, z_numbers)
-    except Exception as exc:
-        raise ScientificValidationError(f"Cannot build final geometry parameter table: {exc}") from exc
+    if topology_lock is None:
+        z_numbers = np.array([_atomic_number(symbol) for symbol in atoms], dtype=int)
+        try:
+            _continuous, graph, _ringset, _synthons, _aromaticity = build_topology_objects(coords, z_numbers)
+        except Exception as exc:
+            raise ScientificValidationError(f"Cannot build final geometry parameter table: {exc}") from exc
+        bonds = tuple(sorted(tuple(sorted((int(i), int(j)))) for i, j in graph.bonds))
+        adjacency = tuple(tuple(sorted(int(item) for item in graph.adjacency[index])) for index in range(len(atoms)))
+    else:
+        _validate_locked_topology(atoms, coords, topology_lock, context="final geometry reporting")
+        bonds = topology_lock.bonds
+        adjacency = topology_lock.adjacency
 
     specs: list[tuple[str, str, tuple[int, ...], tuple[str, ...], Primitive, float]] = []
-    for i, j in sorted(tuple(sorted(pair)) for pair in graph.bonds):
+    for i, j in bonds:
         label = f"R({i + 1},{j + 1})"
         symbols = (str(atoms[i]), str(atoms[j]))
         specs.append(("bond", label, (i + 1, j + 1), symbols, Primitive("bond", (i, j)), 1.0))
 
     for center in range(len(atoms)):
-        neighbors = sorted(graph.adjacency[center])
+        neighbors = sorted(adjacency[center])
         for pos, left in enumerate(neighbors):
             for right in neighbors[pos + 1 :]:
                 label = f"A({left + 1},{center + 1},{right + 1})"
@@ -2295,9 +2362,9 @@ def _geometry_parameters(
                 primitive = Primitive("angle", (left, center, right))
                 specs.append(("angle", label, (left + 1, center + 1, right + 1), symbols, primitive, 180.0 / np.pi))
 
-    for center_left, center_right in sorted(tuple(sorted(pair)) for pair in graph.bonds):
-        left_neighbors = sorted(atom for atom in graph.adjacency[center_left] if atom != center_right)
-        right_neighbors = sorted(atom for atom in graph.adjacency[center_right] if atom != center_left)
+    for center_left, center_right in bonds:
+        left_neighbors = sorted(atom for atom in adjacency[center_left] if atom != center_right)
+        right_neighbors = sorted(atom for atom in adjacency[center_right] if atom != center_left)
         for left in left_neighbors:
             for right in right_neighbors:
                 if left == right:
@@ -5890,7 +5957,7 @@ def _analytic_measurement_jacobian_wrt_gics(
     else:
         return None
     gic_jac = selected @ cartesian_from_q
-    predicate = _predicate_jacobian(request.qm_predicates, labels, cartesian_from_q.shape[1])
+    predicate = _predicate_jacobian(request.qm_predicates, labels, coords, cartesian_from_q)
     if predicate.size:
         return np.vstack([gic_jac, predicate])
     return gic_jac
@@ -5953,7 +6020,7 @@ def _jacobian_constants_wrt_cartesian_basis(
     else:
         raise ScientificValidationError(f"Unsupported observable for Cartesian-basis SEfit: {measurement_model.observable}")
     jac = selected @ cartesian_from_q
-    predicate = _predicate_jacobian(request.qm_predicates, labels, cartesian_from_q.shape[1])
+    predicate = _predicate_jacobian(request.qm_predicates, labels, coords, cartesian_from_q)
     if predicate.size:
         return np.vstack([jac, predicate])
     return jac
@@ -6038,15 +6105,20 @@ def _centered_coords_and_inertia(coords: np.ndarray, masses: np.ndarray) -> tupl
 def _predicate_jacobian(
     predicates: tuple[QMParameterPredicate, ...],
     labels: tuple[str, ...],
-    n_q: int,
+    coords: np.ndarray,
+    cartesian_from_q: np.ndarray,
 ) -> np.ndarray:
     rows = []
     for predicate in predicates:
-        for idx in _predicate_indices(predicate, labels):
-            row = np.zeros(n_q, dtype=float)
-            row[idx] = 1.0
-            rows.append(row)
-    return np.vstack(rows) if rows else np.zeros((0, n_q), dtype=float)
+        primitive = _predicate_primitive(predicate)
+        if primitive is not None:
+            rows.append(b_matrix_analytic([primitive], coords)[0] @ cartesian_from_q)
+        else:
+            for idx in _predicate_indices(predicate, labels):
+                row = np.zeros(cartesian_from_q.shape[1], dtype=float)
+                row[idx] = 1.0
+                rows.append(row)
+    return np.vstack(rows) if rows else np.zeros((0, cartesian_from_q.shape[1]), dtype=float)
 
 
 def _gic_cartesian_projector(prims: object, u_matrix: np.ndarray, coords: np.ndarray) -> np.ndarray:
@@ -6823,7 +6895,7 @@ def _measurement_vector(
     else:
         raw = _constants_vector(atoms, coords, request.observations)
         selected = _select_raw_components(raw, ROTATIONAL_COMPONENTS, model.components)
-    predicate_values = _predicate_values(request.qm_predicates, labels, q_values)
+    predicate_values = _predicate_values(request.qm_predicates, labels, q_values, coords)
     if predicate_values.size:
         return np.concatenate([selected, predicate_values])
     return selected
@@ -7093,13 +7165,19 @@ def _predicate_observations(
     weights = []
     row_labels = []
     for predicate in predicates:
-        matches = _predicate_indices(predicate, labels)
-        if not matches:
-            raise ScientificValidationError(f"QM predicate did not match any GIC: {predicate.label_pattern}")
-        for idx in matches:
-            values.append(predicate.value)
-            weights.append(predicate.weight)
-            row_labels.append((predicate.source, labels[idx]))
+        primitive = _predicate_primitive(predicate)
+        if primitive is not None:
+            values.append(_predicate_observed_value(predicate, primitive))
+            weights.append(_predicate_weight(predicate, primitive))
+            row_labels.append((predicate.source, _primitive_text(primitive)))
+        else:
+            matches = _predicate_indices(predicate, labels)
+            if not matches:
+                raise ScientificValidationError(f"QM predicate did not match any GIC: {predicate.label_pattern}")
+            for idx in matches:
+                values.append(predicate.value)
+                weights.append(predicate.weight)
+                row_labels.append((predicate.source, labels[idx]))
     return np.array(values, dtype=float), np.array(weights, dtype=float), row_labels
 
 
@@ -7107,17 +7185,67 @@ def _predicate_values(
     predicates: tuple[QMParameterPredicate, ...],
     labels: tuple[str, ...],
     q_values: np.ndarray,
+    coords: np.ndarray,
 ) -> np.ndarray:
     values = []
     for predicate in predicates:
-        for idx in _predicate_indices(predicate, labels):
-            values.append(float(q_values[idx]))
+        primitive = _predicate_primitive(predicate)
+        if primitive is not None:
+            values.append(float(eval_primitives([primitive], coords)[0]))
+        else:
+            for idx in _predicate_indices(predicate, labels):
+                values.append(float(q_values[idx]))
     return np.array(values, dtype=float)
 
 
 def _predicate_indices(predicate: QMParameterPredicate, labels: tuple[str, ...]) -> list[int]:
     pattern = predicate.label_pattern.lower()
     return [idx for idx, label in enumerate(labels) if pattern in label.lower()]
+
+
+def _predicate_primitive(predicate: QMParameterPredicate) -> Primitive | None:
+    primitives = _primitives_from_fixed_pattern(predicate.label_pattern)
+    if len(primitives) != 1:
+        return None
+    return _canonical_predicate_primitive(primitives[0])
+
+
+def _canonical_predicate_primitive(primitive: Primitive) -> Primitive:
+    atoms = tuple(int(atom) for atom in primitive.atoms)
+    if primitive.kind == "bond" and len(atoms) == 2:
+        return Primitive(primitive.kind, tuple(sorted(atoms)))
+    if primitive.kind == "angle" and len(atoms) == 3:
+        left, center, right = atoms
+        if right < left:
+            return Primitive(primitive.kind, (right, center, left))
+        return primitive
+    if primitive.kind == "dihedral" and len(atoms) == 4:
+        reverse = tuple(reversed(atoms))
+        if reverse < atoms:
+            return Primitive(primitive.kind, reverse)
+        return primitive
+    if primitive.kind == "linear_bend" and len(atoms) == 3:
+        left, center, right = atoms
+        if right < left:
+            return Primitive(primitive.kind, (right, center, left), primitive.mode)
+        return primitive
+    return primitive
+
+
+def _predicate_observed_value(predicate: QMParameterPredicate, primitive: Primitive) -> float:
+    value = float(predicate.value)
+    if primitive.kind in {"angle", "dihedral", "out_of_plane", "linear_bend"}:
+        return float(np.deg2rad(value))
+    return value
+
+
+def _predicate_weight(predicate: QMParameterPredicate, primitive: Primitive) -> float:
+    sigma = float(predicate.sigma)
+    if primitive.kind in {"angle", "dihedral", "out_of_plane", "linear_bend"}:
+        sigma = float(np.deg2rad(sigma))
+    if sigma <= 0.0:
+        raise ValueError("QM predicate sigma must be positive")
+    return 1.0 / (sigma * sigma)
 
 
 def _is_planar(coords: np.ndarray, tol: float = 1.0e-3) -> bool:
@@ -7370,6 +7498,91 @@ def _validate_observations(observations: tuple[IsotopologueObservation, ...], na
             raise ScientificValidationError(f"Isotopologue {obs.label} has non-positive equilibrium rotational constants")
         if obs.weights is not None and any(value <= 0.0 for value in obs.weights.as_tuple()):
             raise ScientificValidationError(f"Isotopologue {obs.label} has non-positive least-squares weights")
+
+
+def _topology_lock(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    *,
+    validate_contacts: bool = True,
+    context: str = "initial topology validation",
+) -> TopologyLock:
+    coords = np.asarray(coords, dtype=float)
+    atomic_numbers = tuple(_atomic_number(symbol) for symbol in atoms)
+    try:
+        _continuous, graph, _ringset, _synthons, _aromaticity = build_topology_objects(
+            coords,
+            np.asarray(atomic_numbers, dtype=int),
+        )
+    except Exception as exc:
+        raise ScientificValidationError(f"Initial topology validation failed: {exc}") from exc
+    bonds = tuple(sorted(tuple(sorted((int(i), int(j)))) for i, j in graph.bonds))
+    adjacency = tuple(tuple(sorted(int(item) for item in graph.adjacency[index])) for index in range(len(atomic_numbers)))
+    lock = TopologyLock(atomic_numbers=atomic_numbers, bonds=bonds, adjacency=adjacency)
+    if validate_contacts:
+        _validate_spurious_contacts(coords, lock, context=context)
+    return lock
+
+
+def _validate_locked_topology(
+    atoms: list[str] | tuple[str, ...],
+    coords: np.ndarray,
+    reference: TopologyLock,
+    *,
+    context: str = "semiexperimental fit",
+) -> None:
+    current = _topology_lock(atoms, coords, validate_contacts=False)
+    if (
+        current.atomic_numbers == reference.atomic_numbers
+        and current.bonds == reference.bonds
+        and current.adjacency == reference.adjacency
+    ):
+        _validate_spurious_contacts(coords, reference, context=context)
+        return
+    added = sorted(set(current.bonds) - set(reference.bonds))
+    removed = sorted(set(reference.bonds) - set(current.bonds))
+    details: list[str] = []
+    if added:
+        details.append("added bonds " + ", ".join(_bond_label(pair) for pair in added[:8]))
+    if removed:
+        details.append("removed bonds " + ", ".join(_bond_label(pair) for pair in removed[:8]))
+    if len(added) > 8:
+        details.append(f"{len(added) - 8} additional added bonds")
+    if len(removed) > 8:
+        details.append(f"{len(removed) - 8} additional removed bonds")
+    suffix = "; " + "; ".join(details) if details else ""
+    raise ScientificValidationError(f"Topology changed during {context}; rejecting geometry{suffix}")
+
+
+def _validate_spurious_contacts(coords: np.ndarray, reference: TopologyLock, *, context: str) -> None:
+    coords = np.asarray(coords, dtype=float)
+    bonded = set(reference.bonds)
+    contacts: list[tuple[int, int, float]] = []
+    for i, zi in enumerate(reference.atomic_numbers):
+        if zi != 1:
+            continue
+        ri = covalent_radius(zi)
+        if ri is None:
+            continue
+        for j in range(i + 1, len(reference.atomic_numbers)):
+            zj = reference.atomic_numbers[j]
+            if zj != 1 or (i, j) in bonded:
+                continue
+            rj = covalent_radius(zj)
+            if rj is None:
+                continue
+            distance = float(np.linalg.norm(coords[i] - coords[j]))
+            if distance <= 1.25 * (float(ri) + float(rj)):
+                contacts.append((i, j, distance))
+    if not contacts:
+        return
+    preview = ", ".join(f"{i + 1}-{j + 1} ({distance:.3f} A)" for i, j, distance in contacts[:8])
+    extra = f"; {len(contacts) - 8} additional H-H contacts" if len(contacts) > 8 else ""
+    raise ScientificValidationError(f"Spurious nonbonded H-H contact during {context}: {preview}{extra}")
+
+
+def _bond_label(pair: tuple[int, int]) -> str:
+    return f"{pair[0] + 1}-{pair[1] + 1}"
 
 
 def _atomic_number(symbol: str) -> int:

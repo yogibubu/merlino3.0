@@ -112,7 +112,23 @@ def _read_toml(path: Path) -> dict:
 
 
 def _geometry_from_job_mapping(path: Path, data: dict, *, title: str) -> SemiexperimentalGeometryInput:
-    geometry = _mapping(data.get("geometry"), "geometry")
+    geometry_value = data.get("geometry")
+    if geometry_value is None:
+        files = _mapping(data.get("files", {}), "files")
+        geometry_file = files.get("geometry")
+        if geometry_file:
+            from .geometry_input import read_geometry_input
+
+            parsed = read_geometry_input(_resolve_relative(path, Path(str(geometry_file))))
+            return SemiexperimentalGeometryInput(
+                parsed.atoms,
+                np.asarray(parsed.coordinates_angstrom, dtype=float),
+                title or parsed.comment,
+                parsed.fixed_parameters,
+                parsed.source_format,
+            )
+        raise ValueError("Semiexperimental job needs a [geometry] table or files.geometry")
+    geometry = _mapping(geometry_value, "geometry")
     units = str(geometry.get("units", "angstrom")).strip().lower()
     if units not in {"angstrom", "ang", "a"}:
         raise ValueError("Semiexperimental job geometry units must be angstrom")

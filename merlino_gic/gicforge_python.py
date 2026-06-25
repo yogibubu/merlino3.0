@@ -114,6 +114,7 @@ def build_gicforge_python_model(
         raise ValueError(f"Expected coordinate shape ({len(atoms)}, 3), got {coords.shape}")
     atomic_numbers = tuple(atomic_number(atom) for atom in atoms)
     _cg, graph, ringset, _synthons, _aromaticity = build_topology_objects(coords, np.asarray(atomic_numbers))
+    _validate_no_spurious_hh_contacts(coords, atomic_numbers, graph.bonds)
     if _remove_collapsed_bonds(graph, coords):
         ringset = RingSet(graph, coords=coords)
     primitive_blocks = _fortran_like_primitive_blocks(
@@ -184,6 +185,34 @@ def build_gicforge_python_model(
         primitive_fallback=primitive_fallback,
         diagnostics=diagnostics,
     )
+
+
+def _validate_no_spurious_hh_contacts(
+    coords: np.ndarray,
+    atomic_numbers: tuple[int, ...],
+    bonds: Iterable[tuple[int, int]],
+) -> None:
+    bonded = {tuple(sorted((int(i), int(j)))) for i, j in bonds}
+    contacts: list[str] = []
+    for i, zi in enumerate(atomic_numbers):
+        if zi != 1:
+            continue
+        ri = covalent_radius(zi)
+        if ri is None:
+            continue
+        for j in range(i + 1, len(atomic_numbers)):
+            if atomic_numbers[j] != 1 or (i, j) in bonded:
+                continue
+            rj = covalent_radius(atomic_numbers[j])
+            if rj is None:
+                continue
+            distance = float(np.linalg.norm(coords[i] - coords[j]))
+            if distance <= 1.25 * (float(ri) + float(rj)):
+                contacts.append(f"{i + 1}-{j + 1} ({distance:.3f} A)")
+    if contacts:
+        preview = ", ".join(contacts[:8])
+        extra = f"; {len(contacts) - 8} additional H-H contacts" if len(contacts) > 8 else ""
+        raise ValueError(f"GICForge Python input topology validation failed: spurious nonbonded H-H contact {preview}{extra}")
 
 
 def compare_gicforge_python_to_fortran(

@@ -1,0 +1,68 @@
+This is BibTeX, Version 0.99e (TeX Live 2026)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main_short.aux
+The style file: aipnum4-2.bst
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
+Database file #1: main_shortNotes.bib
+Database file #2: references.bib
+Warning--jnrlst (dependency: not reversed) set 1
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
+aipnum4-2.bst 2019-01-14 (MD) hand-edited version of apsrev4-1.bst
+Control: key (0) 
+Control: author (8) initials jnrlst
+Control: editor formatted (1) identically to author
+Control: production of article title (-1) disabled
+Control: page (0) single
+Control: year (1) truncated
+Control: production of eprint (0) enabled
+Warning--empty year in KisielPROSPE
+You've used 27 entries,
+            6039 wiz_defined-function locations,
+            1834 strings with 21723 characters,
+and the built_in function-call counts, 29872 in all, are:
+= -- 1811
+> -- 1065
+< -- 160
++ -- 332
+- -- 271
+* -- 4777
+:= -- 3024
+add.period$ -- 28
+call.type$ -- 27
+change.case$ -- 111
+chr.to.int$ -- 27
+cite$ -- 28
+duplicate$ -- 2653
+empty$ -- 2105
+format.name$ -- 557
+if$ -- 5901
+int.to.chr$ -- 1
+int.to.str$ -- 36
+missing$ -- 340
+newline$ -- 133
+num.names$ -- 82
+pop$ -- 1065
+preamble$ -- 1
+purify$ -- 134
+quote$ -- 0
+skip$ -- 999
+stack$ -- 0
+substring$ -- 658
+swap$ -- 2655
+text.length$ -- 107
+text.prefix$ -- 0
+top$ -- 8
+type$ -- 402
+warning$ -- 2
+while$ -- 105
+width$ -- 0
+write$ -- 267
+(There were 2 warnings)

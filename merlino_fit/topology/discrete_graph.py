@@ -57,6 +57,10 @@ class DiscreteGraph:
                 rj = covalent_radius(Zj)
                 if rj is None:
                     continue
+                if Zi == 1 and Zj == 1 and (
+                    self._has_heavy_partner(i) or self._has_heavy_partner(j)
+                ):
+                    continue
 
                 bo = self.BO[i, j]
                 if bo < BOND_THRESHOLD:
@@ -73,6 +77,23 @@ class DiscreteGraph:
         self.adjacency[i].add(j)
         self.adjacency[j].add(i)
         self.bonds.append((i, j))
+
+    def _has_heavy_partner(self, i):
+        ri = covalent_radius(int(self.Z[i]))
+        if ri is None:
+            return False
+        for j in range(self.natoms):
+            if i == j or int(self.Z[j]) == 1:
+                continue
+            rj = covalent_radius(int(self.Z[j]))
+            if rj is None:
+                continue
+            if self.BO[i, j] < BOND_THRESHOLD:
+                continue
+            rij = np.linalg.norm(self.coords[i] - self.coords[j])
+            if rij <= REFF_SCALE * (ri + rj):
+                return True
+        return False
 
     # --------------------------------------------------------
     # Validation
@@ -91,4 +112,3 @@ class DiscreteGraph:
 
     def neighbors(self, i):
         return self.adjacency[i]
-

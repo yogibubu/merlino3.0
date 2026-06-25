@@ -90,7 +90,9 @@ from merlino_semiexp.fit import (
     _stationary_point_type,
     _svd_diagnostics_csv,
     _symmetry_expanded_fixed_primitives,
+    _topology_lock,
     _uncertainty_diagnostics_csv,
+    _validate_locked_topology,
     _warnings_csv,
 )
 from merlino_vpt2_vci import (
@@ -153,6 +155,26 @@ def test_semiexperimental_correction_can_use_msr_additive_convention():
     corrected = CorrectedRotationalConstants(observed, correction, electronic).equilibrium
 
     assert corrected.as_tuple() == pytest.approx((1001.25, 802.5, 603.75))
+
+
+def test_semiexperimental_topology_lock_rejects_spurious_hh_contact():
+    atoms = ("C", "H", "H", "H", "H")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.09, 0.0, 0.0],
+            [-1.09, 0.0, 0.0],
+            [0.0, 1.09, 0.0],
+            [0.0, 0.0, 1.09],
+        ],
+        dtype=float,
+    )
+    lock = _topology_lock(atoms, coords)
+    trial = coords.copy()
+    trial[1] = [-0.52, 0.0, 0.0]
+
+    with pytest.raises(ScientificValidationError, match="Spurious nonbonded H-H contact"):
+        _validate_locked_topology(atoms, trial, lock)
 
 
 def test_semiexperimental_fit_request_validation(tmp_path):
@@ -1468,6 +1490,39 @@ def test_semiexperimental_qm_predicate_adds_weighted_parameter_prior(tmp_path):
 
     assert any(residual.isotopologue == "qm-estimate" for residual in result.residuals)
     assert result.diagnostics.rank <= result.jacobian.shape[1]
+
+
+def test_semiexperimental_qm_predicate_can_target_primitive_coordinate(tmp_path):
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(
+        "\n".join(
+            [
+                "3",
+                "water",
+                "O 0.000000 0.000000 0.000000",
+                "H 0.000000 0.000000 0.957200",
+                "H 0.926600 0.000000 -0.239600",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    atoms = ["O", "H", "H"]
+    coords = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9572], [0.9266, 0.0, -0.2396]])
+    observation = IsotopologueObservation(
+        "parent",
+        RotationalConstants(*rotational_constants_MHz(_structure(atoms, coords))),
+    )
+    request = SemiexperimentalFitRequest(
+        xyz,
+        (observation,),
+        qm_predicates=(QMParameterPredicate("R(2,1)", 0.9572, 0.002, source="primitive-qm"),),
+    )
+
+    result = fit_semiexperimental_geometry(request, max_iter=1)
+
+    assert any(residual.isotopologue == "primitive-qm" and residual.constant == "R(1,2)" for residual in result.residuals)
+    assert result.jacobian.shape[0] == len(result.residuals)
 
 
 def test_planar_rotational_constants_auto_selects_stable_pair(tmp_path):

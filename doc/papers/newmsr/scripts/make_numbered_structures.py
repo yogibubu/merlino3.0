@@ -134,31 +134,48 @@ def draw_structure(name: str, xyz: Path, output: Path) -> None:
 
 
 def manual_layout(name: str, atoms: list[str]) -> np.ndarray | None:
-    if name != "Norcamphor" or len(atoms) != 18:
-        return None
-    return np.asarray(
-        [
-            [0.00, 1.35],   # C1
-            [-1.05, 0.70],  # C2
-            [-0.85, -0.25], # C3
-            [0.20, -0.80],  # C4
-            [1.20, -0.25],  # C5
-            [1.05, 0.90],   # C6
-            [0.25, 0.20],   # C7
-            [-1.95, 1.00],  # O8
-            [-0.10, 2.15],  # H9
-            [-1.60, -0.55], # H10
-            [-0.90, -1.10], # H11
-            [0.20, -1.55],  # H12
-            [-0.45, 0.10],  # H13
-            [0.55, 0.75],   # H14
-            [1.85, -0.55],  # H15
-            [1.25, -1.05],  # H16
-            [1.65, 1.35],   # H17
-            [1.85, 0.75],   # H18
-        ],
-        dtype=float,
-    )
+    if name == "Norcamphor" and len(atoms) == 18:
+        return np.asarray(
+            [
+                [0.00, 1.35],   # C1
+                [-1.05, 0.70],  # C2
+                [-0.85, -0.25], # C3
+                [0.20, -0.80],  # C4
+                [1.20, -0.25],  # C5
+                [1.05, 0.90],   # C6
+                [0.25, 0.20],   # C7
+                [-1.95, 1.00],  # O8
+                [-0.10, 2.15],  # H9
+                [-1.60, -0.55], # H10
+                [-0.90, -1.10], # H11
+                [0.20, -1.55],  # H12
+                [-0.45, 0.10],  # H13
+                [0.55, 0.75],   # H14
+                [1.85, -0.55],  # H15
+                [1.25, -1.05],  # H16
+                [1.65, 1.35],   # H17
+                [1.85, 0.75],   # H18
+            ],
+            dtype=float,
+        )
+    if name == "Succinic anhydride" and len(atoms) == 11:
+        return np.asarray(
+            [
+                [0.00, -1.25],   # O1
+                [1.15, -0.45],   # C2
+                [0.70, 0.92],    # C3
+                [-0.70, 0.92],   # C4
+                [-1.15, -0.45],  # C5
+                [2.15, -0.05],   # O6
+                [-2.15, -0.05],  # O7
+                [1.15, 1.78],    # H8
+                [0.34, 2.12],    # H9
+                [-1.15, 1.78],   # H10
+                [-0.34, 2.12],   # H11
+            ],
+            dtype=float,
+        )
+    return None
 
 
 def main() -> None:
@@ -188,6 +205,11 @@ def main() -> None:
         OUT / "nitrobenzene_numbering.pdf",
     )
     draw_structure(
+        "p-EBN",
+        DATA / "p-EBN_parent.xyz",
+        OUT / "p-EBN_numbering.pdf",
+    )
+    draw_structure(
         "Azulene",
         DATA / "azulene_parent.xyz",
         OUT / "azulene_numbering.pdf",
@@ -196,6 +218,21 @@ def main() -> None:
         "Norcamphor",
         DATA / "norcamphor_parent.xyz",
         OUT / "norcamphor_numbering.pdf",
+    )
+    draw_structure(
+        "Maleic anhydride",
+        DATA / "maleic_anhydride_parent.xyz",
+        OUT / "maleic_anhydride_numbering.pdf",
+    )
+    draw_structure(
+        "Phthalic anhydride",
+        DATA / "phthalic_anhydride_parent.xyz",
+        OUT / "phthalic_anhydride_numbering.pdf",
+    )
+    draw_structure(
+        "Succinic anhydride",
+        DATA / "succinic_anhydride_parent.xyz",
+        OUT / "succinic_anhydride_numbering.pdf",
     )
 
 
