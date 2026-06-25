@@ -110,6 +110,45 @@ def test_semiexp_cli_defaults_are_standard_solver_defaults():
     assert gic_gf_args.scale == ["default=0.98"]
 
 
+def test_semiexp_ensemble_cli_commands_expose_stable_contract():
+    ensemble_args = merlino_parser().parse_args([
+        "semiexp-ensemble",
+        "--job",
+        "family.mse-ensemble.toml",
+        "--outdir",
+        "ensemble_out",
+    ])
+    assert ensemble_args.command == "semiexp-ensemble"
+    assert str(ensemble_args.job) == "family.mse-ensemble.toml"
+    assert str(ensemble_args.outdir) == "ensemble_out"
+
+    compare_args = merlino_parser().parse_args([
+        "semiexp-ensemble-compare",
+        "--job",
+        "family.mse-ensemble.toml",
+        "--outdir",
+        "comparison",
+        "--soft-prior-sigma",
+        "0.002",
+    ])
+    assert compare_args.command == "semiexp-ensemble-compare"
+    assert compare_args.soft_prior_sigma == pytest.approx(0.002)
+
+    scan_args = merlino_parser().parse_args([
+        "semiexp-ensemble-synthon-scan",
+        "--job",
+        "glycine.mse-ensemble.toml",
+        "--outdir",
+        "scan",
+        "--threshold",
+        "0.01",
+        "--threshold",
+        "0.1",
+    ])
+    assert scan_args.command == "semiexp-ensemble-synthon-scan"
+    assert scan_args.threshold == [0.01, 0.1]
+
+
 def test_gic_bmatrix_cli_writes_fortran_comparison_report(tmp_path):
     coords = np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]], dtype=float)
     xyz = tmp_path / "h2.xyz"

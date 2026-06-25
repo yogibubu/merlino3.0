@@ -1,0 +1,22 @@
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.82\linewidth,
+  height=5.2cm,
+  xmode=log,
+  xlabel={Bend prior $\sigma$},
+  ylabel={Weighted RMS after fit},
+  grid=both,
+]
+\addplot+[mark=*,mark size=2pt] coordinates {
+  (1e-05,0.0677562551194)
+  (3e-05,0.0677562129428)
+  (0.0001,0.0677557331875)
+  (0.0003,0.0677515158819)
+  (0.001,0.0677035848336)
+  (0.003,0.067285417253)
+  (0.01,0.0629025553883)
+  (0.03,0.0412523294019)
+  (0.1,0.0180612261556)
+};
+\end{axis}
+\end{tikzpicture}

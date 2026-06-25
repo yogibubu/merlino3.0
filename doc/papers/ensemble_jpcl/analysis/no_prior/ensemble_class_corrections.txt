@@ -1,0 +1,36 @@
+Multi-molecule class-correction SE refinement
+molecules: 3
+classes: 9
+rank: 9
+residual degrees of freedom: 35
+scaled condition number: 4.5309948e+08
+weighted RMS before: 0.18437253
+weighted RMS after: 0.006608864
+acceptance: rejected
+
+Acceptance failures:
+  scaled condition number 4.53099e+08 exceeds 1e+08
+  class corrections CCO_bend/OCO_bend have correlation 1.000000
+
+Numerical diagnostics:
+  warning: ill-conditioned scaled design matrix (4.53e+08)
+  warning: 1 class-correction pair(s) have |correlation| >= 0.98
+
+Highly correlated class corrections:
+  CCO_bend / OCO_bend:  1.000000
+
+Class corrections:
+  CC_short: -0.0009841928032 +/- 0.004951
+  CC_long:  0.009802009634 +/- 0.01725
+  CO_carbonyl: -0.002354971379 +/- 0.136
+  CO_single: -0.007030100528 +/- 0.1202
+  CH_stretch: -0.001490157908 +/- 0.05978
+  CCC_bend:  22983.01872 +/- 6.166e+05
+  CCO_bend:  11236.03939 +/- 4.335e+05
+  COC_bend:  3976.018041 +/- 9.517e+05
+  OCO_bend:  11236.06863 +/- 4.335e+05
+
+Molecule blocks:
+  maleic_anhydride: rows=20 active_gics=8 rank=8 rms 0.00309731->0.00445943 matches=[CC_short=5, CC_long=4, CO_carbonyl=3, CO_single=1, CH_stretch=2, CCC_bend=3, CCO_bend=3, COC_bend=3, OCO_bend=2]
+  phthalic_anhydride: rows=14 active_gics=14 rank=9 rms 0.151617->0.00935502 matches=[CC_short=9, CC_long=7, CO_carbonyl=3, CO_single=1, CH_stretch=4, CCC_bend=5, CCO_bend=5, COC_bend=5, OCO_bend=2]
+  succinic_anhydride: rows=10 active_gics=9 rank=8 rms 0.34259->0.00546655 matches=[CC_short=0, CC_long=4, CO_carbonyl=4, CO_single=2, CH_stretch=1, CCC_bend=4, CCO_bend=4, COC_bend=4, OCO_bend=3]

@@ -1,0 +1,6 @@
+class,kind,atom_symbols,patterns,value_min,value_max,synthon_signatures,synthon_zeff,synthon_threshold,prior_value,prior_sigma,prior_residual,correction,sigma,acceptance_status
+CC_short,stretch,C|C,,,1.42,,,,,,,-0.000128503169289,0.00234777472768,review
+CC_long,stretch,C|C,,1.42,,,,,,,,0.0049806433479,0.00705826438327,review
+CO_carbonyl,stretch,C|O,,,1.28,,,,,,,-0.00945995257744,0.0364494811398,review
+CO_single,stretch,C|O,,1.28,,,,,,,,0.00920443859992,0.03222914402,review
+CH_stretch,stretch,C|H,,,,,,,,,,-0.0188933346367,0.032345796617,review

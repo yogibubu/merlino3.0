@@ -1,0 +1,16 @@
+\begin{tikzpicture}[x=1cm,y=1cm,>=Latex]
+\tikzstyle{box}=[draw,rounded corners=3pt,align=center,minimum height=0.75cm]
+\node[box,fill=blue!8,minimum width=2.6cm] (m1) at (0,2.4) {Molecule 1\\topology, symmetry};
+\node[box,fill=blue!8,minimum width=2.6cm] (m2) at (0,1.2) {Molecule 2\\topology, symmetry};
+\node[box,fill=blue!8,minimum width=2.6cm] (m3) at (0,0.0) {Molecule $n$\\topology, symmetry};
+\node[box,fill=green!10,minimum width=2.9cm] (coords) at (3.4,1.2) {non-redundant\\GIC spaces};
+\node[box,fill=yellow!16,minimum width=2.9cm] (classes) at (6.8,1.2) {shared chemical\\class map $T_{m,kc}$};
+\node[box,fill=orange!15,minimum width=2.6cm] (fit) at (10.0,1.2) {global fit\\$\Delta_c$};
+\draw[->] (m1.east) -- (coords.west);
+\draw[->] (m2.east) -- (coords.west);
+\draw[->] (m3.east) -- (coords.west);
+\draw[->] (coords.east) -- (classes.west);
+\draw[->] (classes.east) -- (fit.west);
+\node[align=center,font=\small] at (6.8,0.1) {soft priors enter as\\Gaussian observations};
+\node[align=center,font=\small] at (10.0,0.1) {rank, covariance,\\condition number};
+\end{tikzpicture}

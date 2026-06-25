@@ -3,9 +3,9 @@
 This document defines the Merlino4 semiexperimental equilibrium-geometry file
 contracts. The recommended production setup is a self-contained job file:
 
-1. A job file, `*.mse.toml`, containing calculation keywords, Cartesian parent
-   geometry, optional fixed-parameter definitions, and an inline
-   `[[isotopologues]]` table with the experimental rotational data.
+1. A job file, `*.mse.toml`, containing calculation keywords, optional
+   fixed-parameter definitions, and either Cartesian parent geometry inline or
+   a reusable geometry file referenced from `[files].geometry`.
 2. Optionally, a separate reusable isotopologue observations file, `*.toml`,
    `*.json` or `*.csv`, may be referenced from `[files].observations`.
 
@@ -14,6 +14,16 @@ for interoperability. Legacy MSR monolithic inputs use the explicit
 compatibility extensions `.msr` and `.msr.inp`; existing files named
 `*_msr.inp` are accepted as a legacy alias. Generic `.inp` files are
 deliberately not auto-detected as MSR files.
+
+The multi-molecule class-correction layer uses
+`schema = "merlino.semiexp.ensemble.v1"`.  It sits above ordinary
+single-molecule `*.mse.toml` files and refines shared corrections to
+computational reference coordinates.  Production ensemble jobs include
+`[fit]`, `[acceptance]`, `[[molecules]]`, and `[[classes]]` sections.  The
+result status is one of `accepted`, `review`, or `rejected`, based on rank,
+conditioning, molecule support and class-correlation diagnostics.  The full
+schema and anhydride example are documented in
+`doc/SEMIEXPERIMENTAL_ENSEMBLE_REFINEMENT.md`.
 
 ## 1. Job File
 
@@ -119,6 +129,10 @@ C_MHz = 590.000
 
 `[files]`
 
+- `geometry`: optional path to `.xyz`, `xyzin`, Gaussian Cartesian input, or a
+  semiexperimental job file used as the parent reference geometry. Relative
+  paths are resolved from the job-file directory. This entry is optional when
+  the job contains an inline `[geometry]` table.
 - `observations`: path to the isotopologue observations file. Relative paths
   are resolved from the job-file directory. This entry is optional when the
   job contains inline `[[isotopologues]]` tables. If both are present and no

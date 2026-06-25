@@ -1,0 +1,4 @@
+molecule,n_rows,n_active_gics,rank_contribution,weighted_rms_before,weighted_rms_after,matched_counts
+maleic_anhydride,20,8,5,0.00309730960593,0.0897471508626,CC_short:5;CC_long:4;CO_carbonyl:3;CO_single:1;CH_stretch:2
+phthalic_anhydride,14,14,5,0.151617124717,0.0296355341867,CC_short:9;CC_long:7;CO_carbonyl:3;CO_single:1;CH_stretch:4
+succinic_anhydride,10,9,4,0.342590390009,0.0534914441831,CC_short:0;CC_long:4;CO_carbonyl:4;CO_single:2;CH_stretch:1

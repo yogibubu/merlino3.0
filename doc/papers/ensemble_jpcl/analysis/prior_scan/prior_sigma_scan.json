@@ -1,0 +1,83 @@
+[
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 1e-05,
+    "rank": 9.0,
+    "scaled_condition_number": 79.08304790258781,
+    "weighted_rms_after": 0.06775625511939963,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 3e-05,
+    "rank": 9.0,
+    "scaled_condition_number": 79.08329561785673,
+    "weighted_rms_after": 0.06775621294275395,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 0.0001,
+    "rank": 9.0,
+    "scaled_condition_number": 79.08611176016184,
+    "weighted_rms_after": 0.067755733187493,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 0.0003,
+    "rank": 9.0,
+    "scaled_condition_number": 79.11074205154367,
+    "weighted_rms_after": 0.06775151588192746,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 0.001,
+    "rank": 9.0,
+    "scaled_condition_number": 79.37624026207365,
+    "weighted_rms_after": 0.06770358483358781,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "review",
+    "accepted": 1.0,
+    "prior_sigma": 0.003,
+    "rank": 9.0,
+    "scaled_condition_number": 81.06449755647226,
+    "weighted_rms_after": 0.06728541725295906,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "accepted",
+    "accepted": 1.0,
+    "prior_sigma": 0.01,
+    "rank": 9.0,
+    "scaled_condition_number": 88.45273088182557,
+    "weighted_rms_after": 0.06290255538830906,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "accepted",
+    "accepted": 1.0,
+    "prior_sigma": 0.03,
+    "rank": 9.0,
+    "scaled_condition_number": 102.51812187776767,
+    "weighted_rms_after": 0.041252329401946106,
+    "weighted_rms_before": 0.18437253264361506
+  },
+  {
+    "acceptance_status": "accepted",
+    "accepted": 1.0,
+    "prior_sigma": 0.1,
+    "rank": 9.0,
+    "scaled_condition_number": 127.78457414125843,
+    "weighted_rms_after": 0.01806122615561953,
+    "weighted_rms_before": 0.18437253264361506
+  }
+]

@@ -1,0 +1,291 @@
+{
+  "acceptance": {
+    "accepted": true,
+    "reasons": [],
+    "review_items": [
+      "class corrections CO_carbonyl/CO_single have correlation -0.996829"
+    ],
+    "status": "review"
+  },
+  "classes": [
+    {
+      "atom_symbols": [
+        "C",
+        "C"
+      ],
+      "correction": -0.00012917318180247033,
+      "kind": "stretch",
+      "name": "CC_short",
+      "patterns": [],
+      "prior_residual": null,
+      "prior_sigma": null,
+      "prior_value": null,
+      "sigma": 0.0023483909811085036,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": 1.42,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "C"
+      ],
+      "correction": 0.004984480072776562,
+      "kind": "stretch",
+      "name": "CC_long",
+      "patterns": [],
+      "prior_residual": null,
+      "prior_sigma": null,
+      "prior_value": null,
+      "sigma": 0.007064902963028727,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": 1.42
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "O"
+      ],
+      "correction": -0.009454952533096155,
+      "kind": "stretch",
+      "name": "CO_carbonyl",
+      "patterns": [],
+      "prior_residual": null,
+      "prior_sigma": null,
+      "prior_value": null,
+      "sigma": 0.03645254028364216,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": 1.28,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "O"
+      ],
+      "correction": 0.009191095641795603,
+      "kind": "stretch",
+      "name": "CO_single",
+      "patterns": [],
+      "prior_residual": null,
+      "prior_sigma": null,
+      "prior_value": null,
+      "sigma": 0.03224723829354383,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": 1.28
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "H"
+      ],
+      "correction": -0.018882241128097447,
+      "kind": "stretch",
+      "name": "CH_stretch",
+      "patterns": [],
+      "prior_residual": null,
+      "prior_sigma": null,
+      "prior_value": null,
+      "sigma": 0.03235800280653325,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "C",
+        "C"
+      ],
+      "correction": 2.0845117883896158e-06,
+      "kind": "bend",
+      "name": "CCC_bend",
+      "patterns": [],
+      "prior_residual": -2.0845117883896158e-06,
+      "prior_sigma": 0.001,
+      "prior_value": 0.0,
+      "sigma": 0.0009999869652427985,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "C",
+        "O"
+      ],
+      "correction": -1.0675413656171576e-05,
+      "kind": "bend",
+      "name": "CCO_bend",
+      "patterns": [],
+      "prior_residual": 1.0675413656171576e-05,
+      "prior_sigma": 0.001,
+      "prior_value": 0.0,
+      "sigma": 0.000999695862795075,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "C",
+        "O",
+        "C"
+      ],
+      "correction": 3.37281055331152e-06,
+      "kind": "bend",
+      "name": "COC_bend",
+      "patterns": [],
+      "prior_residual": -3.37281055331152e-06,
+      "prior_sigma": 0.001,
+      "prior_value": 0.0,
+      "sigma": 0.000999965874199333,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": null
+    },
+    {
+      "atom_symbols": [
+        "O",
+        "C",
+        "O"
+      ],
+      "correction": 5.2180919491589605e-06,
+      "kind": "bend",
+      "name": "OCO_bend",
+      "patterns": [],
+      "prior_residual": -5.2180919491589605e-06,
+      "prior_sigma": 0.001,
+      "prior_value": 0.0,
+      "sigma": 0.000999930488974918,
+      "synthon_signatures": [],
+      "synthon_threshold": null,
+      "synthon_zeff": [],
+      "value_max": null,
+      "value_min": null
+    }
+  ],
+  "molecule_blocks": [
+    {
+      "matched_counts": {
+        "CCC_bend": 3,
+        "CCO_bend": 3,
+        "CC_long": 4,
+        "CC_short": 5,
+        "CH_stretch": 2,
+        "COC_bend": 3,
+        "CO_carbonyl": 3,
+        "CO_single": 1,
+        "OCO_bend": 2
+      },
+      "molecule": "maleic_anhydride",
+      "n_active_gics": 8,
+      "n_rows": 20,
+      "rank_contribution": 8,
+      "weighted_rms_after": 0.08968045771193035,
+      "weighted_rms_before": 0.003097309605931134
+    },
+    {
+      "matched_counts": {
+        "CCC_bend": 5,
+        "CCO_bend": 5,
+        "CC_long": 7,
+        "CC_short": 9,
+        "CH_stretch": 4,
+        "COC_bend": 5,
+        "CO_carbonyl": 3,
+        "CO_single": 1,
+        "OCO_bend": 2
+      },
+      "molecule": "phthalic_anhydride",
+      "n_active_gics": 14,
+      "n_rows": 14,
+      "rank_contribution": 9,
+      "weighted_rms_after": 0.029610269918298165,
+      "weighted_rms_before": 0.15161712471746683
+    },
+    {
+      "matched_counts": {
+        "CCC_bend": 4,
+        "CCO_bend": 4,
+        "CC_long": 4,
+        "CC_short": 0,
+        "CH_stretch": 1,
+        "COC_bend": 4,
+        "CO_carbonyl": 4,
+        "CO_single": 2,
+        "OCO_bend": 3
+      },
+      "molecule": "succinic_anhydride",
+      "n_active_gics": 9,
+      "n_rows": 10,
+      "rank_contribution": 8,
+      "weighted_rms_after": 0.05344125230261632,
+      "weighted_rms_before": 0.3425903900094592
+    }
+  ],
+  "molecules": 3,
+  "numerical_diagnostics": {
+    "column_norms": [
+      1295.5351868820678,
+      827.4362270614014,
+      816.9484394496399,
+      738.0891076638549,
+      100.97002010200572,
+      1002.7045474988012,
+      1046.8966984526396,
+      1007.0652145612382,
+      1010.2616223723008
+    ],
+    "high_correlation_pairs": [
+      {
+        "correlation": -0.9968288367190488,
+        "left": "CO_carbonyl",
+        "right": "CO_single"
+      }
+    ],
+    "n_columns": 9,
+    "n_rows": 48,
+    "rank": 9,
+    "residual_degrees_of_freedom": 39,
+    "scaled_condition_number": 79.37624026207365,
+    "singular_values": [
+      2.060067994567223,
+      1.053625976708826,
+      0.9967009155850074,
+      0.9914184302342645,
+      0.9773785213364266,
+      0.6667685870868567,
+      0.45291406463978673,
+      0.2530120519465086,
+      0.025953207002064736
+    ],
+    "warnings": [
+      "1 class-correction pair(s) have |correlation| >= 0.98"
+    ]
+  },
+  "rank": 9,
+  "scaled_condition_number": 79.37624026207365,
+  "schema": "merlino.semiexp.ensemble.result.v1",
+  "weighted_rms_after": 0.06770358483358781,
+  "weighted_rms_before": 0.18437253264361506
+}

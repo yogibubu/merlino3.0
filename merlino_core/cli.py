@@ -33,12 +33,16 @@ from merlino_semiexp import (
     ParameterClassConstraint,
     QMParameterPredicate,
     SemiexperimentalFitRequest,
+    fit_ensemble_job,
     fit_semiexperimental_geometry,
     is_msr_legacy_file,
     prepare_semiexperimental_xyzin,
     read_observations,
     read_semiexperimental_job,
+    run_ensemble_prior_comparison,
+    run_ensemble_synthon_threshold_scan,
     semiexperimental_latex_tables,
+    write_ensemble_jpcl_artifacts,
     write_semiexperimental_html_report,
 )
 from merlino_vpt2_vci import (
@@ -256,6 +260,44 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Class constraint as name:shared|fixed:pattern[|pattern...]; can be repeated",
+    )
+
+    semiexp_ensemble = sub.add_parser(
+        "semiexp-ensemble",
+        help="Fit shared class corrections across multiple semiexperimental molecule jobs",
+    )
+    semiexp_ensemble.add_argument("--job", type=Path, required=True, help="Ensemble job TOML")
+    semiexp_ensemble.add_argument("--outdir", type=Path, required=True, help="Output directory for ensemble reports")
+
+    semiexp_ensemble_compare = sub.add_parser(
+        "semiexp-ensemble-compare",
+        help="Compare no-prior, soft-prior and hard-constraint ensemble variants",
+    )
+    semiexp_ensemble_compare.add_argument("--job", type=Path, required=True, help="Ensemble job TOML")
+    semiexp_ensemble_compare.add_argument("--outdir", type=Path, required=True, help="Output directory")
+    semiexp_ensemble_compare.add_argument("--soft-prior-sigma", type=float, default=1.0e-3)
+
+    semiexp_ensemble_paper = sub.add_parser(
+        "semiexp-ensemble-paper",
+        help="Regenerate ensemble comparison CSV and JPCL LaTeX fragments",
+    )
+    semiexp_ensemble_paper.add_argument("--job", type=Path, required=True, help="Ensemble job TOML")
+    semiexp_ensemble_paper.add_argument("--paper-dir", type=Path, required=True, help="JPCL paper directory")
+    semiexp_ensemble_paper.add_argument("--outdir", type=Path, help="Analysis output directory")
+    semiexp_ensemble_paper.add_argument("--soft-prior-sigma", type=float, default=1.0e-3)
+
+    semiexp_ensemble_synthon_scan = sub.add_parser(
+        "semiexp-ensemble-synthon-scan",
+        help="Scan continuous synthon Zeff thresholds for an ensemble job",
+    )
+    semiexp_ensemble_synthon_scan.add_argument("--job", type=Path, required=True, help="Ensemble job TOML")
+    semiexp_ensemble_synthon_scan.add_argument("--outdir", type=Path, required=True, help="Output directory")
+    semiexp_ensemble_synthon_scan.add_argument(
+        "--threshold",
+        type=float,
+        action="append",
+        default=[],
+        help="Synthon Zeff threshold to test; can be repeated",
     )
 
     semiexp_benchmark = sub.add_parser(
@@ -612,6 +654,64 @@ def main(argv: list[str] | None = None) -> int:
         print(f"components: {','.join(result.diagnostics.components)}")
         print(f"backend: {backend}")
         print(f"coordinate_model: {result.diagnostics.coordinate_model}")
+        return 0
+
+    if args.command == "semiexp-ensemble":
+        result = fit_ensemble_job(args.job, outdir=args.outdir)
+        print(f"report: {args.outdir / 'ensemble_class_corrections.txt'}")
+        print(f"classes: {len(result.classes)}")
+        print(f"molecules: {len(result.molecule_blocks)}")
+        print(f"rank: {result.rank}")
+        print(f"scaled_condition_number: {result.condition_number:.8g}")
+        print(f"acceptance_status: {result.acceptance.status}")
+        if result.acceptance.reasons:
+            print("acceptance_failures: " + " | ".join(result.acceptance.reasons))
+        if result.acceptance.review_items:
+            print("acceptance_review: " + " | ".join(result.acceptance.review_items))
+        print(f"weighted_rms_before: {result.weighted_rms_before:.8g}")
+        print(f"weighted_rms_after: {result.weighted_rms_after:.8g}")
+        for item in result.classes:
+            print(f"class:{item.name}: correction={result.corrections[item.name]:.10g} sigma={result.sigma[item.name]:.4g}")
+        return 0
+
+    if args.command == "semiexp-ensemble-compare":
+        results = run_ensemble_prior_comparison(args.job, args.outdir, soft_prior_sigma=args.soft_prior_sigma)
+        print(f"comparison: {args.outdir / 'ensemble_prior_comparison.csv'}")
+        for name, result in results.items():
+            print(
+                f"{name}: classes={len(result.classes)} rank={result.rank} "
+                f"acceptance={result.acceptance.status} "
+                f"scaled_condition={result.condition_number:.8g} "
+                f"wrms={result.weighted_rms_before:.8g}->{result.weighted_rms_after:.8g}"
+            )
+        return 0
+
+    if args.command == "semiexp-ensemble-paper":
+        artifacts = write_ensemble_jpcl_artifacts(
+            args.job,
+            args.paper_dir,
+            outdir=args.outdir,
+            soft_prior_sigma=args.soft_prior_sigma,
+        )
+        for name, path in artifacts.items():
+            print(f"{name}: {path}")
+        return 0
+
+    if args.command == "semiexp-ensemble-synthon-scan":
+        thresholds = tuple(args.threshold) if args.threshold else (0.015, 0.025, 0.035, 0.05, 0.075)
+        rows = run_ensemble_synthon_threshold_scan(args.job, args.outdir, thresholds=thresholds)
+        print(f"scan: {args.outdir / 'synthon_threshold_scan.csv'}")
+        for row in rows:
+            if row["status"] == "ok":
+                print(
+                    f"threshold={float(row['synthon_threshold']):.6g}: rank={int(float(row['rank']))} "
+                    f"acceptance={row.get('acceptance_status', '')} "
+                    f"condition={float(row['scaled_condition_number']):.8g} "
+                    f"wrms={float(row['weighted_rms_before']):.8g}->{float(row['weighted_rms_after']):.8g} "
+                    f"min_matches={int(float(row['min_matched_coordinates']))}"
+                )
+            else:
+                print(f"threshold={float(row['synthon_threshold']):.6g}: failed {row['error']}")
         return 0
 
     if args.command == "semiexp-benchmark":

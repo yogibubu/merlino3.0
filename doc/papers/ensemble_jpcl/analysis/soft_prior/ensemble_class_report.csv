@@ -1,0 +1,10 @@
+class,kind,atom_symbols,value_min,value_max,synthon_signatures,synthon_zeff,synthon_threshold,prior_value,prior_sigma,prior_residual,matched_coordinates,molecule_count,column_norm,correction,sigma,posterior_over_prior_sigma,acceptance_status
+CC_short,stretch,C|C,,1.42,,,,,,,14,2,1295.53518688,-0.000129173181802,0.00234839098111,,review
+CC_long,stretch,C|C,1.42,,,,,,,,15,3,827.436227061,0.00498448007278,0.00706490296303,,review
+CO_carbonyl,stretch,C|O,,1.28,,,,,,,10,3,816.94843945,-0.0094549525331,0.0364525402836,,review
+CO_single,stretch,C|O,1.28,,,,,,,,4,3,738.089107664,0.0091910956418,0.0322472382935,,review
+CH_stretch,stretch,C|H,,,,,,,,,7,3,100.970020102,-0.0188822411281,0.0323580028065,,review
+CCC_bend,bend,C|C|C,,,,,,0,0.001,-2.08451178839e-06,12,3,1002.7045475,2.08451178839e-06,0.000999986965243,0.00208451178839,review
+CCO_bend,bend,C|C|O,,,,,,0,0.001,1.06754136562e-05,12,3,1046.89669845,-1.06754136562e-05,0.000999695862795,0.0106754136562,review
+COC_bend,bend,C|O|C,,,,,,0,0.001,-3.37281055331e-06,12,3,1007.06521456,3.37281055331e-06,0.000999965874199,0.00337281055331,review
+OCO_bend,bend,O|C|O,,,,,,0,0.001,-5.21809194916e-06,7,3,1010.26162237,5.21809194916e-06,0.000999930488975,0.00521809194916,review

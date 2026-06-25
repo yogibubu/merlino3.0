@@ -1,0 +1,23 @@
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.82\linewidth,
+  height=5.2cm,
+  xmode=log,
+  ymode=log,
+  xlabel={Bend prior $\sigma$},
+  ylabel={Scaled condition number},
+  grid=both,
+]
+\addplot+[mark=*,mark size=2pt] coordinates {
+  (1e-05,79.0830479026)
+  (3e-05,79.0832956179)
+  (0.0001,79.0861117602)
+  (0.0003,79.1107420515)
+  (0.001,79.3762402621)
+  (0.003,81.0644975565)
+  (0.01,88.4527308818)
+  (0.03,102.518121878)
+  (0.1,127.784574141)
+};
+\end{axis}
+\end{tikzpicture}
