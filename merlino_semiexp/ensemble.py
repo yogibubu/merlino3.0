@@ -169,6 +169,7 @@ class EnsembleClassCorrectionFit:
     rank: int
     condition_number: float
     molecule_blocks: tuple[EnsembleMoleculeBlock, ...]
+    acceptance_policy: EnsembleAcceptancePolicy = field(default_factory=EnsembleAcceptancePolicy)
     diagnostics: EnsembleNumericalDiagnostics = field(
         default_factory=lambda: EnsembleNumericalDiagnostics(0, 0, 0, 0, float("inf"), (), ())
     )
@@ -372,6 +373,7 @@ def fit_ensemble_class_corrections(
         rank=conditioning.rank,
         condition_number=conditioning.condition_number,
         molecule_blocks=tuple(updated_blocks),
+        acceptance_policy=policy,
         diagnostics=diagnostics,
         acceptance=acceptance,
     )
@@ -1280,6 +1282,17 @@ def _class_report_csv(result: EnsembleClassCorrectionFit) -> str:
 def _manifest_json(result: EnsembleClassCorrectionFit) -> str:
     payload = {
         "schema": "merlino.semiexp.ensemble.result.v1",
+        "model": {
+            "equation": "q_SE(m,k) = q_QC(m,k) + Delta[class(m,k)]",
+            "linearization": "single weighted linearized correction around each molecule computational reference geometry",
+            "class_projection": {
+                "stretches": "unordered atom pair",
+                "bends": "central atom preserved; terminal atoms canonicalized",
+                "torsions": "unordered central-atom pair",
+                "out_of_plane": "central atom of U(center,a,b,c)",
+            },
+            "coordinate_types_are_not_mixed": True,
+        },
         "molecules": len(result.molecule_blocks),
         "classes": [
             {
@@ -1307,6 +1320,14 @@ def _manifest_json(result: EnsembleClassCorrectionFit) -> str:
             "accepted": result.acceptance.accepted,
             "reasons": list(result.acceptance.reasons),
             "review_items": list(result.acceptance.review_items),
+            "policy": {
+                "require_full_rank": result.acceptance_policy.require_full_rank,
+                "max_condition_number": result.acceptance_policy.max_condition_number,
+                "min_residual_degrees_of_freedom": result.acceptance_policy.min_residual_degrees_of_freedom,
+                "min_molecule_support": result.acceptance_policy.min_molecule_support,
+                "high_correlation_review_threshold": result.acceptance_policy.high_correlation_review_threshold,
+                "high_correlation_reject_threshold": result.acceptance_policy.high_correlation_reject_threshold,
+            },
         },
         "numerical_diagnostics": {
             "rank": result.diagnostics.rank,

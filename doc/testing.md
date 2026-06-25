@@ -14,6 +14,20 @@ robustness against different input formats
 At this stage, testing focuses on non-GUI logic, with a small set of
 offscreen GUI unit tests.
 
+MORPHEUS/SEfit regression tests are also treated as scientific contracts.  The
+ensemble-refinement checks intentionally cover the anhydrides, glycine
+conformers, class/prior policy, synthon atom typing, GUI job writing and CLI
+run manifests:
+
+```bash
+pytest merlino_semiexp/tests/test_ensemble.py gui/tests/test_ensemble_window_helpers.py
+```
+
+These tests verify the rank/condition-number policy, no-prior versus soft-prior
+versus hard-constraint behavior, transferable class support, central-bond
+matching for torsions, central-atom matching for out-of-plane coordinates, and
+the presence of both `ensemble_manifest.json` and `run_manifest.json`.
+
 Project assumptions (important)
 
 The working directory is always:

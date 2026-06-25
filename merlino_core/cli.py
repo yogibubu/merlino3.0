@@ -658,7 +658,27 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "semiexp-ensemble":
         result = fit_ensemble_job(args.job, outdir=args.outdir)
+        outputs = _ensemble_output_paths(args.outdir)
+        build_run_manifest(
+            workflow="semiexp_ensemble",
+            status=result.acceptance.status,
+            run_dir=args.outdir,
+            inputs={"job": args.job},
+            outputs=outputs,
+            parameters={
+                "classes": len(result.classes),
+                "molecules": len(result.molecule_blocks),
+                "rank": result.rank,
+                "scaled_condition_number": result.condition_number,
+                "weighted_rms_before": result.weighted_rms_before,
+                "weighted_rms_after": result.weighted_rms_after,
+                "accepted": result.acceptance.accepted,
+            },
+            backend={"solver": "python", "model": "linearized shared class corrections"},
+            messages=list(result.acceptance.reasons) + list(result.acceptance.review_items),
+        ).write(args.outdir / "run_manifest.json")
         print(f"report: {args.outdir / 'ensemble_class_corrections.txt'}")
+        print(f"manifest: {args.outdir / 'run_manifest.json'}")
         print(f"classes: {len(result.classes)}")
         print(f"molecules: {len(result.molecule_blocks)}")
         print(f"rank: {result.rank}")
@@ -676,7 +696,36 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "semiexp-ensemble-compare":
         results = run_ensemble_prior_comparison(args.job, args.outdir, soft_prior_sigma=args.soft_prior_sigma)
+        outputs = {
+            "comparison_csv": args.outdir / "ensemble_prior_comparison.csv",
+            "comparison_json": args.outdir / "ensemble_prior_comparison.json",
+            "prior_scan_csv": args.outdir / "prior_scan" / "prior_sigma_scan.csv",
+            "leave_one_molecule_out_csv": args.outdir / "leave_one_molecule_out" / "leave_one_molecule_out.csv",
+        }
+        for variant in ("no_prior", "soft_prior", "hard_constraint"):
+            outputs.update({f"{variant}_{name}": path for name, path in _ensemble_output_paths(args.outdir / variant).items()})
+        build_run_manifest(
+            workflow="semiexp_ensemble_prior_comparison",
+            status="completed",
+            run_dir=args.outdir,
+            inputs={"job": args.job},
+            outputs=outputs,
+            parameters={
+                "soft_prior_sigma": args.soft_prior_sigma,
+                "variants": {
+                    name: {
+                        "rank": result.rank,
+                        "scaled_condition_number": result.condition_number,
+                        "weighted_rms_after": result.weighted_rms_after,
+                        "acceptance": result.acceptance.status,
+                    }
+                    for name, result in results.items()
+                },
+            },
+            backend={"solver": "python", "model": "linearized shared class corrections"},
+        ).write(args.outdir / "run_manifest.json")
         print(f"comparison: {args.outdir / 'ensemble_prior_comparison.csv'}")
+        print(f"manifest: {args.outdir / 'run_manifest.json'}")
         for name, result in results.items():
             print(
                 f"{name}: classes={len(result.classes)} rank={result.rank} "
@@ -693,14 +742,38 @@ def main(argv: list[str] | None = None) -> int:
             outdir=args.outdir,
             soft_prior_sigma=args.soft_prior_sigma,
         )
+        run_dir = args.outdir or args.paper_dir / "analysis"
+        build_run_manifest(
+            workflow="semiexp_ensemble_paper_artifacts",
+            status="completed",
+            run_dir=run_dir,
+            inputs={"job": args.job},
+            outputs=artifacts,
+            parameters={"soft_prior_sigma": args.soft_prior_sigma, "paper_dir": str(args.paper_dir)},
+            backend={"solver": "python", "renderer": "latex-fragments"},
+        ).write(Path(run_dir) / "run_manifest.json")
         for name, path in artifacts.items():
             print(f"{name}: {path}")
+        print(f"manifest: {Path(run_dir) / 'run_manifest.json'}")
         return 0
 
     if args.command == "semiexp-ensemble-synthon-scan":
         thresholds = tuple(args.threshold) if args.threshold else (0.015, 0.025, 0.035, 0.05, 0.075)
         rows = run_ensemble_synthon_threshold_scan(args.job, args.outdir, thresholds=thresholds)
+        build_run_manifest(
+            workflow="semiexp_ensemble_synthon_scan",
+            status="completed",
+            run_dir=args.outdir,
+            inputs={"job": args.job},
+            outputs={
+                "scan_csv": args.outdir / "synthon_threshold_scan.csv",
+                "scan_json": args.outdir / "synthon_threshold_scan.json",
+            },
+            parameters={"thresholds": list(thresholds), "rows": rows},
+            backend={"solver": "python", "atom_typing": "continuous synthon Zeff"},
+        ).write(args.outdir / "run_manifest.json")
         print(f"scan: {args.outdir / 'synthon_threshold_scan.csv'}")
+        print(f"manifest: {args.outdir / 'run_manifest.json'}")
         for row in rows:
             if row["status"] == "ok":
                 print(
@@ -874,6 +947,19 @@ def _append_manifest_output(manifest_path: Path, name: str, path: Path) -> None:
 
         data.setdefault("output_sha256", {})[name] = sha256_file(path)
     manifest_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _ensemble_output_paths(outdir: Path) -> dict[str, Path]:
+    root = Path(outdir)
+    return {
+        "text_report": root / "ensemble_class_corrections.txt",
+        "class_corrections_csv": root / "ensemble_class_corrections.csv",
+        "class_report_csv": root / "ensemble_class_report.csv",
+        "molecule_blocks_csv": root / "ensemble_molecule_blocks.csv",
+        "scientific_manifest": root / "ensemble_manifest.json",
+        "covariance_csv": root / "ensemble_covariance.csv",
+        "correlation_csv": root / "ensemble_correlation.csv",
+    }
 
 
 if __name__ == "__main__":

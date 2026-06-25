@@ -107,7 +107,10 @@ def test_ensemble_class_correction_reduces_shared_residual(tmp_path):
     assert (tmp_path / "ensemble" / "ensemble_class_corrections.csv").exists()
     manifest = (tmp_path / "ensemble" / "ensemble_manifest.json")
     assert manifest.exists()
-    assert "numerical_diagnostics" in manifest.read_text(encoding="utf-8")
+    manifest_text = manifest.read_text(encoding="utf-8")
+    assert "numerical_diagnostics" in manifest_text
+    assert "q_SE(m,k) = q_QC(m,k) + Delta[class(m,k)]" in manifest_text
+    assert "high_correlation_reject_threshold" in manifest_text
 
     prior_result = fit_ensemble_class_corrections(
         molecules,
@@ -345,6 +348,24 @@ synthon_signatures = "8-0-2-0|1-0-1-0"
     assert parsed.acceptance_policy.min_molecule_support == 1
     assert parsed.acceptance_policy.high_correlation_review_threshold == 0.95
     assert parsed.acceptance_policy.high_correlation_reject_threshold == 0.999
+
+
+def test_ensemble_cli_writes_canonical_run_manifest(tmp_path):
+    from merlino_core.cli import main
+
+    root = Path(__file__).resolve().parents[2]
+    job = root / "examples" / "semiexp" / "anhydrides_ensemble" / "anhydrides_ensemble.mse-ensemble.toml"
+    outdir = tmp_path / "cli_anhydrides"
+    status = main(["semiexp-ensemble", "--job", str(job), "--outdir", str(outdir)])
+
+    assert status == 0
+    run_manifest = outdir / "run_manifest.json"
+    assert run_manifest.exists()
+    text = run_manifest.read_text(encoding="utf-8")
+    assert '"workflow": "semiexp_ensemble"' in text
+    assert '"scientific_manifest"' in text
+    assert '"input_sha256"' in text
+    assert '"output_sha256"' in text
 
 
 def _observation(label: str, constants: np.ndarray) -> IsotopologueObservation:

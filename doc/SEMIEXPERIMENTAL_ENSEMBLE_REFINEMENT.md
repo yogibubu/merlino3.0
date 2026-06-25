@@ -90,6 +90,10 @@ python -m merlino_core.cli semiexp-ensemble-paper \
 
 This command refreshes the comparison CSV files, prior-strength scan,
 leave-one-molecule-out diagnostics, and the LaTeX fragments used by the paper.
+All ensemble CLI entry points also write a canonical `run_manifest.json` with
+input/output checksums.  This is separate from the scientific
+`ensemble_manifest.json`: the former freezes a workflow execution, while the
+latter describes the fitted model.
 
 ## Stable ensemble job schema
 
@@ -122,6 +126,17 @@ correlated class corrections that should be interpreted explicitly.  `rejected`
 means the correction model should not be used as a production model without
 changing classes, priors or atom typing.  The status is written to the text
 report, CSV summaries and `ensemble_manifest.json`.
+
+The acceptance policy is part of the scientific manifest.  A production fit is
+therefore defined by the input job, the generated class projections, the
+weighted design matrix diagnostics, and the exact policy that accepted or
+rejected the result.  The minimum policy for a transferable model is:
+
+- full rank unless an explicitly reduced hard-constraint model is being tested;
+- finite scaled condition number below the declared threshold;
+- at least one residual degree of freedom;
+- support from the requested number of molecules for every transferable class;
+- explicit review or rejection of highly correlated class corrections.
 
 The ensemble job points to ordinary single-molecule SE job files.  Those job
 files may keep the Cartesian reference geometry and isotopologue table in
@@ -226,6 +241,7 @@ The output writer creates:
 - `ensemble_manifest.json`
 - `ensemble_covariance.csv`
 - `ensemble_correlation.csv`
+- `run_manifest.json` when the calculation is launched from the CLI
 
 The implementation fails early if any declared class matches no active
 coordinate.  Rank and condition number are reported explicitly.  For the three
@@ -233,6 +249,26 @@ anhydrides, the robust demonstration model uses shared C-C, C-O and C-H stretch
 corrections plus softly regularized bend classes.  Without priors the broad
 bend classes are rank-consistent but poorly conditioned, which is precisely the
 case soft priors are meant to handle.
+
+## Regression set
+
+The current automated regression set is intentionally small and scientific:
+
+- anhydrides ensemble: no-prior, soft-prior and hard-constraint variants;
+- glycine I/II ensemble: continuous synthon `Zeff` atom typing and threshold
+  scan;
+- primitive signature canonicalization: torsions are matched by central bond,
+  and out-of-plane coordinates by central atom;
+- GUI job-writer round trip: fine selectors, soft priors and absolute paths are
+  preserved;
+- CLI run manifest: anhydrides ensemble writes both scientific and workflow
+  manifests.
+
+Run the focused checks with:
+
+```bash
+pytest merlino_semiexp/tests/test_ensemble.py gui/tests/test_ensemble_window_helpers.py
+```
 
 ## Scientific use
 
@@ -252,4 +288,5 @@ this point separately from the main MORPHEUS manuscript:
 
 - Add a nonlinear polishing stage that applies the class corrections to each
   molecule and optionally relinearizes.
-- Add report tables suitable for the separate ensemble-refinement manuscript.
+- Add larger homologous series as soon as complete experimental constants and
+  vibrational corrections are available.

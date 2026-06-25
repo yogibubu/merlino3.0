@@ -49,7 +49,8 @@ python -m merlino_core.cli semiexp-ensemble \
 ```
 
 The output includes a text report, CSV summaries, covariance/correlation
-matrices and `ensemble_manifest.json`.  Ensemble reports include an explicit
+matrices, the scientific `ensemble_manifest.json`, and the workflow
+`run_manifest.json` with file checksums.  Ensemble reports include an explicit
 model status: `accepted` means the model passes the rank, conditioning and
 support checks; `review` means the fit is usable but contains flagged class
 correlations; `rejected` means the model should not be used for production
