@@ -170,6 +170,47 @@ class AnharmonicDerivativePotential:
 
 
 @dataclass
+class GaussianNormalMode:
+    mode: int
+    frequency_cm: float
+    reduced_mass_amu: float
+    force_constant_mdyne_A: float
+    atoms: np.ndarray
+    symbols: list[str]
+    displacements: np.ndarray
+
+
+@dataclass
+class NormalModeTailSide:
+    side: str
+    mode: int
+    force_mode: int
+    frequency_cm: float
+    force_constant_mdyne_A: float
+    reduced_mass_amu: float
+    overlap: float
+    abs_overlap: float
+    curvature_cm_au2: float
+    diagonal_f2_cm: float
+    diagonal_f3_cm: float
+    diagonal_f4_cm: float
+    vpt2_xe_cm: float
+    vpt2_zpe_cm: float
+    vpt2_fundamental_cm: float
+    log_min_rmsd_angstrom: float
+    scan_endpoint_index: int
+    scan_neighbor_index: int
+    tangent_steps: int
+    notes: tuple[str, ...] = ()
+
+
+@dataclass
+class NormalModeTailData:
+    sides: dict[str, NormalModeTailSide]
+    info: dict[str, float | int | str] = field(default_factory=dict)
+
+
+@dataclass
 class AnharmonicVPT2Comparison:
     harmonic_levels_cm: np.ndarray
     vpt2_levels_cm: np.ndarray
@@ -725,6 +766,131 @@ def parse_gaussian_frequency_blocks(lines: list[str], n_modes: int) -> list[floa
     return frequencies[-n_modes:]
 
 
+def parse_final_principal_axis_geometry(lines: list[str]) -> Structure | None:
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if "Principal axis orientation:" in line:
+            start = i
+    if start is None:
+        return None
+
+    atoms: list[int] = []
+    symbols: list[str] = []
+    coords: list[list[float]] = []
+    in_table = False
+    for line in lines[start:]:
+        if set(line.strip()) == {"-"}:
+            if in_table and coords:
+                break
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        fields = line.split()
+        if len(fields) == 5 and integer_text(fields[0]) and integer_text(fields[1]):
+            number = int(fields[1])
+            if number not in ATOMIC_NUMBER_TO_MASS:
+                continue
+            atoms.append(number)
+            symbols.append(ATOMIC_NUMBER_TO_SYMBOL.get(number, str(number)))
+            coords.append([parse_float(fields[2]), parse_float(fields[3]), parse_float(fields[4])])
+    if not atoms:
+        return None
+    return Structure(
+        atoms=np.array(atoms, dtype=int),
+        symbols=symbols,
+        coords_angstrom=np.array(coords, dtype=float),
+    )
+
+
+def parse_last_orientation_geometry(lines: list[str]) -> Structure | None:
+    parsed: Structure | None = None
+    i = 0
+    while i < len(lines):
+        if (
+            "Input orientation:" in lines[i]
+            or "Z-Matrix orientation:" in lines[i]
+            or "Standard orientation:" in lines[i]
+        ):
+            atoms, symbols, coords, i = parse_orientation_block(lines, i)
+            parsed = Structure(atoms=atoms, symbols=symbols, coords_angstrom=coords)
+        i += 1
+    return parsed
+
+
+def parse_gaussian_normal_modes(path: Path) -> tuple[Structure, list[GaussianNormalMode]]:
+    lines = path.read_text(errors="ignore").splitlines()
+    stop = len(lines)
+    for i, line in enumerate(lines):
+        if "Second-order Perturbative Anharmonic Analysis" in line:
+            stop = i
+            break
+
+    starts = [i for i, line in enumerate(lines[:stop]) if "Harmonic frequencies" in line]
+    if not starts:
+        raise ValueError(f"Could not find a Gaussian harmonic frequency block in {path}")
+    start = starts[-1]
+
+    modes: dict[int, GaussianNormalMode] = {}
+    i = start
+    while i < stop:
+        if "Frequencies --" not in lines[i]:
+            i += 1
+            continue
+
+        mode_numbers = [int(value) for value in lines[i - 2].split() if integer_text(value)]
+        freqs = numeric_fields(lines[i].split("--", 1)[1])
+        red_masses = numeric_fields(lines[i + 1].split("--", 1)[1])
+        frc_consts = numeric_fields(lines[i + 2].split("--", 1)[1])
+        n_block = len(mode_numbers)
+        if not (len(freqs) >= n_block and len(red_masses) >= n_block and len(frc_consts) >= n_block):
+            i += 1
+            continue
+
+        j = i + 1
+        while j < stop and not lines[j].strip().startswith("Atom  AN"):
+            j += 1
+        if j >= stop:
+            break
+
+        block_atoms: list[int] = []
+        block_symbols: list[str] = []
+        block_disp = {mode: [] for mode in mode_numbers}
+        row = j + 1
+        while row < stop:
+            fields = lines[row].split()
+            if len(fields) < 2 + 3 * n_block or not (integer_text(fields[0]) and integer_text(fields[1])):
+                break
+            number = int(fields[1])
+            block_atoms.append(number)
+            block_symbols.append(ATOMIC_NUMBER_TO_SYMBOL.get(number, str(number)))
+            values = [parse_float(value) for value in fields[2 : 2 + 3 * n_block]]
+            for col, mode in enumerate(mode_numbers):
+                block_disp[mode].append(values[3 * col : 3 * col + 3])
+            row += 1
+
+        atoms_array = np.array(block_atoms, dtype=int)
+        for col, mode in enumerate(mode_numbers):
+            modes[mode] = GaussianNormalMode(
+                mode=mode,
+                frequency_cm=float(freqs[col]),
+                reduced_mass_amu=float(red_masses[col]),
+                force_constant_mdyne_A=float(frc_consts[col]),
+                atoms=atoms_array.copy(),
+                symbols=list(block_symbols),
+                displacements=np.array(block_disp[mode], dtype=float),
+            )
+        i = row
+
+    if not modes:
+        raise ValueError(f"Could not parse Gaussian normal-coordinate displacements in {path}")
+
+    geometry = parse_final_principal_axis_geometry(lines) or parse_last_orientation_geometry(lines)
+    if geometry is None:
+        raise ValueError(f"Could not find a minimum geometry in {path}")
+    return geometry, [modes[index] for index in sorted(modes)]
+
+
 def parse_gaussian_anharmonic_force_tables(
     lines: list[str],
 ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
@@ -942,6 +1108,291 @@ def orient_path(
 
     s_sqrtamu_angstrom = np.cumsum(step_lengths)
     return oriented, s_sqrtamu_angstrom, angular_residuals
+
+
+def normalized_vector(vector: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(vector))
+    if norm <= 0.0:
+        raise ValueError("Cannot normalize a zero vector")
+    return np.asarray(vector, dtype=float) / norm
+
+
+def harmonic_curvature_cm_au2(frequency_cm: float) -> float:
+    return float(frequency_cm) * float(frequency_cm) / HARTREE_TO_CM
+
+
+def endpoint_tangent_from_steps(
+    oriented: list[np.ndarray],
+    s_au: np.ndarray,
+    endpoint_index: int,
+    *,
+    side: str,
+    steps: int,
+) -> tuple[np.ndarray, int, int]:
+    if len(oriented) != len(s_au):
+        raise ValueError("Path geometries and path coordinates have different lengths")
+    n_steps = max(1, min(int(steps), len(oriented) - 1))
+    if side == "right":
+        start = len(oriented) - n_steps - 1
+        stop = len(oriented)
+        direction = 1.0
+    elif side == "left":
+        start = 0
+        stop = n_steps + 1
+        direction = -1.0
+    else:
+        raise ValueError(f"Unsupported endpoint side: {side}")
+
+    x = np.asarray(s_au[start:stop], dtype=float) - float(s_au[endpoint_index])
+    coords = np.asarray(oriented[start:stop], dtype=float)
+    if len(x) < 2 or np.ptp(x) <= 0.0:
+        raise ValueError("Endpoint tangent needs at least two distinct scan points")
+    design = np.column_stack((np.ones_like(x), x))
+    coeff, *_ = np.linalg.lstsq(design, coords.reshape(len(x), -1), rcond=None)
+    tangent = direction * coeff[1].reshape(coords.shape[1], 3)
+    neighbor_index = start if side == "right" else stop - 1
+    return tangent, neighbor_index, n_steps
+
+
+def selected_mode_diagonal_derivatives(
+    modes: list[GaussianNormalMode],
+    requested_mode: int,
+    frequency_cm: float,
+    f2_by_force_mode: dict[int, float],
+    f3_by_force_mode: dict[int, float],
+    f4_by_force_mode: dict[int, float],
+) -> tuple[int, float, float, float, tuple[str, ...]]:
+    notes: list[str] = []
+    force_mode = requested_mode
+    if f2_by_force_mode:
+        standard_frequencies = [mode.frequency_cm for mode in modes]
+        force_mode, _, resolve_notes = resolve_anharmonic_force_mode(
+            requested_mode,
+            "frequency-ascending",
+            f2_by_force_mode,
+            standard_frequencies,
+        )
+        notes.extend(resolve_notes)
+    else:
+        notes.append("diagonal_force_tables_not_found")
+
+    f2_cm = float(f2_by_force_mode.get(force_mode, abs(frequency_cm)))
+    f3_cm = float(f3_by_force_mode.get(force_mode, 0.0))
+    f4_cm = float(f4_by_force_mode.get(force_mode, 0.0))
+    if force_mode not in f3_by_force_mode:
+        notes.append("diagonal_F3_not_printed_assumed_zero")
+    if force_mode not in f4_by_force_mode:
+        notes.append("diagonal_F4_not_printed_assumed_zero")
+    return force_mode, f2_cm, f3_cm, f4_cm, tuple(notes)
+
+
+def one_mode_vpt2_summary_from_diagonal_force_constants(
+    f2_cm: float,
+    f3_cm: float,
+    f4_cm: float,
+) -> tuple[float, float, float]:
+    harmonic, vpt2, xe = one_mode_vpt2_levels(f2_cm, f3_cm, f4_cm, 2)
+    _ = harmonic
+    return float(xe), float(vpt2[0]), float(vpt2[1] - vpt2[0])
+
+
+def select_normal_mode_for_endpoint(
+    endpoint_side: str,
+    endpoint_index: int,
+    oriented: list[np.ndarray],
+    s_au: np.ndarray,
+    masses: np.ndarray,
+    log_geometry: Structure,
+    modes: list[GaussianNormalMode],
+    f2_by_force_mode: dict[int, float],
+    f3_by_force_mode: dict[int, float],
+    f4_by_force_mode: dict[int, float],
+    *,
+    max_frequency_cm: float,
+    use_heavy_atoms: bool,
+    min_overlap: float,
+    tangent_steps: int,
+) -> NormalModeTailSide:
+    if not np.array_equal(log_geometry.atoms, modes[0].atoms):
+        raise ValueError("Normal-mode atom order does not match the Gaussian minimum geometry")
+    if len(log_geometry.atoms) != len(masses):
+        raise ValueError("Normal-mode atom count does not match the DVR path")
+
+    endpoint = oriented[endpoint_index]
+    aligned_min, rotation = mass_weighted_kabsch(log_geometry.coords_angstrom, endpoint, masses)
+    rmsd = math.sqrt(float(np.sum(masses[:, None] * (aligned_min - endpoint) ** 2) / np.sum(masses)))
+
+    tangent, neighbor_index, used_steps = endpoint_tangent_from_steps(
+        oriented,
+        s_au,
+        endpoint_index,
+        side=endpoint_side,
+        steps=tangent_steps,
+    )
+    tangent = tangent - center_of_mass(tangent, masses)
+    mask = np.array([True] * len(masses), dtype=bool)
+    if use_heavy_atoms:
+        mask = np.array([symbol != "H" and symbol != "D" for symbol in log_geometry.symbols], dtype=bool)
+        if int(np.sum(mask)) < 2:
+            raise ValueError("Heavy-atom normal-mode overlap needs at least two non-H atoms")
+
+    sqrt_masses = np.sqrt(masses)[:, None]
+    tangent_mw = normalized_vector((sqrt_masses[mask] * tangent[mask]).reshape(-1))
+
+    candidates = [mode for mode in modes if abs(mode.frequency_cm) <= max_frequency_cm]
+    if not candidates:
+        raise ValueError(
+            f"No Gaussian normal modes found below --tail-normal-mode-max-frequency {max_frequency_cm:g} cm^-1"
+        )
+
+    best: NormalModeTailSide | None = None
+    for mode in candidates:
+        if not np.array_equal(mode.atoms, log_geometry.atoms):
+            raise ValueError("Normal-mode atom order changes between Gaussian frequency blocks")
+        rotated_displacement = mode.displacements @ rotation
+        mode_mw = normalized_vector((sqrt_masses[mask] * rotated_displacement[mask]).reshape(-1))
+        overlap = float(np.dot(tangent_mw, mode_mw))
+        force_mode, f2_cm, f3_cm, f4_cm, notes = selected_mode_diagonal_derivatives(
+            modes,
+            mode.mode,
+            mode.frequency_cm,
+            f2_by_force_mode,
+            f3_by_force_mode,
+            f4_by_force_mode,
+        )
+        try:
+            vpt2_xe, vpt2_zpe, vpt2_fundamental = one_mode_vpt2_summary_from_diagonal_force_constants(
+                f2_cm,
+                f3_cm,
+                f4_cm,
+            )
+        except ValueError:
+            vpt2_xe, vpt2_zpe, vpt2_fundamental = 0.0, 0.0, 0.0
+            notes = (*notes, "vpt2_not_available_nonpositive_F2")
+        side = NormalModeTailSide(
+            side=endpoint_side,
+            mode=mode.mode,
+            force_mode=force_mode,
+            frequency_cm=mode.frequency_cm,
+            force_constant_mdyne_A=mode.force_constant_mdyne_A,
+            reduced_mass_amu=mode.reduced_mass_amu,
+            overlap=overlap,
+            abs_overlap=abs(overlap),
+            curvature_cm_au2=harmonic_curvature_cm_au2(abs(mode.frequency_cm)),
+            diagonal_f2_cm=f2_cm,
+            diagonal_f3_cm=f3_cm,
+            diagonal_f4_cm=f4_cm,
+            vpt2_xe_cm=vpt2_xe,
+            vpt2_zpe_cm=vpt2_zpe,
+            vpt2_fundamental_cm=vpt2_fundamental,
+            log_min_rmsd_angstrom=rmsd,
+            scan_endpoint_index=endpoint_index,
+            scan_neighbor_index=neighbor_index,
+            tangent_steps=used_steps,
+            notes=notes,
+        )
+        if best is None or side.abs_overlap > best.abs_overlap:
+            best = side
+
+    if best is None:
+        raise ValueError("Could not select a normal mode for the endpoint tail")
+    if best.abs_overlap < min_overlap:
+        raise ValueError(
+            f"Best endpoint normal-mode overlap is {best.abs_overlap:.4f}, below "
+            f"--tail-normal-mode-min-overlap {min_overlap:.4f}"
+        )
+    return best
+
+
+def build_normal_mode_tail_data(
+    log_path: Path,
+    oriented: list[np.ndarray],
+    s_au: np.ndarray,
+    rel_energy_cm: np.ndarray,
+    masses: np.ndarray,
+    args: argparse.Namespace,
+) -> NormalModeTailData:
+    if len(oriented) < 2:
+        raise ValueError("Normal-mode tail selection needs at least two path geometries")
+    lines = log_path.read_text(errors="ignore").splitlines()
+    log_geometry, modes = parse_gaussian_normal_modes(log_path)
+    f2_by_force_mode, f3_by_force_mode, f4_by_force_mode = parse_gaussian_anharmonic_force_tables(lines)
+    if len(log_geometry.atoms) != len(masses) or not np.array_equal(log_geometry.atoms, modes[0].atoms):
+        raise ValueError("Gaussian normal-mode log is incompatible with the path atom order")
+
+    requested_side = args.tail_normal_mode_side
+    sides: list[str]
+    if requested_side == "minimum":
+        min_index = int(np.argmin(rel_energy_cm))
+        if min_index == 0:
+            sides = ["left"]
+        elif min_index == len(oriented) - 1:
+            sides = ["right"]
+        else:
+            left_gap = abs(float(rel_energy_cm[0] - rel_energy_cm[min_index]))
+            right_gap = abs(float(rel_energy_cm[-1] - rel_energy_cm[min_index]))
+            sides = ["left" if left_gap <= right_gap else "right"]
+    elif requested_side == "both":
+        sides = ["left", "right"]
+    else:
+        sides = [requested_side]
+
+    selected: dict[str, NormalModeTailSide] = {}
+    for side in sides:
+        if side == "left":
+            endpoint_index = 0
+        elif side == "right":
+            endpoint_index = len(oriented) - 1
+        else:
+            raise ValueError(f"Unsupported normal-mode tail side: {side}")
+        selected[side] = select_normal_mode_for_endpoint(
+            side,
+            endpoint_index,
+            oriented,
+            s_au,
+            masses,
+            log_geometry,
+            modes,
+            f2_by_force_mode,
+            f3_by_force_mode,
+            f4_by_force_mode,
+            max_frequency_cm=float(args.tail_normal_mode_max_frequency),
+            use_heavy_atoms=bool(args.tail_normal_mode_heavy_atoms),
+            min_overlap=float(args.tail_normal_mode_min_overlap),
+            tangent_steps=int(args.tail_normal_mode_steps),
+        )
+
+    info: dict[str, float | int | str] = {
+        "normal_mode_tail_log": str(log_path),
+        "normal_mode_tail_side_requested": requested_side,
+        "normal_mode_tail_max_frequency_cm-1": float(args.tail_normal_mode_max_frequency),
+        "normal_mode_tail_heavy_atoms": int(bool(args.tail_normal_mode_heavy_atoms)),
+        "normal_mode_tail_steps": int(args.tail_normal_mode_steps),
+    }
+    for side, selected_side in selected.items():
+        prefix = f"{side}_normal_mode_tail"
+        info.update(
+            {
+                f"{prefix}_mode": int(selected_side.mode),
+                f"{prefix}_force_mode": int(selected_side.force_mode),
+                f"{prefix}_frequency_cm-1": float(selected_side.frequency_cm),
+                f"{prefix}_force_constant_mdyne_A": float(selected_side.force_constant_mdyne_A),
+                f"{prefix}_reduced_mass_amu": float(selected_side.reduced_mass_amu),
+                f"{prefix}_overlap": float(selected_side.overlap),
+                f"{prefix}_abs_overlap": float(selected_side.abs_overlap),
+                f"{prefix}_curvature_cm_au2": float(selected_side.curvature_cm_au2),
+                f"{prefix}_diagonal_F2_cm-1": float(selected_side.diagonal_f2_cm),
+                f"{prefix}_diagonal_F3_cm-1": float(selected_side.diagonal_f3_cm),
+                f"{prefix}_diagonal_F4_cm-1": float(selected_side.diagonal_f4_cm),
+                f"{prefix}_vpt2_xe_cm-1": float(selected_side.vpt2_xe_cm),
+                f"{prefix}_vpt2_zpe_cm-1": float(selected_side.vpt2_zpe_cm),
+                f"{prefix}_vpt2_fundamental_cm-1": float(selected_side.vpt2_fundamental_cm),
+                f"{prefix}_log_min_rmsd_angstrom": float(selected_side.log_min_rmsd_angstrom),
+                f"{prefix}_tangent_steps": int(selected_side.tangent_steps),
+                f"{prefix}_notes": ";".join(selected_side.notes),
+            }
+        )
+    return NormalModeTailData(sides=selected, info=info)
 
 
 def rotational_constants_mhz(coords: np.ndarray, masses: np.ndarray) -> tuple[float, float, float]:
@@ -1659,6 +2110,27 @@ def repulsive_polynomial_tail(
     return values, coefficient
 
 
+def normal_mode_polynomial_tail(
+    endpoint_value_cm: float,
+    slope_cm_au: float,
+    curvature_cm_au2: float,
+    distance_au: np.ndarray,
+    *,
+    length_au: float,
+    target_cm: float,
+    degree: int,
+) -> tuple[np.ndarray, float]:
+    return repulsive_polynomial_tail(
+        endpoint_value_cm,
+        slope_cm_au,
+        curvature_cm_au2,
+        distance_au,
+        length_au=length_au,
+        target_cm=target_cm,
+        degree=degree,
+    )
+
+
 def tail_shape_diagnostics(endpoint_value_cm: float, tail_values_cm: np.ndarray) -> tuple[float, float]:
     outward_values = np.concatenate(([endpoint_value_cm], np.asarray(tail_values_cm, dtype=float)))
     first_differences = np.diff(outward_values)
@@ -2235,6 +2707,7 @@ def extend_1d_samples(
     coordinate_au: np.ndarray,
     values: np.ndarray,
     args: argparse.Namespace,
+    normal_mode_tail: NormalModeTailData | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, float | int | str]]:
     x = np.asarray(coordinate_au, dtype=float)
     y = as_2d_float_array(values)
@@ -2295,6 +2768,62 @@ def extend_1d_samples(
                 "right_tail_slope_cm_au": right_slope,
                 "left_tail_curvature_cm_au2": left_curvature,
                 "right_tail_curvature_cm_au2": right_curvature,
+                "left_tail_polynomial_coefficient": left_coefficient,
+                "right_tail_polynomial_coefficient": right_coefficient,
+            }
+        )
+    elif extension_mode == "normal-mode-polynomial":
+        if normal_mode_tail is None:
+            raise ValueError(
+                "--potential-extension normal-mode-polynomial requires --tail-normal-mode-log"
+            )
+        left_slope_data, left_curvature_data = endpoint_quadratic_tail(
+            x, y[:, 0], side="left", fit_points=args.extension_fit_points
+        )
+        right_slope_data, right_curvature_data = endpoint_quadratic_tail(
+            x, y[:, 0], side="right", fit_points=args.extension_fit_points
+        )
+        left_slope = 0.0 if args.tail_normal_mode_slope == "zero" else left_slope_data
+        right_slope = 0.0 if args.tail_normal_mode_slope == "zero" else right_slope_data
+        left_curvature = left_curvature_data
+        right_curvature = right_curvature_data
+        if "left" in normal_mode_tail.sides:
+            left_curvature = normal_mode_tail.sides["left"].curvature_cm_au2
+        if "right" in normal_mode_tail.sides:
+            right_curvature = normal_mode_tail.sides["right"].curvature_cm_au2
+        left_distances = distances[::-1]
+        left_potential, left_coefficient = normal_mode_polynomial_tail(
+            float(y[0, 0]),
+            left_slope,
+            left_curvature,
+            left_distances,
+            length_au=length,
+            target_cm=float(args.extension_target_cm),
+            degree=degree,
+        )
+        right_potential, right_coefficient = normal_mode_polynomial_tail(
+            float(y[-1, 0]),
+            right_slope,
+            right_curvature,
+            distances,
+            length_au=length,
+            target_cm=float(args.extension_target_cm),
+            degree=degree,
+        )
+        left_x = x[0] - left_distances
+        right_x = x[-1] + distances
+        info.update(normal_mode_tail.info)
+        info.update(
+            {
+                "normal_mode_tail_slope_mode": args.tail_normal_mode_slope,
+                "left_tail_slope_cm_au": left_slope,
+                "right_tail_slope_cm_au": right_slope,
+                "left_tail_data_slope_cm_au": left_slope_data,
+                "right_tail_data_slope_cm_au": right_slope_data,
+                "left_tail_curvature_cm_au2": left_curvature,
+                "right_tail_curvature_cm_au2": right_curvature,
+                "left_tail_data_curvature_cm_au2": left_curvature_data,
+                "right_tail_data_curvature_cm_au2": right_curvature_data,
                 "left_tail_polynomial_coefficient": left_coefficient,
                 "right_tail_polynomial_coefficient": right_coefficient,
             }
@@ -2520,6 +3049,7 @@ def build_1d_grid_model(
     *,
     n_grid: int,
     repeat: int,
+    normal_mode_tail: NormalModeTailData | None = None,
 ) -> Grid1DModel:
     columns = [np.asarray(rel_energy_cm, dtype=float)]
     property_names = list(property_samples)
@@ -2649,7 +3179,12 @@ def build_1d_grid_model(
         well_type=well_type,
     )
     info.update(core_info)
-    model_x, model_values, extension_info = extend_1d_samples(model_x, model_values, args)
+    model_x, model_values, extension_info = extend_1d_samples(
+        model_x,
+        model_values,
+        args,
+        normal_mode_tail=normal_mode_tail,
+    )
     info.update(extension_info)
     model_values[:, 0] = model_values[:, 0] - float(np.min(model_values[:, 0]))
 
@@ -6491,6 +7026,7 @@ def parse_args() -> argparse.Namespace:
             "morse-polynomial",
             "single-morse",
             "single-inverse-power",
+            "normal-mode-polynomial",
             "repulsive-quartic",
             "morse-quartic",
         ],
@@ -6500,7 +7036,9 @@ def parse_args() -> argparse.Namespace:
             "repulsive-polynomial matches endpoint slope/curvature and adds a "
             "convex degree-6/8 wall; repulsive-exponential uses a Born-Mayer-like "
             "exponential wall; morse-polynomial fits a symmetric double-Morse core; "
-            "single-morse and single-inverse-power are for --well-type single. "
+            "single-morse and single-inverse-power are for --well-type single; "
+            "normal-mode-polynomial uses a Gaussian minimum frequency log to set "
+            "the endpoint curvature from the normal mode most parallel to the scan. "
             "The old *-quartic names are accepted as legacy aliases."
         ),
     )
@@ -6534,6 +7072,55 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=4,
         help="Endpoint points used to estimate slope/curvature for repulsive-polynomial tails.",
+    )
+    parser.add_argument(
+        "--tail-normal-mode-log",
+        type=Path,
+        help=(
+            "Gaussian harmonic/anharmonic log at the endpoint minimum used by "
+            "--potential-extension normal-mode-polynomial."
+        ),
+    )
+    parser.add_argument(
+        "--tail-normal-mode-side",
+        choices=["minimum", "left", "right", "both"],
+        default="minimum",
+        help="Endpoint side whose curvature is taken from the selected normal mode.",
+    )
+    parser.add_argument(
+        "--tail-normal-mode-max-frequency",
+        type=float,
+        default=500.0,
+        help="Maximum normal-mode frequency, in cm^-1, considered for endpoint-tail selection.",
+    )
+    parser.add_argument(
+        "--tail-normal-mode-min-overlap",
+        type=float,
+        default=0.0,
+        help="Minimum acceptable absolute mass-weighted overlap for the selected tail mode.",
+    )
+    parser.add_argument(
+        "--tail-normal-mode-steps",
+        type=int,
+        default=2,
+        help=(
+            "Number of endpoint scan steps used to estimate the tail direction. "
+            "The default 2 fits the endpoint tangent over the last three geometries."
+        ),
+    )
+    parser.add_argument(
+        "--tail-normal-mode-heavy-atoms",
+        action="store_true",
+        help="Compute endpoint/mode overlaps using only non-H atoms.",
+    )
+    parser.add_argument(
+        "--tail-normal-mode-slope",
+        choices=["zero", "endpoint"],
+        default="zero",
+        help=(
+            "Slope used at a normal-mode-polynomial endpoint. zero is appropriate "
+            "when the endpoint is an optimized minimum; endpoint uses the fitted scan slope."
+        ),
     )
     parser.add_argument(
         "--potential-smoothing",
@@ -6639,6 +7226,17 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--potential-extension morse-polynomial requires --path-symmetry")
     if extension_mode == "morse-polynomial" and args.well_type == "single":
         raise ValueError("--potential-extension morse-polynomial requires --well-type double or auto")
+    if extension_mode == "normal-mode-polynomial":
+        if args.path_symmetry != "none":
+            raise ValueError("--potential-extension normal-mode-polynomial currently requires --path-symmetry none")
+        if not args.tail_normal_mode_log:
+            raise ValueError("--potential-extension normal-mode-polynomial requires --tail-normal-mode-log")
+        if args.tail_normal_mode_max_frequency <= 0.0:
+            raise ValueError("--tail-normal-mode-max-frequency must be positive")
+        if args.tail_normal_mode_min_overlap < 0.0:
+            raise ValueError("--tail-normal-mode-min-overlap must be non-negative")
+        if args.tail_normal_mode_steps < 1:
+            raise ValueError("--tail-normal-mode-steps must be positive")
     if extension_mode in {"single-morse", "single-inverse-power"} and args.well_type == "double":
         raise ValueError(f"--potential-extension {extension_mode} requires --well-type single or auto")
     if args.core_model == "asymmetric-parabola-gaussian" and args.path_symmetry != "none":
@@ -6733,6 +7331,16 @@ def run_1d_analysis(source: SourceData, args: argparse.Namespace) -> None:
     selected_property_derivative_specs = {
         key: spec for key, spec in property_derivative_specs.items() if key in property_keys
     }
+    normal_mode_tail = None
+    if canonical_extension_mode(args.potential_extension) == "normal-mode-polynomial":
+        normal_mode_tail = build_normal_mode_tail_data(
+            args.tail_normal_mode_log.expanduser().resolve(),
+            oriented,
+            s_au,
+            rel_energy_cm,
+            masses,
+            args,
+        )
     grid_model = build_1d_grid_model(
         s_au,
         rel_energy_cm,
@@ -6741,6 +7349,7 @@ def run_1d_analysis(source: SourceData, args: argparse.Namespace) -> None:
         args,
         n_grid=n_grid,
         repeat=repeat,
+        normal_mode_tail=normal_mode_tail,
     )
 
     levels, vectors, expectations, solver_used = solve_path_hamiltonian(
