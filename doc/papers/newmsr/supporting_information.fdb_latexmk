@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1782411207.5535 "supporting_information.tex" "supporting_information.pdf" "supporting_information" 1782411208.01477 0
+["pdflatex"] 1782422314.20218 "supporting_information.tex" "supporting_information.pdf" "supporting_information" 1782422314.67026 0
   "/Users/vincenzobarone/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1780393380 95375 ee6ec2f5bca3462d7da4ad3cc3840dca ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1246382020 1004 54797486969f23fa377b128694d548df ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex8.tfm" 1246382020 988 bdf658c3bfc2d96d3c8b02cfc1c94c20 ""
@@ -96,16 +96,16 @@
   "figures/p-EBN_numbering.pdf" 1782378052.58691 13481 0df248f930f3f9ea198e9cb196b9d7d7 ""
   "figures/phthalic_anhydride_numbering.pdf" 1782378052.79407 15741 60d9dc8cc74dfb50cc311b42bd0183b4 ""
   "figures/succinic_anhydride_numbering.pdf" 1782378052.83658 14917 646000bbcf46696b333e6721e8832d8e ""
-  "figures/testosterone_qc.jpg" 1782410648.86968 21349 5fd203553a93882b834a2ddeb4f76a6c ""
+  "figures/testosterone_qc_cropped.jpg" 1782421603.18924 32853 c9ccac4c1228e46d95fc4a22d40b107e ""
   "generated/benchmark_summary.tex" 1782411151.10347 1743 1d83d36b1f9c37260f7fc79fb38d8592 ""
   "generated/p_ebn_fit_diagnostics.tex" 1782374296.38338 566 f648dd7b3b279a974f15107de6712385 ""
   "generated/p_ebn_geometry_parameters.tex" 1782374296.38358 1767 5798a0c86149d7a717275a0932b2c0f6 ""
   "generated/p_ebn_kraitchman.tex" 1782374296.38378 2155 9e2d3fa60a2be0516f25d2b03f4fc557 ""
   "generated/p_ebn_rotational_constants.tex" 1782374296.384 2380 1b983ab290f64b060eee5da76496c6f5 ""
   "generated/planar_pair_diagnostics.tex" 1782374296.38417 1083 7dede9c83727de6a184df3a6709b73c6 ""
-  "supporting_information.aux" 1782411207.95453 18838 22c48489275a70546cc22892dd8cb1b7 "pdflatex"
-  "supporting_information.out" 1782411207.9557 2943 d3d41b016d19d66fcee4a7591b0af891 "pdflatex"
-  "supporting_information.tex" 1782411199.84569 41525 97d8a84c4f36ef08328b0c136f6dba2f ""
+  "supporting_information.aux" 1782422314.6109 18838 22c48489275a70546cc22892dd8cb1b7 "pdflatex"
+  "supporting_information.out" 1782422314.61202 2943 d3d41b016d19d66fcee4a7591b0af891 "pdflatex"
+  "supporting_information.tex" 1782422304.94848 41554 58a289d1c9dc62aa1e64fcd70957057f ""
   (generated)
   "supporting_information.aux"
   "supporting_information.log"

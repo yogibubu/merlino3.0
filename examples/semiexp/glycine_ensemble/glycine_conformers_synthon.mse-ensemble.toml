@@ -50,13 +50,6 @@ synthon_zeff = [5.91, 7.95]
 synthon_threshold = 0.035
 
 [[classes]]
-name = "Cmethylene_H"
-kind = "stretch"
-atoms = ["C", "H"]
-synthon_zeff = [5.88, 0.838]
-synthon_threshold = 0.035
-
-[[classes]]
 name = "N_H"
 kind = "stretch"
 atoms = ["N", "H"]

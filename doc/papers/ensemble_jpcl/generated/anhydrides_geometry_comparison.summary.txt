@@ -1,0 +1,4 @@
+Anhydride ensemble-vs-separate geometry comparison
+maleic_anhydride: mean/max stretch ensemble-separate = 12.96/20.89 mA
+phthalic_anhydride: mean/max stretch ensemble-separate = 7.86/21.12 mA
+succinic_anhydride: mean/max stretch ensemble-separate = 11.73/19.42 mA

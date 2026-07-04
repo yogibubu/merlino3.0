@@ -20,21 +20,22 @@
 
 \section*{Reproducible Anhydride Runs}
 
-The comparison tables and plotting fragments in the main text were generated from the repository command
+The anhydride data set is used both for validation and for deployment on data-poor targets.  The independent single-molecule refinements use the available isotopologues and provide the validation geometries reported in the main text.  The same validated family can then be used as an integration set for another anhydride for which only the parent species, or one isotopologue, is available.  The parent-only ensemble model was generated from the repository command
 \begin{quote}
 \small
-\texttt{python -m merlino\_core.cli semiexp-ensemble-paper}\\
-\texttt{--job <anhydrides ensemble job>}\\
-\texttt{--paper-dir <JPCL paper directory>}\\
-\texttt{--outdir <analysis directory>}
+\texttt{python -m merlino\_core.cli semiexp-ensemble}\\
+\texttt{--job examples/semiexp/anhydrides\_parent\_only/}\\
+\texttt{anhydrides\_parent\_only.mse-ensemble.toml}\\
+\texttt{--outdir working/semiexp/anhydrides\_parent\_only}
 \end{quote}
 
-The command writes separate reports for the no-prior, soft-prior, and hard-constraint variants, together with CSV, JSON, and \LaTeX{} summaries.\cite{morpheus_ensemble_working}
-It also writes the prior-scan and leave-one-molecule-out CSV files used to generate the corresponding tables in the main text.
+Only the parent isotopologue of each anhydride is included in this ensemble job.\cite{morpheus_ensemble_working}
+The ordinary single-molecule semiexperimental refinements using all available isotopologues are not part of this parent-only training set; they are used as validation references for the geometry comparison in the main text.  In an application to a new one-species anhydride, that target would be added to the ensemble rather than fitted alone, so that the other anhydrides provide the complementary information needed to separate several heavy-atom classes.
+C--H stretches are not ensemble variables; they are retained at the BDPCS3 reference values while heavy-atom class corrections are refined across molecules.
 
 \section*{Reproducible Glycine Runs}
 
-The glycine conformer comparison was generated from the existing legacy MSR benchmark inputs.  The element/value-window run used
+The glycine conformer comparison is a validation case for transfer across related molecular structures with available benchmark refinements.  It was generated from the existing legacy MSR inputs.  As in the anhydride model, C--H stretches are retained at the BDPCS3 reference values.  The element/value-window run used
 \begin{quote}
 \small
 \texttt{python -m merlino\_core.cli semiexp-ensemble}\\
@@ -58,7 +59,7 @@ Stretches are matched by unordered atom pair and can be further separated by geo
 
 \section*{Current Test Cases}
 
-The present working set contains maleic, phthalic, and succinic anhydrides, plus glycine conformers I and II.  The anhydrides test a homologous class with different isotopic coverage and different needs for regularization.  The glycine pair tests continuous synthon atom typing across conformers with different geometries and atom orderings.  Additional large-molecule demonstrations should be added only after these two comparisons have been finalized.
+The present working set contains maleic, phthalic, and succinic anhydrides, plus glycine conformers I and II.  These systems validate the multi-molecule strategy because related molecules and isotopologue-rich reference refinements are available.  Once validated, the same machinery can be used in two deployment modes.  In the first, a new one-species member of the same chemical family is added to the ensemble: the target alone would support only one effective correction, whereas the family-integrated model can support more chemical classes.  In the second, multistructure searches the local semiexperimental geometry library in \texttt{data/se\_geometries/} for molecules most similar to the local families present in the new target.  Those selected references are recomputed at the same level used for the target molecule, and the resulting differences from the accurate geometries define transferable class corrections.  Additional large-molecule demonstrations should therefore be framed as applications of these validated deployment protocols.
 
 \bibliography{references}
 

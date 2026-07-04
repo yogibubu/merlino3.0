@@ -2,37 +2,37 @@
   {
     "acceptance_status": "rejected",
     "accepted": 0.0,
-    "delta_weighted_rms": 0.14001517338854144,
+    "delta_weighted_rms": 0.18757856794364006,
     "heldout": "maleic_anhydride",
-    "rank": 9.0,
-    "scaled_condition_number": 165.48701735821638,
+    "rank": 8.0,
+    "scaled_condition_number": 145.80644667904315,
     "train_molecules": 2.0,
-    "transferability_score": 46.20541734685549,
+    "transferability_score": 61.56177515623238,
     "weighted_rms_before": 0.003097309605931134,
-    "weighted_rms_predicted": 0.14311248299447257
+    "weighted_rms_predicted": 0.1906758775495712
   },
   {
     "acceptance_status": "rejected",
     "accepted": 0.0,
-    "delta_weighted_rms": 2.6033279794657407,
+    "delta_weighted_rms": 2.5334242942795018,
     "heldout": "phthalic_anhydride",
-    "rank": 9.0,
-    "scaled_condition_number": 127.18402752439935,
+    "rank": 8.0,
+    "scaled_condition_number": 113.44230360710564,
     "train_molecules": 2.0,
-    "transferability_score": 18.170408582255803,
+    "transferability_score": 17.709354560050183,
     "weighted_rms_before": 0.15161712471746683,
-    "weighted_rms_predicted": 2.7549451041832076
+    "weighted_rms_predicted": 2.6850414189969687
   },
   {
     "acceptance_status": "review",
     "accepted": 1.0,
-    "delta_weighted_rms": 0.029018934551484243,
+    "delta_weighted_rms": 0.08953350035339452,
     "heldout": "succinic_anhydride",
-    "rank": 9.0,
-    "scaled_condition_number": 120.8815520772465,
+    "rank": 8.0,
+    "scaled_condition_number": 92.28171145379335,
     "train_molecules": 2.0,
-    "transferability_score": 1.0847044616478676,
+    "transferability_score": 1.261342708273056,
     "weighted_rms_before": 0.3425903900094592,
-    "weighted_rms_predicted": 0.3716093245609434
+    "weighted_rms_predicted": 0.4321238903628537
   }
 ]

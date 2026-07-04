@@ -44,11 +44,6 @@ atoms = ["C", "O"]
 value_max = 1.28
 
 [[classes]]
-name = "CH_stretch"
-kind = "stretch"
-atoms = ["C", "H"]
-
-[[classes]]
 name = "NH_stretch"
 kind = "stretch"
 atoms = ["N", "H"]

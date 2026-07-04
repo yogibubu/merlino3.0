@@ -51,12 +51,12 @@
 \end{tocentry}
 
 \begin{abstract}
-We introduce a multi-molecule semiexperimental refinement strategy in which rotational data from chemically related molecules are combined through transferable coordinate-class corrections.  Each molecule keeps its own topology, symmetry, isotopic substitutions, vibrational corrections, and non-redundant coordinate basis, while the fitted variables are corrections shared by chemically defined classes such as carbonyl C--O, single C--O, C--C, C--H, or selected angular families.  Classes may combine atom symbols, primitive-coordinate values, and continuous synthon-derived atom types.  The approach replaces molecule-specific model construction by a rank-checked global statistical model that can use sparse isotopic information across homologous series.  Maleic, phthalic, and succinic anhydrides provide a chemically controlled homologous-series test, while the two glycine conformers test whether the same class definitions can transfer across different molecular geometries and atom orderings.  The comparison of no-prior, soft-prior, and hard-constraint variants shows that formally admissible angular classes can be severely ill conditioned without statistical regularization, whereas Gaussian soft priors retain the chemically explicit model while restoring numerical stability.
+We introduce a multi-molecule semiexperimental refinement strategy that first validates transferable coordinate-class corrections on systems for which independent isotopologue-based refinements are available, and then applies the same model to data-poor targets.  With a single molecule represented only by the parent rotational constants, or by one isotopic species, the refinement must collapse to at most one effective structural class; it cannot distinguish, for example, C--C and C--O corrections in a statistically meaningful way.  Several chemically related molecules can increase the number of admissible classes because the same correction variables are observed through different molecular topologies and inertia tensors.  Each molecule keeps its own topology, vibrational corrections, and non-redundant coordinate basis, while the fitted variables are common corrections for chemically defined classes such as short C--C, long C--C, carbonyl C--O, and single C--O.  Maleic, phthalic, and succinic anhydrides, together with glycine conformers I and II, provide validation cases because multiple related structures and isotopologue data are available.  Two deployment routes then follow: a one-species anhydride target can be integrated with the validated anhydride family, and the same multistructure machinery can select semiexperimental reference molecules most similar to the local families in a new target, recompute them at the same level, and transfer the resulting class corrections.
 \end{abstract}
 
 \section*{Introduction}
 
-Semiexperimental structure refinement is usually formulated molecule by molecule.  This is natural when isotopic substitution is rich enough to determine an independent structure, but it becomes inefficient for larger molecules or homologous series where different members share the same systematic quantum-chemical errors.  In those cases the transferable information is not an absolute bond length or angle, but a correction relative to the computational reference within a chemically defined coordinate class.
+Semiexperimental structure refinement is usually formulated molecule by molecule.  This is natural when isotopic substitution is rich enough to determine an independent structure, and such data provide the most direct way to validate a new refinement model.  The intended application, however, is broader: many larger or related molecules may have only the parent rotational constants, or a single isotopic species.  In that limit a molecule-by-molecule refinement can support only a very small number of effective classes, typically a single global correction.  A homologous family can carry more information because the same fitted class corrections are projected through several independent molecular graphs.  A data-poor anhydride, for example, should not be refined as an isolated one-species problem; it can be embedded in the validated anhydride family so that the other members supply the complementary information needed to separate heavy-atom classes.  A second route is reference-library driven: for each local family present in a new molecule, the most similar molecules are selected from a curated semiexperimental accurate-geometry library, recomputed at the same electronic-structure level used for the target, and used to estimate corrections to the target parameters.
 
 Here we formulate this idea as a global refinement problem.  For molecule $m$ and generated internal coordinate $q_k$,
 \begin{equation}
@@ -86,75 +86,45 @@ Each fit is then assigned an explicit model status.  Models are rejected when th
 
 \section*{Anhydride Test Set}
 
-Maleic, phthalic, and succinic anhydrides were selected as a homologous set with literature rotational data and different isotopic completeness.  The same class model was applied to all three molecules.  Stretch classes were left unregularized, whereas broad bend classes were tested in three variants: no prior, soft prior, and hard constraint.
+Maleic, phthalic, and succinic anhydrides were selected because they form a compact homologous set for which independent isotopologue-based refinements are available.  These data serve two roles.  First, ordinary molecule-by-molecule fits using the full isotopologue information provide validation geometries.  Second, the same family can be used as an integration set for a target anhydride represented by only one observed species.  The deployment question is therefore not whether a single poor-data molecule can determine several classes by itself; it cannot.  The question is whether chemically related anhydrides can supply enough complementary information to refine more than one class for such a target.
 
 \begin{table}[H]
 \centering
-\caption{Coordinate classes used for the anhydride ensemble refinement.  Stretch classes distinguish short/long C--C and carbonyl/single C--O ranges.  Bend priors are Gaussian soft observations on the class correction, not hard frozen coordinates.}
-\label{tab:anhydride_classes}
-\input{generated/anhydrides_classes_priors.tex}
+\caption{Identifiability of the parent-only anhydride class-correction problem.  With one parent molecule, only one effective global correction is chemically admissible; separating short C--C, long C--C, carbonyl C--O, and single C--O would be underdetermined.  Pooling three parent molecules makes the four-class model full rank.}
+\label{tab:parent_only_identifiability}
+\input{generated/anhydrides_parent_only_identifiability.tex}
 \end{table}
 
 \begin{table}[H]
 \centering
-\caption{Class-support diagnostics for the soft-prior anhydride model.  The prior residual ratio measures how far the fitted correction moves from the prior centre in units of the prior standard deviation.}
-\label{tab:class_support}
-\input{generated/class_support_report.tex}
+\caption{Class corrections obtained from the parent-only anhydride ensemble.  Only heavy-atom stretches are fitted.  C--H distances are retained at the BDPCS3 reference values.}
+\label{tab:parent_only_classes}
+\input{generated/anhydrides_parent_only_classes.tex}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\input{generated/condition_wrms_plot.tex}
-\caption{Numerical stability and residual reduction for the three anhydride variants.  The unregularized angular model reaches a lower residual but has a catastrophic scaled condition number; the soft-prior model retains the angular classes while recovering the numerical stability of the hard-constrained model.}
-\label{fig:condition_wrms}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\begin{subfigure}{0.49\linewidth}
-\centering
-\input{generated/prior_sigma_scan_plot.tex}
-\caption{Residual response}
-\end{subfigure}
-\begin{subfigure}{0.49\linewidth}
-\centering
-\input{generated/prior_sigma_condition_plot.tex}
-\caption{Conditioning response}
-\end{subfigure}
-\caption{Prior-strength scan for the angular classes.  Increasing the prior width gradually lowers the residual but also worsens conditioning; the default value $\sigma=10^{-3}$ lies near the stable end of this tradeoff.}
-\label{fig:prior_scan}
-\end{figure}
+Table~\ref{tab:parent_only_identifiability} is the deployment test.  A single parent molecule, or any one-species target, can support only one effective correction if the model is to remain chemically and statistically meaningful.  Pooling three anhydrides increases the number of resolvable variables: the four-class heavy-atom model becomes rank complete because each shared correction is sampled through a different topology.  This is the practical use case for a new anhydride with only one isotopologue: the target contributes its own parent constants, while the related anhydrides supply the additional class-discriminating information.  The fitted C--C corrections are well behaved, whereas carbonyl and single C--O corrections are strongly anticorrelated and have large uncertainties.  This is the desired diagnostic behavior: the method increases the number of admissible classes beyond the isolated one-species limit, while still reporting which classes remain weak.
 
 \begin{table}[H]
 \centering
-\caption{Systematic comparison of ensemble class-correction models for the three anhydrides.  Hard constraints correspond to removing the weak angular corrections from the global variable set.  The status column is assigned by the rank/conditioning/support policy described in the text.}
-\label{tab:anhydride_prior_comparison}
-\input{generated/anhydrides_prior_comparison.tex}
+\caption{Validation of the parent-only anhydride ensemble against ordinary single-molecule refinements using the available isotopologues.  Values are class averages over all matched primitive coordinates.  Stretch differences are reported in m\AA{} in the last column.}
+\label{tab:anhydride_geometry}
+\input{generated/anhydrides_geometry_comparison.tex}
 \end{table}
 
-The no-prior model has the lowest residual but is rejected by the acceptance policy because the design matrix is ill conditioned and contains nearly indistinguishable angular directions.  The soft-prior model restores the condition number to the same scale as the hard-constrained model while retaining explicit angular classes and reporting their posterior residuals.  It remains in review because the carbonyl and single C--O corrections are strongly anticorrelated, a useful chemical diagnostic rather than a hidden failure.  Stability and predictivity are therefore kept as separate diagnostics: condition number and posterior prior residuals test whether the model is numerically admissible, whereas leave-one-molecule-out residuals test whether a correction learned on two molecules transfers to the third.
-
-\begin{table}[H]
-\centering
-\caption{Leave-one-molecule-out prediction with the soft-prior model.  The transfer score is the predicted WRMS divided by the uncorrected held-out WRMS.  The result is diagnostic rather than conclusive: the three-member anhydride set is sufficient to expose numerical regularization, but too small to establish broad predictive transferability.}
-\label{tab:loo}
-\input{generated/leave_one_molecule_out.tex}
-\end{table}
-
-The leave-one-molecule-out test is deliberately severe.  Maleic and succinic anhydrides remain qualitatively stable when predicted from the other two members, whereas phthalic anhydride is not predicted well from maleic and succinic alone.  This failure mode is useful: it shows that the ensemble model reports lack of transferability rather than hiding it, and motivates extension to larger homologous families before predictive claims are made.
+The validation in Table~\ref{tab:anhydride_geometry} compares this parent-only deployment against the independent fits that use the full isotopologue information.  The short C--C class agrees within 1~m\AA{}, and the long C--C class within about 5~m\AA{}.  The C--O classes are much less secure, with deviations of about 20~m\AA{} and large formal uncertainties.  Thus the parent-only ensemble recovers chemically meaningful C--C corrections that no individual parent molecule can determine, while correctly flagging the C--O separation as underconstrained by this three-member set.
 
 \section*{Glycine Conformer Test}
 
-The anhydride comparison tests transfer across a homologous chemical family.  A complementary question is whether class definitions can be transferred between different conformers of the same molecule, where the chemical graph is conserved but the geometry, symmetry, atom ordering, and isotopic information are not identical.  Glycine conformers I and II provide such a case.  The two calculations used the existing semiexperimental benchmark inputs directly; the ensemble layer builds an independent non-redundant GIC model for each conformer and then maps both models to the same global class corrections.
+The anhydride comparison validates transfer across a homologous chemical family and then tests the parent-only deployment.  A complementary validation question is whether class definitions can be transferred between different conformers of the same molecule, where the chemical graph is conserved but the geometry, symmetry, atom ordering, and isotopic information are not identical.  Glycine conformers I and II provide such a case.  The two calculations used the existing semiexperimental benchmark inputs directly; the ensemble layer builds an independent non-redundant GIC model for each conformer and then maps both models to the same global class corrections.
 
 \begin{table}[H]
 \centering
-\caption{Glycine I/II ensemble refinement using two class definitions.  The element/value model uses ordinary atom symbols and C--O value windows.  The synthon model replaces those coarse atom types by continuous $Z_\mathrm{eff}$ prototypes with a threshold of 0.035.}
+\caption{Glycine I/II ensemble refinement using two class definitions.  The element/value model uses ordinary atom symbols and C--O value windows.  The synthon model replaces those coarse atom types by continuous $Z_\mathrm{eff}$ prototypes with a threshold of 0.035.  C--H stretches are retained at the BDPCS3 reference values in both variants.}
 \label{tab:glycine_typing}
 \input{generated/glycine_typing_comparison.tex}
 \end{table}
 
-Both models are rank complete, but the synthon-typed model lowers the weighted RMS from 29.94 to 24.90 while keeping essentially the same scaled condition number.  The improvement is modest but important mechanistically: it is obtained without manually identifying corresponding atoms in the two conformers.  The carboxyl carbon, methylene carbon, carbonyl oxygen, hydroxyl oxygen, amino hydrogens, and methylene hydrogens are recognized by their continuous local environments, not by atom labels.
+Both models are rank complete, but the synthon-typed model lowers the weighted RMS from 30.47 to 25.96 and improves the scaled condition number from 589.81 to 227.15.  The improvement is modest but important mechanistically: it is obtained without manually identifying corresponding atoms in the two conformers.  The carboxyl carbon, methylene carbon, carbonyl oxygen, hydroxyl oxygen, and exchangeable hydrogens are recognized by their continuous local environments, not by atom labels; C--H stretches are kept at the BDPCS3 reference geometry.
 
 \begin{table}[H]
 \centering
@@ -172,9 +142,18 @@ Both models are rank complete, but the synthon-typed model lowers the weighted R
 
 The glycine result therefore tests a different part of the formalism from the anhydrides.  The anhydrides show that soft priors can regularize weak class directions in a sparse homologous set.  Glycine shows that transferable classes do not have to be hand-coded as molecule-specific atom lists: continuous synthon types provide a route to chemically meaningful class definitions across conformers.
 
+\begin{table}[H]
+\centering
+\caption{Geometry-level comparison between the synthon-typed glycine I/II ensemble refinement and independent conformer refinements.  Values are class averages over matched primitive coordinates.  Stretch differences are reported in m\AA{} in the last column; angle differences are reported in degrees.}
+\label{tab:glycine_geometry}
+\input{generated/glycine_geometry_comparison.tex}
+\end{table}
+
+The geometry comparison confirms that the conformer ensemble is chemically more transferable than the sparse anhydride series.  Shared heavy-atom stretch corrections reproduce the independent conformer refinements within a few m\AA{}, while C--H distances remain fixed at the BDPCS3 reference values.  The largest deviations are angular, especially the H--N--H bend, where the common class correction shifts both conformers in the same direction but does not fully reproduce the separate refinements.  This is again chemically informative: conformer-transferable heavy-atom classes are well defined by the data, whereas flexible hydrogen angular frames require either richer isotopic coverage or explicit prior information.
+
 \section*{Outlook}
 
-The present letter skeleton establishes two complementary proof-of-principle tests: a homologous anhydride series and a conformer-pair glycine test.\cite{morpheus_ensemble_working}  The next validation layer should add a larger homologous family, for example steroid hormones, where sparse isotopic data can be combined with shared class corrections.  The same formalism is also relevant beyond semiexperimental structures, including force-field calibration, systematic correction of quantum-chemical geometries, and transferability tests across molecular families.
+The present letter skeleton establishes a validation-to-deployment protocol.\cite{morpheus_ensemble_working}  Anhydrides and glycine provide cases where multiple related molecules and isotopologue-rich refinements allow the transferable class model to be checked against independent semiexperimental geometries.  The same machinery can then be applied in two obvious ways.  First, a one-species target, for example another anhydride for which only the parent or one isotopologue is known, can be integrated with the validated anhydride family; treated alone it would permit only one effective correction, whereas the family-integrated model can support several class-specific corrections.  Second, multistructure can search the semiexperimental geometry library for molecules most similar to the families detected in the target, recompute those selected references at the same level as the target calculation, and transfer the resulting class corrections to the new molecule.  The formalism is also relevant beyond semiexperimental structures, including force-field calibration, systematic correction of quantum-chemical geometries, and transferability tests across molecular families.
 
 \bibliography{references}
 

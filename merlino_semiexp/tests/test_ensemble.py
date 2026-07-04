@@ -125,7 +125,7 @@ def test_anhydrides_ensemble_job_is_rank_consistent(tmp_path):
     job = root / "examples" / "semiexp" / "anhydrides_ensemble" / "anhydrides_ensemble.mse-ensemble.toml"
     result = fit_ensemble_job(job, outdir=tmp_path / "anhydrides")
 
-    assert result.rank == 9
+    assert result.rank == 8
     assert result.condition_number < 1.0e4
     assert result.acceptance.status == "review"
     assert result.acceptance.accepted is True
@@ -136,7 +136,6 @@ def test_anhydrides_ensemble_job_is_rank_consistent(tmp_path):
         "CC_long",
         "CO_carbonyl",
         "CO_single",
-        "CH_stretch",
         "CCC_bend",
         "CCO_bend",
         "COC_bend",
@@ -152,6 +151,26 @@ def test_anhydrides_ensemble_job_is_rank_consistent(tmp_path):
     assert (tmp_path / "anhydrides" / "ensemble_class_report.csv").exists()
 
 
+def test_anhydrides_parent_only_ensemble_is_rank_consistent(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    job = root / "examples" / "semiexp" / "anhydrides_parent_only" / "anhydrides_parent_only.mse-ensemble.toml"
+    result = fit_ensemble_job(job, outdir=tmp_path / "anhydrides_parent_only")
+
+    assert result.rank == 4
+    assert len(result.classes) == 4
+    assert result.condition_number < 1.0e3
+    assert result.acceptance.status == "review"
+    assert result.acceptance.accepted is True
+    assert any("CO_carbonyl/CO_single" in item for item in result.acceptance.review_items)
+    assert result.weighted_rms_after < result.weighted_rms_before
+    assert {block.molecule for block in result.molecule_blocks} == {
+        "maleic_anhydride",
+        "phthalic_anhydride",
+        "succinic_anhydride",
+    }
+    assert (tmp_path / "anhydrides_parent_only" / "ensemble_class_report.csv").exists()
+
+
 def test_anhydrides_prior_comparison_writes_variants(tmp_path):
     root = Path(__file__).resolve().parents[2]
     job = root / "examples" / "semiexp" / "anhydrides_ensemble" / "anhydrides_ensemble.mse-ensemble.toml"
@@ -162,8 +181,8 @@ def test_anhydrides_prior_comparison_writes_variants(tmp_path):
     assert results["no_prior"].acceptance.status == "rejected"
     assert results["soft_prior"].acceptance.status == "review"
     assert results["hard_constraint"].acceptance.status == "review"
-    assert results["soft_prior"].rank == 9
-    assert results["hard_constraint"].rank == 5
+    assert results["soft_prior"].rank == 8
+    assert results["hard_constraint"].rank == 4
     assert (tmp_path / "comparison" / "ensemble_prior_comparison.csv").exists()
     assert (tmp_path / "comparison" / "soft_prior" / "ensemble_manifest.json").exists()
     assert (tmp_path / "comparison" / "prior_scan" / "prior_sigma_scan.csv").exists()
@@ -181,7 +200,7 @@ def test_glycine_conformer_ensemble_uses_continuous_synthon_atom_types(tmp_path)
     job = root / "examples" / "semiexp" / "glycine_ensemble" / "glycine_conformers_synthon.mse-ensemble.toml"
     result = fit_ensemble_job(job, outdir=tmp_path / "glycine_synthon")
 
-    assert result.rank == 11
+    assert result.rank == 10
     assert result.condition_number < 1.0e4
     assert result.acceptance.status == "accepted"
     assert result.acceptance.accepted is True
@@ -194,8 +213,8 @@ def test_glycine_conformer_ensemble_uses_continuous_synthon_atom_types(tmp_path)
     scan = run_ensemble_synthon_threshold_scan(job, tmp_path / "glycine_scan", thresholds=(0.01, 0.035, 0.1))
     assert [row["status"] for row in scan] == ["ok", "ok", "ok"]
     assert [row["acceptance_status"] for row in scan] == ["accepted", "accepted", "rejected"]
-    assert int(scan[0]["rank"]) == int(scan[1]["rank"]) == 11
-    assert int(scan[2]["rank"]) < 11
+    assert int(scan[0]["rank"]) == int(scan[1]["rank"]) == 10
+    assert int(scan[2]["rank"]) < 10
     assert (tmp_path / "glycine_scan" / "synthon_threshold_scan.csv").exists()
 
 

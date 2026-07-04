@@ -18,7 +18,7 @@
 
 \begin{document}
 
-\title{Algorithmic Generation and Exploitation of Topology-Aware Models for Semiexperimental Structure Refinement}
+\title{Algorithmic Construction and Exploitation of Topology-Constrained Refinement Models for Semiexperimental Equilibrium Structures}
 
 \author{Vincenzo Barone}
 \email{vincebarone52@gmail.com}
@@ -29,7 +29,7 @@
 Semiexperimental equilibrium structures combine high-resolution rotational
 spectroscopy with computed vibrational and electronic corrections. The
 least-squares solution of a chosen refinement model is now routine; the less
-formalized step is the generation of that model. Active coordinates,
+formalized step is the construction of that model. Active coordinates,
 symmetry, weakly determined directions, constraints, and parameter classes are
 still often selected by expert intervention, especially for cyclic, fused, and
 bridged molecular graphs.
@@ -37,9 +37,13 @@ bridged molecular graphs.
 This paper introduces \texttt{MORPHEUS} (Model Optimization and Refinement from
 Perceived Hierarchy, Equivalence, Uncertainty, and Symmetry), a framework that
 turns model formulation into an auditable topology-perception problem. The
-resulting models are not merely topology-aware: the active representation and
-all constraint or parameter-class relations are topology-derived,
-symmetry-consistent, rank-consistent, and recorded. Molecular topology defines
+semiexperimental refinements reported here are the principal validation, but
+the construction is more general: it provides an algorithmic way to build
+constrained refinement models from topology, symmetry, rank, and external
+reference information before any numerical least-squares solution is attempted.
+The resulting models are not merely topology-aware: the active representation and
+all constraint or parameter-class relations are generated from the perceived
+graph, symmetry-consistent, rank-consistent, and recorded. Molecular topology defines
 the primitive coordinate space, symmetry selects the admissible active
 subspace, isotopic coverage determines which directions are supported, and
 electronic-structure reference information enters only through explicit
@@ -56,9 +60,9 @@ planar aromatic, fused, bridged, and flexible benchmarks shows that the same
 rank, effective dimension, and rotational residuals are obtained without
 manual coordinate-model formulation, while final structural parameters and
 uncertainties remain chemically interpretable. A 49-atom testosterone scale
-check further shows how quantum chemical equilibrium geometries, accelerated vibrational
-corrections, and MORPHEUS class-constrained model generation can be
-combined for large molecular systems.
+check further shows that quantum chemical equilibrium geometries, accelerated
+vibrational corrections, and class-constrained model generation can be combined
+for large molecular systems.
 
 \end{abstract}
 
@@ -89,46 +93,43 @@ observables, include theoretical predicates when experimental information is
 incomplete, and propagate covariance to derived structural
 parameters.\cite{Bartell1975Predicate} Their common prerequisite is that the
 refinement model has already been formulated. That prerequisite is not
-innocent: the active coordinates, symmetry restrictions, isotopic-coverage
-assumptions, reference information, constraints, and parameter classes define
-the statistical problem being solved.
+innocent, especially for rings, fused systems, and bridged frameworks. A
+molecular graph with cycles is not a tree; different reference paths can make
+one distance, angle, or torsion primary and an equivalent one derived. For
+such systems, construction of a symmetry-consistent non-redundant refinement
+model is itself a major part of the semiexperimental analysis. The target of
+the present work is therefore not a new least-squares observable or a
+molecule-specific improvement in residuals, but an algorithmic route from
+perceived topology to a reproducible statistical refinement model.
+Although semiexperimental structure refinement is the principal use case
+developed here, the same construction applies more generally to constrained
+refinement models in which topology, symmetry, rank, and external information
+must be combined before the numerical fit is solved.
 
-This issue is modest for small acyclic molecules, but becomes central for
-rings, fused systems, and bridged frameworks. A molecular graph with cycles is
-not a tree; different reference paths can make one distance, angle, or torsion
-primary and an equivalent one derived. For such systems, construction of a
-symmetry-consistent non-redundant refinement model is itself a major part of
-the semiexperimental analysis. The target of the present work is therefore
-not a new least-squares observable or a molecule-specific improvement in
-residuals, but an algorithmic route from perceived topology to a reproducible
-statistical refinement model.
-
-Recent automated workflows have extended semiexperimental refinement by
-combining computed starting geometries, quantum chemical (QC) vibrational corrections, and
-reduced-dimensionality models.\cite{Mendolicchio2025FastDvib} \texttt{MORPHEUS}
-(Model Optimization and Refinement from Perceived Hierarchy, Equivalence,
-Uncertainty, and Symmetry) uses such data as upstream inputs while making the
-refinement model itself topology-derived. Reference geometries from QC
+Recent workflows have extended semiexperimental refinement by combining
+computed starting geometries, quantum chemical (QC) vibrational corrections, and
+reduced-dimensionality models.\cite{Mendolicchio2025FastDvib} The implementation
+developed here uses such data as upstream inputs while making the refinement
+model itself graph-defined rather than hand specified. Reference geometries from QC
 computations or from fragment libraries (e.g., LCB25\cite{Lazzari2025LCB25})
 enter only as chemically explicit constraints, predicates, or parameter
 classes; the fitted variables remain the algorithmically generated
 non-redundant active coordinates. This separation is important for larger
 molecules. Accurate QC equilibrium geometries and vibrational corrections are
-prerequisites for a meaningful comparison with ground-state rotational
-constants; the framework adds the missing step of converting those
-ingredients into an explicit, rank-audited refinement model without
-molecule-specific coordinate design.
+prerequisites for comparison with ground-state rotational constants; the
+framework adds the missing step of converting those ingredients into an
+explicit, rank-audited refinement model without molecule-specific coordinate
+design.
 
-The resulting topology-derived workflow starts from Cartesian coordinates. A first set
-of primitive generalized internal coordinates (GICs) is built, redundancies within homogeneous
-coordinate families are removed, symmetry is assigned, and the totally symmetric
-active space is defined. The advisor then analyzes isotope coverage, symmetry orbits,
-chemical descriptors, and reference data to generate compatible constraints,
-predicates, and parameter classes. Two active spaces are available:
-symmetry-adapted GICs and symmetry-adapted Cartesians obtained after removing
-translations and rotations. Constraints remain primitive internal-coordinate
-relations and are projected onto either active basis by the Wilson matrix or
-the corresponding derivative operator.\cite{Wilson1955}
+The procedure starts from Cartesian coordinates. Primitive GICs are built,
+redundancies are removed within homogeneous coordinate families, symmetry is
+assigned, and the totally symmetric active space is defined. Isotope coverage,
+symmetry orbits, chemical descriptors, and reference data then generate
+compatible constraints, predicates, and parameter classes. Two active spaces
+are available: symmetry-adapted GICs and symmetry-adapted Cartesians after
+removal of translations and rotations. Constraints remain primitive
+internal-coordinate relations and are projected onto either active basis by
+the Wilson matrix or the corresponding derivative operator.\cite{Wilson1955}
 
 The rotational semiexperimental problem is used here as a demanding test
 because it exposes both rank deficiencies and chemically meaningful
@@ -144,7 +145,7 @@ large-molecule scale demonstration.
 
 \section{Theory and Method}
 
-\subsection{Overview of the MORPHEUS Framework}
+\subsection{Overview of the Framework}
 
 The overall architecture is summarized in
 Figure~\ref{fig:workflow-architecture}. The key separation is between the
@@ -208,7 +209,7 @@ basis used to solve the refinement.
 \draw[arrow] (sefit) -- (result);
 \end{tikzpicture}
 }
-\caption{Architecture of the \texttt{MORPHEUS} model-generation framework.}
+\caption{Architecture of the model-generation framework.}
 \label{fig:workflow-architecture}
 \end{figure*}
 
@@ -220,10 +221,13 @@ topology. Bonded pairs and ring connectivity define a primitive set of internal
 coordinates:  stretches, valence angles, torsions, out-of-plane deformations,
 linear bends, and ring-specific primitives. Redundancy is intentional at this
 stage because it lets topology, not a manually chosen reference path, decide
-which combinations survive. For cyclic systems, endocyclic torsions and
-analogous endocyclic valence-angle combinations provide ring coordinates
-within the GIC formalism, so monocyclic, fused-ring, bridged, and polycyclic
-systems are handled by the same machinery.\cite{CremerPople1975} This
+which combinations survive. For cyclic systems, endocyclic valence-angle
+combinations describe ring bending, whereas the endocyclic torsional manifold
+is reported through ring-puckering descriptors such as $q$ and $\phi$. These
+descriptors are constructed from the underlying dihedral combinations but are
+more stable and interpretable than individual endocyclic torsions, so
+monocyclic, fused-ring, bridged, and polycyclic systems are handled by the
+same machinery.\cite{CremerPople1975} This
 primitive layer is also the chemical interface for constraints, predicates,
 and parameter classes.
 
@@ -257,6 +261,8 @@ displacements are related to first order by the Wilson matrix\cite{Wilson1955}
 \end{equation}
 
 For each homogeneous primitive family $\alpha$, the Wilson block
+$\mathbf{B}_{s_\alpha}$ is submitted to a singular-value
+decomposition,\cite{GolubReinsch1970}
 
 \begin{equation}
 \mathbf{B}_{s_\alpha}
@@ -264,8 +270,6 @@ For each homogeneous primitive family $\alpha$, the Wilson block
 \frac{\partial\mathbf{s}_\alpha}
 {\partial\mathbf{x}} .
 \end{equation}
-
-is submitted to a singular-value decomposition,\cite{GolubReinsch1970}
 
 \begin{equation}
 \mathbf{B}_{s_\alpha}
@@ -319,6 +323,19 @@ lost because a different primitive family happened to enter the rank test
 first. After family-wise reduction, residual dependencies are pruned with
 deterministic topological tie breaking and the final basis is checked against
 the expected vibrational rank.
+This is a restriction on the admissible coordinate transformations, not on the
+rank test itself. A global SVD of the full redundant primitive set would also
+produce an orthonormal basis for the row space, but its left singular vectors
+are free to mix primitives with different chemical meaning whenever their
+Cartesian derivatives are linearly coupled or nearly degenerate. The numerical
+rank would be correct, whereas the resulting coordinates could contain
+arbitrary stretch--bend--torsion admixtures whose composition changes with
+scaling, ordering, or small geometry perturbations. Performing the rank
+reduction in homogeneous primitive families instead preserves the direct map
+between each retained coordinate and the chemical relation used for
+constraints, predicates, classes, and uncertainty propagation; only residual
+linear dependencies between already interpretable coordinates are removed in
+the final pruning step.
 Cartesian displacements associated with GIC corrections use a rank-controlled
 minimum-norm pseudoinverse with explicit singular-value thresholds. The
 symmetry-Cartesian route uses the same selection, constraint projection, and
@@ -730,7 +747,8 @@ primary fitted covariance matrix.\cite{Kanzow2025PCCP}
 The practical distinction is summarized in Table~\ref{tab:workflow-comparison}.
 The workflow retains the usual semiexperimental inputs and diagnostics while
 moving coordinate construction, symmetry completion, constraint and class
-generation, and covariance propagation to a common topology-derived layer. The
+generation, and covariance propagation to a common graph, symmetry, and rank
+layer. The
 user still controls the chemical problem and the quality of the input data;
 what is removed is the need to hand-build the non-redundant refinement model.
 
@@ -746,9 +764,9 @@ statistical quality of a particular fit.}
 Feature & Z-matrix & User GIC or PROSPE & \texttt{MORPHEUS} \\
 \midrule
 Input model & Internal tree & User model & Cartesian topology \\
-Active variables & Manual & Manual & Auto rank-pruned \\
-Rings/bridges & Tree-dependent & User-defined & Auto primitives \\
-Missing isotopes & Manual constraints & Manual classes & Advisor constraints \\
+Active variables & Manual & Manual & Rank-pruned \\
+Rings/bridges & Tree-dependent & User-defined & Graph-derived primitives \\
+Missing isotopes & Manual constraints & Manual classes & Generated constraints \\
 Symmetry & In model & User supplied & Detected and audited \\
 Output audit & Supplied model & Workflow dependent & Manifest and covariance \\
 \bottomrule
@@ -775,7 +793,7 @@ corrections.
 \section{Results and Discussion}
 
 The systems are discussed in the order in which they test increasingly
-demanding parts of the same algorithmic model-generation problem. Glycolaldehyde is
+demanding parts of the same model-generation problem. Glycolaldehyde is
 the acyclic reference case; cyclopentadiene tests ring closure; nitrobenzene
 and azulene test planar-component selection and fused aromatic topology;
 norcamphor tests bridged graphs and hydrogen-frame constraints. The anhydride
@@ -851,22 +869,24 @@ diagnostics, and final structural tables.}
 \centering
 \includegraphics[width=0.92\linewidth]{figures/benchmark_overview.pdf}
 \caption{Algorithmic model-generation audit for the representative
-refinements. The left panel reports the number of coordinates generated
-algorithmically, the symmetry-active subset before constraint
-projection, and the final least-squares variables after reduction. The right
-panel reports the number of constraints or frozen primitive parameters
-projected by the model layer. Manual coordinate-model edits are zero for every
-case. Detailed fit residuals and ranks are collected in the Supporting
-Information.}
+refinements. The top guide links the manual formulation problem to the
+generated model: topology perception, symmetry analysis, and isotopic coverage
+replace molecule-specific coordinate edits. The left panel reports the number
+of coordinates generated algorithmically, the symmetry-active subset before
+constraint projection, and the final least-squares variables after reduction.
+The right panel reports the number of constraints or frozen primitive
+parameters projected by the model layer. Manual coordinate-model edits are zero
+for every case. Detailed fit residuals and ranks are collected in the
+Supporting Information.}
 \label{fig:benchmark-overview}
 \end{figure*}
 
-Figure~\ref{fig:benchmark-overview} is the central validation of the framework:
+Figure~\ref{fig:benchmark-overview} is the central validation of the method:
 it quantifies how topology perception, symmetry analysis,
-isotopic coverage, and reference information are transformed algorithmically
+isotopic coverage, and reference information are transformed
 into the final refinement model. The figure is therefore a
 model-generation audit, not simply a residual summary: it reports how many
-primitive/non-redundant coordinates are produced by the algorithmic generator, how many
+primitive/non-redundant coordinates are produced, how many
 remain active after symmetry selection, how many survive constraint
 projection, and how many constraints are introduced without manual parameter
 selection. The rotational residuals remain in the expected semiexperimental
@@ -887,14 +907,19 @@ leaves 18 effective variables. These are the cases in which manual model
 formulation is most exposed: fused rings and bridged frameworks make it
 difficult to decide by inspection which distances, angles, torsions, and
 hydrogen-frame quantities should be refined, tied, or constrained.
-Table~\ref{tab:manual-vs-morpheus} recasts the same information as model-
-formulation burden. The manual column lists the decision classes that would
-normally have to be settled before the least-squares fit; the generated column
-reports the resulting working model and residuals. Stretches, bends, torsions,
-out-of-plane terms, linear bends, and ring-deformation coordinates are generated
-from the perceived graph and reduced in homogeneous families. Consequently, a
-stretching coordinate cannot replace a torsion or a ring coordinate during rank
-reduction.
+Table~\ref{tab:manual-vs-morpheus} recasts the same information as an
+operator comparison. The comparison is not based on elapsed time, which is
+operator- and implementation-dependent, but on reproducible decision classes:
+which cyclic or bridged coordinates to use, which symmetry block to refine,
+which unsupported directions require constraints, which planar rotational
+components are admissible, and which parameters must remain active after rank
+projection. In a manual workflow these choices precede the least-squares
+solution and are a common source of non-reproducibility. In the reported runs
+they are made by topology perception, symmetry assignment, coverage analysis,
+and rank checks. Stretches, bends, torsions, out-of-plane terms, linear bends,
+and ring-deformation coordinates are generated from the perceived graph and
+reduced in homogeneous families. Consequently, a stretching coordinate cannot
+replace a torsion or a ring coordinate during rank reduction.
 
 \begin{table*}
 \caption{Decision burden removed by algorithmic model generation. Manual setup time
@@ -906,30 +931,34 @@ reported runs.}
 \scriptsize
 \setlength{\tabcolsep}{3.5pt}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{@{}llllll@{}}
+\begin{tabular}{@{}lllllll@{}}
 \toprule
-Case & Manual workflow would decide & Generated model & Constraints/classes & Result & Manual edits \\
+Case & Manual workflow would decide & Automated model decisions & Generated model & Constraints/classes & Result & Manual edits \\
 \midrule
 Azulene &
 fused-ring coordinates; symmetry; active variables; planar pair &
+4 &
 48 GICs; 17 symmetric; 10 variables &
 8 primitive constraints &
 0.073 MHz RMS &
 0 \\
 Norcamphor &
 bridged coordinates; active variables; H-frame constraints; covariance targets &
+4 &
 48 GICs; 48 active; 18 variables &
 30 H-frame constraints &
 0.071 MHz RMS &
 0 \\
 Glycine I &
 symmetry; unsupported H-frame directions; active variables &
+3 &
 24 GICs; 15 $A'$; 11 variables &
 4 QC constraints &
 0.0269 MHz RMS &
 0 \\
 Glycine II &
 low-symmetry active space; coupled descriptors; unsupported directions &
+3 &
 24 GICs; 19 variables &
 5 QC constraints; coupled classes &
 0.249 MHz RMS &
@@ -942,10 +971,10 @@ low-symmetry active space; coupled descriptors; unsupported directions &
 The agreement with reference-quality refinements is therefore obtained after
 removing the molecule-specific model-design step, not after tuning it.
 
-The three anhydrides were selected as a homologous literature-data series, not
-as unrelated examples. They have the same chemical motif but progressively
+The three anhydrides were selected as a homologous literature-data series
+with a common chemical motif but progressively
 different experimental completeness, and therefore test different parts of
-the workflow. Maleic anhydride is the fully determined case: the published
+the model layer. Maleic anhydride is the fully determined case: the published
 work of Vogt, Demaison, and Rudolph\cite{Vogt2011MaleicAnhydride} reports the
 parent geometry, ground-state rotational constants, rovibrational corrections,
 and semiexperimental constants for a sufficiently rich isotopic set. Phthalic
@@ -998,9 +1027,10 @@ not select active coordinates or construct a Z-matrix; instead, the program
 identifies unsupported structural directions and expresses them as primitive
 internal-coordinate relations, which are subsequently projected onto the
 algorithmically generated active space. The same representation also makes
-ring coordinates explicit: endocyclic bends and torsions are generated as
-linear combinations of primitive valence angles or dihedral angles rather than
-as molecule-specific coordinate choices.
+ring coordinates explicit: endocyclic bends are generated from primitive
+valence angles, while ring-puckering descriptors such as $q$ and $\phi$ are
+constructed from the endocyclic dihedral manifold rather than selected as
+molecule-specific torsions.
 
 \begin{table*}[t]
 \caption{Chemically readable primitive-coordinate relations generated by the
@@ -1019,7 +1049,7 @@ C--O--H angle & \texttt{AOH = A(C,O,H)} & preserves hydroxyl orientation \\
 H--N--H angle & \texttt{HNH = A(H,N,H')} & constrains amino frame \\
 NH$_2$ wag & \texttt{WNH2 = OOP(H,N,H',C)} & removes unsupported wagging direction \\
 Endocyclic bend & \texttt{RB = sum c(i) A(i,j,k)} & defines ring valence coordinate \\
-Endocyclic torsion & \texttt{RT = sum c(i) D(i,j,k,l)} & defines ring puckering/torsional coordinate \\
+Ring puckering & \texttt{q, phi = f(D-ring set)} & reports puckering from endocyclic dihedrals \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1064,7 +1094,7 @@ unacceptable valleys. The comparison makes the distinction operational:
 constraints remove unsupported directions, predicates add observations with
 declared uncertainty, and parameter classes tie equivalent corrections. 
 
-\begin{figure}
+\begin{figure}[!htb]
 \centering
 \includegraphics[width=0.82\linewidth]{figures/planar_pair_diagnostics.pdf}
 \caption{Planar-component selection for nitrobenzene and azulene: the selected 
@@ -1079,6 +1109,38 @@ constants to be fitted, and retains the third rotational constant as
 an external check computed from the final Cartesian geometry.
 Figure~\ref{fig:planar-pair-diagnostics} shows that the $AB$ pair gives the
 smallest complete diagnostic residual for both nitrobenzene and azulene.
+
+The condition numbers in the benchmark table should be interpreted as
+diagnostics of the inverse problem, not as residual-quality measures.
+Nitrobenzene is the clearest example. It fits only the planar $AB$ component
+pair from nine isotopologues while retaining 13 active variables and eight
+primitive constraints; several deuterated substitutions therefore carry
+substantial leverage on directions that are weakly separated by the moments of
+inertia. The result is a high condition number
+($2.75\times10^4$) even though the final rotational RMS residual is only
+0.148~MHz. Azulene, by contrast, has a larger fused-ring coordinate space but
+the algorithmic reduction leaves only 10 effective variables, and the
+additional isotopic coverage and primitive constraints distribute the
+spectroscopic information more evenly. Its condition number is therefore
+lower ($9.57\times10^2$) despite the more complex topology. The same reading
+applies to the other benchmarks: high condition numbers flag directions whose
+uncertainties or influence diagnostics must be inspected, whereas acceptable
+residuals alone do not prove that the structural model is statistically
+well supported.
+
+\input{generated/sensitivity_leave_one_out}
+
+Table~\ref{tab:leave-one-out-sensitivity} gives a direct sensitivity check.
+Maleic anhydride is stable under exact leave-one-isotopologue refits: the
+worst omitted-isotopologue RMS is 0.086~MHz and the largest Cartesian shift is
+$5\times10^{-4}$~\AA. Nitrobenzene remains predictive for most omissions, but
+the deuterated isotopologues expose the expected weak directions: the worst
+omitted RMS rises to 0.388~MHz and one refit reaches a condition number of
+$3.7\times10^5$. This is precisely the regime in which the algorithmic
+model is useful to an operator: it does not hide the problem behind a small
+training residual, but reports the rank, condition number, influence, and
+leave-one-out diagnostics needed to decide whether additional data or stronger
+model relations are required.
 
 \begin{figure}
 \centering
@@ -1143,7 +1205,7 @@ of hard primitive-coordinate constraints.}
 \setlength{\tabcolsep}{2.5pt}
 \begin{tabular}{lllll}
 \toprule
-System & GIC space & Variables & Auto constraints & Classes \\
+System & GIC space & Variables & Generated constraints & Classes \\
 \midrule
 Glycine I & 24 GICs; 15 $A'$ & 11 & 4 QC functional constraints & none \\
 Glycine II & 24 GICs; C$_1$ & 19 & 5 QC functional constraints & coupled descriptors \\
@@ -1197,9 +1259,9 @@ from QC geometries when hydrogen-related directions are only partly supported.
 \draw[flowarrow] (adv) -- (fit);
 \draw[flowarrow] (fit) -- (out);
 \end{tikzpicture}
-\caption{End-to-end algorithmic glycine refinement starting from QC Cartesian reference 
+\caption{End-to-end glycine refinement starting from QC Cartesian reference 
 geometries and vibrational corrections.
-The workflow uses the common job/xyzin container, chemical descriptors, and isotope
+The calculation uses the common job/xyzin container, chemical descriptors, and isotope
 coverage to generate the active coordinate and constraint model without manually 
 selected fit variables.}
 \label{fig:glycine-algorithmic-flow}
@@ -1236,7 +1298,7 @@ differences, two methylene angular combinations, and an average H--N--C--C
 torsion. These constraints are then projected onto the
 24-dimensional C$_1$ GIC space.
 
-\begin{table}[htbp]
+\begin{table}[!htb]
 \caption{Glycine II constraint-source comparison. Both calculations used GIC coordinates, moments of inertia as observables, and the same 10 corrected Gly-IIn rotational data sets. Rotational residuals are reported over the diagnostic $A$, $B$, and $C$ constants in MHz. The last column is the mean-square convention used for comparison with the published glycine refinement, not a second RMS value.}
 \label{tab:glycine-constraint-comparison}
 \begin{tabular}{lrrrr}
@@ -1268,12 +1330,12 @@ T1-H2$^{-}$-gp conformer.\cite{Uribe2024SteroidHormones} This is a useful large
 molecule test because this level of treatment is rarely available for systems
 of this size: an accurate QC equilibrium geometry, accelerated
 $\Delta B_\mathrm{vib}$ corrections, and algorithmic model generation are
-combined in one black-box protocol.
+combined in one reproducible protocol.
 
 The unrefined QC+$\Delta B_\mathrm{vib}$ residuals with respect to the corrected
 experimental constants are $4.638$, $0.674$, and $0.563$ MHz for $A$, $B$, and
 $C$, respectively. After a 141-dimensional non-redundant space is built, the
-class layer applies a single topology-derived C--C skeletal stretch class.
+class layer applies a single graph-defined C--C skeletal stretch class.
 Operationally, non-skeletal stretch combinations and the angular, torsional,
 and out-of-plane families are held fixed for this parent-only diagnostic, while
 the retained C--C stretch block is replaced by one shared variable after rank
@@ -1286,18 +1348,18 @@ refinement can be chained for a 49-atom fused-ring molecule, where sufficiently
 rich isotopic substitution data are not presently available for a full
 validation of the fit engine.
 
-\begin{figure}
-\centering
-\includegraphics[width=0.72\linewidth]{figures/testosterone_qc.jpg}
-\caption{Testosterone T1-H2$^{-}$-gp large-molecule scale demonstration.}
-\label{fig:testosterone-scale-check}
-\end{figure}
+\begin{center}
+\includegraphics[width=0.90\linewidth]{figures/testosterone_qc_cropped.jpg}
 
-\begin{table}[htbp]
-\caption{Testosterone T1-H2$^{-}$-gp scale check. Residuals are relative to
-the corrected experimental equilibrium constants derived from the published
-$B_0$ and $\Delta B_\mathrm{vib}$ values.}
-\label{tab:testosterone-scale-check}
+\smallskip
+\scriptsize Testosterone large-molecule scale demonstration.
+
+\medskip
+\scriptsize
+Residuals are relative to the corrected experimental equilibrium constants
+derived from the published $B_0$ and $\Delta B_\mathrm{vib}$ values.
+
+\smallskip
 \begin{tabular}{lrrrr}
 \toprule
 Model & Variables & $\Delta A$ & $\Delta B$ & $\Delta C$ \\
@@ -1306,18 +1368,19 @@ QC+$\Delta B_\mathrm{vib}$ & 0 & 4.638 & 0.674 & 0.563 \\
 Class-constrained fit & 1 & -0.027 & 0.633 & 0.291 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
 
 \section{Conclusions}
 
-The central contribution of this work is to move semiexperimental model formulation into a
-single auditable algorithm. Existing refinement methods generally assume that
+The central contribution of this work is a general framework for constructing
+constrained refinement models, demonstrated here through semiexperimental
+structure refinement. Existing refinement methods generally assume that
 the coordinate model has already been supplied; here topology perception,
 symmetry assignment, homogeneous rank pruning, constraint projection,
 least-squares solution, and covariance propagation are part of one calculation
 rather than separate user decisions.
 
-The benchmarks show that the resulting models remain topology-derived,
+The benchmarks show that the resulting models remain graph-defined,
 symmetry-consistent, rank-consistent, and non-redundant for acyclic, cyclic,
 planar, fused, bridged, homologous anhydride, glycine, and large fused-ring
 cases. The program selects the active symmetry space, removes redundant
@@ -1349,11 +1412,21 @@ semiexperimental structure from a parent-only data set; instead, it shows that
 an accurate large-molecule QC geometry, accelerated $\Delta B_\mathrm{vib}$
 corrections, algorithmic non-redundant GIC generation, and class-constrained
 refinement can be chained for a 49-atom fused-ring molecule in a
-reproducible black-box calculation. This closes the loop from accurate
+reproducible calculation. This closes the loop from accurate
 large-molecule QC structures to algorithmically generated spectroscopic
 refinement models.
+The framework therefore performs two coupled tasks simultaneously: it
+constructs the refinement model algorithmically and refines the initial
+equilibrium geometry toward the semiexperimental solution. Model generation
+and structural refinement are integrated into a single workflow rather than
+being treated as separate steps.
 The essential shift is from expert-dependent model formulation to reproducible
-algorithmic model generation.
+algorithmic model generation. The algorithm replaces expert-dependent model
+formulation rather than expert chemical judgement.
+Although motivated by semiexperimental equilibrium structures, the underlying
+graph-driven model-construction strategy is applicable to any constrained
+refinement problem requiring simultaneous treatment of topology, symmetry, rank
+deficiency, and external structural information.
 
 \section*{Supporting Information Available}
 

@@ -1,30 +1,29 @@
 Multi-molecule class-correction SE refinement
 molecules: 3
-classes: 5
-rank: 5
-residual degrees of freedom: 39
-scaled condition number: 79.083017
+classes: 4
+rank: 4
+residual degrees of freedom: 40
+scaled condition number: 69.486034
 weighted RMS before: 0.18437253
-weighted RMS after: 0.06775626
+weighted RMS after: 0.1111079
 acceptance: review
 
 Acceptance review items:
-  class corrections CO_carbonyl/CO_single have correlation -0.997071
+  class corrections CO_carbonyl/CO_single have correlation -0.998255
 
 Numerical diagnostics:
   warning: 1 class-correction pair(s) have |correlation| >= 0.98
 
 Highly correlated class corrections:
-  CO_carbonyl / CO_single: -0.997071
+  CO_carbonyl / CO_single: -0.998255
 
 Class corrections:
-  CC_short: -0.0001285031693 +/- 0.002348
-  CC_long:  0.004980643348 +/- 0.007058
-  CO_carbonyl: -0.009459952577 +/- 0.03645
-  CO_single:  0.0092044386 +/- 0.03223
-  CH_stretch: -0.01889333464 +/- 0.03235
+  CC_short: -4.344286067e-05 +/- 0.002343
+  CC_long:  0.004177326687 +/- 0.006923
+  CO_carbonyl: -0.01278055581 +/- 0.036
+  CO_single:  0.01122087864 +/- 0.03204
 
 Molecule blocks:
-  maleic_anhydride: rows=20 active_gics=8 rank=5 rms 0.00309731->0.0897472 matches=[CC_short=5, CC_long=4, CO_carbonyl=3, CO_single=1, CH_stretch=2]
-  phthalic_anhydride: rows=14 active_gics=14 rank=5 rms 0.151617->0.0296355 matches=[CC_short=9, CC_long=7, CO_carbonyl=3, CO_single=1, CH_stretch=4]
-  succinic_anhydride: rows=10 active_gics=9 rank=4 rms 0.34259->0.0534914 matches=[CC_short=0, CC_long=4, CO_carbonyl=4, CO_single=2, CH_stretch=1]
+  maleic_anhydride: rows=20 active_gics=8 rank=4 rms 0.00309731->0.112041 matches=[CC_short=5, CC_long=4, CO_carbonyl=3, CO_single=1]
+  phthalic_anhydride: rows=14 active_gics=14 rank=4 rms 0.151617->0.0895718 matches=[CC_short=9, CC_long=7, CO_carbonyl=3, CO_single=1]
+  succinic_anhydride: rows=10 active_gics=9 rank=3 rms 0.34259->0.134086 matches=[CC_short=0, CC_long=4, CO_carbonyl=4, CO_single=2]

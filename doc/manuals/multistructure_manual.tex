@@ -1,0 +1,394 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{siunitx}
+
+\hypersetup{
+  hidelinks,
+  pdftitle={Multi-Structure MORPHEUS Manual},
+  pdfauthor={Merlino Development Team}
+}
+
+\definecolor{MerlinoSlate}{HTML}{4A5561}
+\definecolor{MerlinoBg}{HTML}{F7F8F6}
+\emergencystretch=2em
+
+\lstdefinestyle{merlino}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{MerlinoSlate!45},
+  backgroundcolor=\color{MerlinoBg},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+\newcommand{\program}{\texttt{MORPHEUS Multi-Structure}}
+\newcommand{\merlino}{\texttt{Merlino}}
+\newcommand{\morpheus}{\texttt{MORPHEUS}}
+\newcommand{\gicforge}{\texttt{GICForge}}
+\newcommand{\zeff}{Z_\mathrm{eff}}
+
+\title{\textbf{Multi-Structure MORPHEUS Manual}\\
+\large Shared class-correction refinement across related molecular structures}
+\author{Merlino Development Notes}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\program{} is the ensemble-refinement layer for related molecules, conformers
+or homologous series.  Instead of refining every molecule independently, it
+fits transferable corrections to classes of structural coordinates relative to
+their own quantum-chemical reference geometries.  The workflow is designed for
+systems where isotopic substitution is sparse for each molecule but chemical
+class information is shared across the set.  This manual describes the model,
+the TOML job format, class selectors, soft priors, hard constraints, synthon
+\(\zeff\) atom typing, diagnostics and recommended validation workflows.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Purpose}
+
+Single-molecule semiexperimental refinement uses isotopologues of one molecule
+to determine a non-redundant structural model.  Multi-structure refinement uses
+several related molecules to determine shared corrections to chemically
+equivalent coordinate classes.  The absolute structural parameters of different
+molecules are not forced to be equal.  What is shared is the correction to the
+computational reference for a declared coordinate class.
+
+This is useful for homologous series, conformer pairs and large isotope-poor
+molecules.  For example, two steroid hormones need not have equal C--C bond
+lengths, but a transferable bias in the computed C--C skeleton class may be
+estimated from rotational data for both molecules at once.  The same idea can
+separate C--C, C--O single, C=O, angular and torsional classes.  C--H
+distances can be retained at the high-level reference geometry, for example
+BDPCS3, when the available isotopic data mainly constrain the heavy-atom frame.
+
+\section{Theoretical Background}
+
+For molecule \(m\) and generated coordinate \(k\), the model is
+\[
+  q_m^\mathrm{SE}(k)
+  =
+  q_m^\mathrm{QC}(k)
+  +
+  \Delta_{c(m,k)} ,
+\]
+where \(q_m^\mathrm{QC}(k)\) is the quantum-chemical reference value,
+\(q_m^\mathrm{SE}(k)\) is the semiexperimental value implied by the ensemble
+fit, and \(c(m,k)\) is the class assigned to that coordinate.  The fitted
+unknowns are the class corrections \(\Delta_c\), not the full set of Cartesian
+coordinates of every molecule.
+
+Each molecule keeps its own geometry, topology, isotopologues, vibrational
+corrections, symmetry and active coordinate model.  The ensemble layer
+linearizes each molecule around its reference structure and builds one global
+weighted design matrix for the shared class corrections.  If \(r_m\) is the
+single-molecule spectroscopic residual and \(J_m\) is the derivative of that
+residual with respect to the molecule's active coordinates, the class
+projection \(C_m\) maps global corrections into molecule-specific coordinate
+changes:
+\[
+  \delta q_m = C_m \Delta .
+\]
+The global weighted least-squares problem is therefore assembled from blocks
+\[
+  r_m + J_m C_m \Delta .
+\]
+Soft priors add Gaussian observations of the form
+\[
+  \Delta_c = \Delta_c^{(0)} \pm \sigma_c ,
+\]
+whereas hard constraints remove or fix selected corrections.  This gives three
+natural variants: no prior, soft prior and hard constraint.  Comparing these
+variants is a core diagnostic because poorly supported broad classes may be
+rank-consistent but numerically ill-conditioned.
+
+\section{Ensemble Job Format}
+
+An ensemble job uses schema:
+
+\begin{lstlisting}[style=merlino]
+schema = "merlino.semiexp.ensemble.v1"
+title = "maleic, phthalic and succinic anhydrides shared class-correction fit"
+\end{lstlisting}
+
+\noindent
+The stable top-level sections are:
+
+\begin{longtable}{@{}p{0.22\linewidth}p{0.68\linewidth}@{}}
+\toprule
+Section & Meaning \\
+\midrule
+\endhead
+\texttt{[fit]} & Numerical finite-difference step and rank threshold. \\
+\texttt{[acceptance]} & Rank, conditioning, support and correlation policy. \\
+\texttt{[[molecules]]} & List of ordinary single-molecule MORPHEUS/SE jobs. \\
+\texttt{[[classes]]} & Transferable coordinate-class definitions, optional
+priors and optional synthon selectors. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Fit and acceptance policy}
+
+\begin{lstlisting}[style=merlino]
+[fit]
+step = 1.0e-4
+rcond = 1.0e-10
+
+[acceptance]
+require_full_rank = true
+max_condition_number = 1.0e8
+min_residual_degrees_of_freedom = 1
+min_molecule_support = 2
+high_correlation_review_threshold = 0.98
+high_correlation_reject_threshold = 0.9999
+\end{lstlisting}
+
+\noindent
+The result status is \texttt{accepted}, \texttt{review} or \texttt{rejected}.
+\texttt{accepted} means the model passes rank, conditioning, molecule-support
+and correlation checks.  \texttt{review} means the model is numerically usable
+but contains strongly correlated corrections.  \texttt{rejected} means the
+class model should not be used without changing classes, priors or atom typing.
+
+\subsection{Molecule list}
+
+\begin{lstlisting}[style=merlino]
+[[molecules]]
+name = "maleic_anhydride"
+job = "../maleic_anhydride/maleic_anhydride_ensemble.mse.toml"
+
+[[molecules]]
+name = "phthalic_anhydride"
+job = "../phthalic_anhydride/phthalic_anhydride_ensemble.mse.toml"
+\end{lstlisting}
+
+\noindent
+Each molecule points to an ordinary single-molecule job.  That job owns its
+geometry, isotopologues, vibrational corrections, coordinate model and
+single-molecule options.  The ensemble layer does not merge geometries; it
+merges only the class-correction parameters.
+
+\section{Class Selectors}
+
+A class must refer to one coordinate type.  The implementation rejects class
+definitions that mix stretches with bends, torsions or out-of-plane
+coordinates.  Selectors can use coordinate kind, atom symbols, value windows,
+substrings, primitive signatures or synthon \(\zeff\) values.
+
+\subsection{Atom-symbol selectors}
+
+Atom-symbol matching is chemically canonicalized by coordinate type:
+
+\begin{itemize}
+  \item stretches use an unordered atom pair;
+  \item bends preserve the central atom and canonicalize the two terminal atoms;
+  \item torsions use the unordered central-atom pair, i.e. the chemistry of the
+        central bond;
+  \item out-of-plane coordinates use the central atom.
+\end{itemize}
+
+\begin{lstlisting}[style=merlino]
+[[classes]]
+name = "CO_carbonyl"
+kind = "stretch"
+atoms = ["C", "O"]
+value_max = 1.28
+
+[[classes]]
+name = "CO_single"
+kind = "stretch"
+atoms = ["C", "O"]
+value_min = 1.28
+\end{lstlisting}
+
+\noindent
+Value windows are evaluated on the reference primitive values and allow broad
+symbol classes to be split into chemically distinct subclasses.
+
+\subsection{Soft priors and hard constraints}
+
+Soft priors are declared directly on classes:
+
+\begin{lstlisting}[style=merlino]
+[[classes]]
+name = "CCO_bend"
+kind = "bend"
+atoms = ["C", "C", "O"]
+prior_value = 0.0
+prior_sigma = 1.0e-3
+\end{lstlisting}
+
+\noindent
+They regularize weakly supported shared corrections without hiding the
+spectroscopic residuals.  A hard-constraint comparison fixes selected
+corrections, usually to zero, and removes them from the global variable set.
+The recommended analysis for a new chemical family is to compare no-prior,
+soft-prior and hard-constraint variants.
+
+\section{Synthon \texorpdfstring{\(Z_\mathrm{eff}\)}{Zeff} Typing}
+
+The preferred high-resolution atom typing is continuous synthon typing.  Each
+atom is described by an effective atomic number \(\zeff\), and two atoms are
+considered equivalent when their \(\zeff\) values differ by less than a
+declared threshold.  For a primitive coordinate, the chemically relevant
+ordered signature is used: unordered pair for stretches, central atom retained
+for bends, central bond for torsions, and central atom for out-of-plane
+coordinates.
+
+\begin{lstlisting}[style=merlino]
+[[classes]]
+name = "Ccarb_Ocarbonyl"
+kind = "stretch"
+atoms = ["C", "O"]
+synthon_zeff = [5.91, 7.865]
+synthon_threshold = 0.035
+\end{lstlisting}
+
+\noindent
+Discrete \texttt{synthon\_signatures} remain available for reproducibility
+checks, but thresholded \(\zeff\) classes are more transferable across
+conformers and homologous molecules.
+
+\section{Command-Line Workflows}
+
+\subsection{Production ensemble fit}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp-ensemble \
+  --job examples/semiexp/anhydrides_ensemble/anhydrides_ensemble.mse-ensemble.toml \
+  --outdir working/semiexp/anhydrides_ensemble
+\end{lstlisting}
+
+\subsection{Prior comparison}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp-ensemble-compare \
+  --job examples/semiexp/anhydrides_ensemble/anhydrides_ensemble.mse-ensemble.toml \
+  --outdir working/semiexp/anhydrides_prior_comparison \
+  --soft-prior-sigma 1.0e-3
+\end{lstlisting}
+
+\noindent
+This writes no-prior, soft-prior and hard-constraint variants and a summary
+comparison.  It is the preferred diagnostic when deciding whether a class model
+is chemically informative or merely numerically regularized.
+
+\subsection{Synthon threshold scan}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp-ensemble-synthon-scan \
+  --job examples/semiexp/glycine_ensemble/glycine_conformers_synthon.mse-ensemble.toml \
+  --outdir working/semiexp/glycine_synthon_scan \
+  --thresholds 0.015,0.025,0.035,0.050
+\end{lstlisting}
+
+\subsection{Paper artifact regeneration}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp-ensemble-paper \
+  --job examples/semiexp/anhydrides_ensemble/anhydrides_ensemble.mse-ensemble.toml \
+  --paper-dir doc/papers/ensemble_jpcl \
+  --outdir working/semiexp/anhydrides_full_analysis
+\end{lstlisting}
+
+\noindent
+This refreshes CSV/JSON diagnostics, prior-strength scan, leave-one-molecule-out
+diagnostics and LaTeX fragments for the JPCL-style multi-structure paper.
+
+\section{Output Files}
+
+\begin{longtable}{@{}p{0.40\linewidth}p{0.50\linewidth}@{}}
+\toprule
+Output & Meaning \\
+\midrule
+\endhead
+\texttt{ensemble\_class\_corrections.txt} & Human-readable correction report. \\
+\texttt{ensemble\_class\_corrections.csv} & Class correction, uncertainty and
+support summary. \\
+\texttt{ensemble\_class\_report.csv} & Per-class diagnostics, priors and
+acceptance information. \\
+\texttt{ensemble\_molecule\_blocks.csv} & Per-molecule row counts, matched
+coordinates and residual reduction. \\
+\texttt{ensemble\_manifest.json} & Scientific manifest for the fitted class
+model. \\
+\texttt{ensemble\_covariance.csv} & Covariance matrix for class corrections. \\
+\texttt{ensemble\_correlation.csv} & Correlation matrix for class corrections. \\
+\texttt{run\_manifest.json} & Workflow manifest written by CLI entry points. \\
+\bottomrule
+\end{longtable}
+
+The prior-comparison workflow also writes \texttt{ensemble\_prior\_comparison}
+CSV/JSON files and a prior-strength scan.  The paper workflow writes the same
+diagnostics plus generated LaTeX fragments.
+
+\section{Diagnostics and Acceptance}
+
+The minimum diagnostics for a production model are:
+
+\begin{itemize}
+  \item rank of the weighted design matrix;
+  \item scaled condition number;
+  \item residual degrees of freedom;
+  \item molecule support for each class;
+  \item class-correction standard errors;
+  \item covariance and correlation matrices;
+  \item weighted RMS before and after correction;
+  \item leave-one-molecule-out transfer score when enough molecules are
+        available.
+\end{itemize}
+
+\noindent
+The leave-one-molecule-out score is the held-out WRMS after prediction divided
+by the uncorrected held-out WRMS.  Values below one indicate transferability to
+the held-out molecule; values near or above one indicate that the class model is
+not predictive for that molecule.
+
+\section{Recommended Regression Set}
+
+Current scientific regression targets are:
+
+\begin{itemize}
+  \item maleic, phthalic and succinic anhydrides: no-prior, soft-prior and
+        hard-constraint comparisons;
+  \item glycine conformers I/II: continuous synthon \(\zeff\) atom typing and
+        threshold scan;
+  \item primitive signature canonicalization: torsions matched by central bond
+        and out-of-plane coordinates by central atom;
+  \item GUI job-writer round trip for fine selectors, soft priors and absolute
+        paths;
+  \item CLI manifest generation for scientific and workflow manifests.
+\end{itemize}
+
+\begin{lstlisting}[style=merlino]
+pytest merlino_semiexp/tests/test_ensemble.py \
+  gui/tests/test_ensemble_window_helpers.py
+\end{lstlisting}
+
+\section{Relation to MORPHEUS}
+
+\program{} is an extension of \morpheus{}, not a replacement for the
+single-molecule workflow.  Single-molecule MORPHEUS constructs and refines the
+best model supported by one molecule's isotopic information.  Multi-structure
+MORPHEUS asks a different question: which corrections to a quantum-chemical
+reference are transferable across a chemically related set?  The two workflows
+share coordinate generation, topology checks, primitive projections,
+constraints and manifests, but the fitted variables are different.
+
+\end{document}

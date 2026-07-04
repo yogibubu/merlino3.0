@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main_short"] 1782412219.98165 "main_short.aux" "main_short.bbl" "main_short" 1782412220.78898 0
-  "./main_shortNotes.bib" 1782412220.41892 0 d41d8cd98f00b204e9800998ecf8427e ""
+["bibtex main_short"] 1782421813.06835 "main_short.aux" "main_short.bbl" "main_short" 1782422355.45067 0
+  "./main_shortNotes.bib" 1782422355.09248 0 d41d8cd98f00b204e9800998ecf8427e ""
   "./references.bib" 1782381164.44985 10236 c92d005a823a20f0a0582c41699c0e02 ""
   "/usr/local/texlive/2026basic/texmf-dist/bibtex/bst/revtex/aipnum4-2.bst" 1601932770 68586 d1f3a99a81bc39d512a69a183f4980c1 ""
-  "main_short.aux" 1782412220.64712 13465 f6f983c2e0e38ac3aee3e491bf1c3906 "pdflatex"
+  "main_short.aux" 1782422355.31374 13457 cb5b280c1016ea8ceee4ca4f1688b175 "pdflatex"
   (generated)
   "main_short.bbl"
   "main_short.blg"
   (rewritten before read)
-["pdflatex"] 1782412220.00708 "main_short.tex" "main_short.pdf" "main_short" 1782412220.78914 0
+["pdflatex"] 1782422354.70434 "main_short.tex" "main_short.pdf" "main_short" 1782422355.45084 0
   "/Users/vincenzobarone/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1780393380 95375 ee6ec2f5bca3462d7da4ad3cc3840dca ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmbsy5.tfm" 1246382020 1120 1e8878807317373affa7f7bba4cf2f6a ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmbsy7.tfm" 1246382020 1120 7f9f170e8aa57527ad6c49feafd45d54 ""
@@ -73,7 +73,6 @@
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb" 1248133631 28902 2f5c04fd2884d1878057baa5aad22765 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1248133631 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb" 1248133631 32915 7bf7720c61a5b3a7ff25b0964421c9b6 ""
-  "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb" 1248133631 32587 1788b0c1c5b39540c96f5e42ccd6dae8 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb" 1248133631 32716 08e384dc442464e7285e891af9f45947 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb" 1248133631 32442 c975af247b6702f7ca0c299af3616b80 ""
   "/usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb" 1248133631 37944 359e864bd06cde3b1cf57bb20757fb06 ""
@@ -189,7 +188,7 @@
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1773577613 2966183 7e816689449d3f6043bf9fd379e55752 ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
   "figures/azulene_numbering.pdf" 1782378052.65143 13829 92470e24f1185bd6ef614bfa77d73191 ""
-  "figures/benchmark_overview.pdf" 1782411295.87265 22527 b89dd11e9e1f13580f09654b87df72f6 ""
+  "figures/benchmark_overview.pdf" 1782422142.5391 22590 06ec42dfb033e87a388b3636137eebe4 ""
   "figures/cyclopentadiene_numbering.pdf" 1782378052.48779 14818 3bcc458e888444c78c4be36e16b6e320 ""
   "figures/glycine_II_numbering.pdf" 1782378052.44729 13903 c1a20058aca16647c8b3a92ba510944f ""
   "figures/glycine_I_numbering.pdf" 1782378052.40664 13750 76469e8fe9d326bbd72b3241cba6c79e ""
@@ -203,11 +202,12 @@
   "figures/phthalic_anhydride_numbering.pdf" 1782378052.79407 15741 60d9dc8cc74dfb50cc311b42bd0183b4 ""
   "figures/planar_pair_diagnostics.pdf" 1782245469.97744 14387 8803c229d083af0d5a9a0943c6d1b14e ""
   "figures/succinic_anhydride_numbering.pdf" 1782378052.83658 14917 646000bbcf46696b333e6721e8832d8e ""
-  "figures/testosterone_qc.jpg" 1782410648.86968 21349 5fd203553a93882b834a2ddeb4f76a6c ""
+  "figures/testosterone_qc_cropped.jpg" 1782421603.18924 32853 c9ccac4c1228e46d95fc4a22d40b107e ""
   "generated/glycine_I_qc_rotational_comparison.tex" 1782410655.69164 1181 06e024da65f31a451bbbffc8700322dd ""
-  "main_short.aux" 1782412220.64712 13465 f6f983c2e0e38ac3aee3e491bf1c3906 "pdflatex"
-  "main_short.bbl" 1782412220.0045 21432 2c4e7f479ab71a2ff54eb5e69dc68ffd "bibtex main_short"
-  "main_short.tex" 1782412191.20702 60687 23d69e90cc3fcd9d4ac6e08901de5546 ""
+  "generated/sensitivity_leave_one_out.tex" 1782418122.66654 697 11a13945c7fc97aae7b1de46f86c460c ""
+  "main_short.aux" 1782422355.31374 13457 cb5b280c1016ea8ceee4ca4f1688b175 "pdflatex"
+  "main_short.bbl" 1782421813.08871 21432 2c4e7f479ab71a2ff54eb5e69dc68ffd "bibtex main_short"
+  "main_short.tex" 1782422346.90821 65254 c4f1aadf48c617a4d5e52cc39a9e30f5 ""
   (generated)
   "main_short.aux"
   "main_short.log"

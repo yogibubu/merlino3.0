@@ -1,0 +1,361 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{siunitx}
+
+\hypersetup{
+  hidelinks,
+  pdftitle={GF/PED Manual},
+  pdfauthor={Merlino Development Team}
+}
+
+\definecolor{MerlinoBlue}{HTML}{245C73}
+\definecolor{MerlinoSlate}{HTML}{4A5561}
+\definecolor{MerlinoGold}{HTML}{C88A2D}
+\definecolor{MerlinoBg}{HTML}{F7F8F6}
+\emergencystretch=2em
+
+\lstdefinestyle{merlino}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{MerlinoSlate!45},
+  backgroundcolor=\color{MerlinoBg},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+\newcommand{\program}{\texttt{GF/PED}}
+\newcommand{\merlino}{\texttt{Merlino}}
+\newcommand{\gicforge}{\texttt{GICForge}}
+\newcommand{\bohr}{\text{bohr}}
+
+\title{\textbf{GF/PED Manual}\\
+\large Wilson GF analysis, internal-coordinate force constants and potential-energy distributions in Merlino}
+\author{Merlino Development Notes}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\program{} is the \merlino{} workflow that transforms a Cartesian harmonic
+Hessian into an internal-coordinate Wilson GF problem, solves the harmonic
+vibrational eigenproblem and reports frequencies, internal force constants,
+normal modes and potential-energy distributions (PEDs).  The production path
+uses a frozen non-redundant \gicforge{} definition, so vibrational analysis,
+Gaussian input generation and structural refinement can share the same
+coordinate model.  This manual describes the theory, input contracts, command
+line and GUI workflows, Pulay-style scaling, output files and validation rules.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Purpose}
+
+The GF/PED module answers a specific question: given a Cartesian Hessian and a
+non-redundant internal-coordinate basis, what are the harmonic frequencies,
+normal modes, internal force constants and coordinate contributions in that
+basis?  It is deliberately separate from VPT2/VCI.  VPT2/VCI works in
+normal-coordinate quartic force fields; GF/PED works with a Cartesian Hessian,
+a Wilson B matrix and a non-redundant coordinate model.
+
+The preferred production workflow is \texttt{gic-gf}.  It reads a frozen
+\gicforge{} schema and a Gaussian FCHK Hessian adapter, evaluates the same GICs
+on the Hessian geometry or on an optional external geometry, transforms the
+Cartesian Hessian to the GIC basis and solves Wilson GF.  A simpler diagnostic
+workflow, \texttt{gf}, reads an FCHK file and generates a Merlino GIC basis on
+the fly; it is useful for quick checks but does not provide the same
+cross-module coordinate identity as a frozen \gicforge{} schema.
+
+\section{Theoretical Background}
+
+Let \(x\) be the \(3N\)-dimensional Cartesian coordinate vector, \(F_x\) the
+Cartesian harmonic Hessian in \(E_h/\bohr^2\), and \(m_i\) the atomic masses in
+amu.  For a non-redundant internal coordinate vector \(q\), the linearized
+relation between Cartesian and internal displacements is
+\[
+  dq = B\,dx ,
+\]
+where \(B=\partial q/\partial x\) is the Wilson B matrix.  The kinetic-energy
+matrix in internal coordinates is
+\[
+  G = B\,M^{-1}\,B^T ,
+\]
+where \(M^{-1}\) is the diagonal Cartesian inverse-mass matrix with each atomic
+mass repeated for \(x,y,z\).
+
+The internal-coordinate Cartesian backtransform used by the code is
+\[
+  A = M^{-1} B^T G^+ ,
+\]
+where \(G^+\) is the numerical inverse or pseudoinverse of \(G\).  The internal
+force-constant matrix is then
+\[
+  F_q = A^T F_x A .
+\]
+The matrix is explicitly symmetrized before the GF solution.  If Pulay-style
+diagonal scaling factors \(s_i\) are supplied, the scaled internal Hessian is
+\[
+  (F_q^\mathrm{scaled})_{ij}
+  =
+  (F_q)_{ij}\sqrt{s_i s_j}.
+\]
+This preserves symmetry and applies off-diagonal scaling as the geometric mean
+of the two diagonal factors.
+
+The Wilson GF eigenproblem is solved in symmetric form.  Since \(G\) is
+positive definite for a valid non-redundant basis, the code diagonalizes
+\[
+  G^{1/2} F_q G^{1/2}.
+\]
+The eigenvalues are converted to signed harmonic frequencies in cm\(^{-1}\).
+Negative eigenvalues are retained as negative frequencies and therefore expose
+transition-state or instability directions rather than being silently clipped.
+
+The internal normal modes are back-expressed in the GIC basis, and the
+potential-energy distribution for coordinate \(i\) in mode \(k\) is evaluated
+from the mode vector \(l_k\) as
+\[
+  \mathrm{PED}_{ik}
+  =
+  100\,
+  \frac{|l_{ik}(F_q l_k)_i|}
+       {\sum_j |l_{jk}(F_q l_k)_j|}.
+\]
+The absolute-value normalization makes the PED table robust for coupled modes
+with positive and negative cross terms, while retaining the relative
+coordinate contribution pattern.
+
+\section{Input Contracts}
+
+\subsection{Cartesian Hessian}
+
+The canonical internal object is \texttt{merlino\_gf.HessianInput}.  It stores
+atomic numbers, Cartesian coordinates in bohr, atomic masses in amu, a full
+symmetric Cartesian Hessian in \(E_h/\bohr^2\), optional harmonic frequencies
+from the source adapter and provenance metadata.  The current file adapter is
+Gaussian FCHK/FCH.
+
+The FCHK file must contain:
+
+\begin{itemize}
+  \item atomic numbers;
+  \item current Cartesian coordinates;
+  \item atomic masses;
+  \item Cartesian force constants;
+  \item harmonic frequencies when available.
+\end{itemize}
+
+\noindent
+GF/PED does not read geometries from Gaussian log text and does not use a
+Z-matrix.  The FCHK adapter is only a source of canonical Cartesian Hessian
+data.
+
+\subsection{Frozen GIC Definition}
+
+The production branch reads a \texttt{merlino.gic.definition.v1} JSON schema
+created by \texttt{gic-define}.  The schema contains primitive coordinates, the
+GIC coefficient matrix, labels, names, irreducible representations, point group,
+symmetrization flag and the Gaussian-readable GIC block.  GF/PED evaluates that
+frozen definition; it does not rerun topology perception, pruning or symmetry
+assignment.
+
+The atom count in the schema and in the FCHK input must agree.  If an optional
+geometry is supplied for the B matrix, it must describe the same atom ordering
+and the same topology.  Coordinates supplied through \texttt{--geometry} are in
+angstrom and are converted internally to bohr before B-matrix evaluation.
+
+\section{Command-Line Workflows}
+
+\subsection{Quick FCHK workflow}
+
+The quick workflow builds a Merlino GIC basis directly from the FCHK geometry:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gf \
+  --fchk working/gauin.fchk \
+  --out working/gf_ped_report.txt \
+  --csv-dir working/gf_csv
+\end{lstlisting}
+
+\noindent
+This branch is useful for diagnostics.  Because the GICs are generated inside
+the GF run, it should not be used when the analysis must be identical to a
+previous Gaussian input, SEfit/MORPHEUS refinement or GICForge manifest.
+
+\subsection{Frozen-GIC production workflow}
+
+The production workflow first freezes the coordinate model and then runs GF/PED:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic-define \
+  --geometry parent.xyz \
+  --out working/gic_definition.json \
+  --gaussian-out working/gauin
+
+python -m merlino gic-gf \
+  --schema working/gic_definition.json \
+  --fchk working/gauin.fchk \
+  --out working/gic_gf_ped_report.txt \
+  --csv-dir working/gic_gf_csv
+\end{lstlisting}
+
+\noindent
+If the B matrix must be evaluated on a geometry different from the FCHK
+geometry, pass:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic-gf \
+  --schema working/gic_definition.json \
+  --fchk working/gauin.fchk \
+  --geometry working/current.xyz \
+  --out working/gic_gf_ped_report.txt
+\end{lstlisting}
+
+\noindent
+This is useful for controlled diagnostics, but production vibrational analysis
+should normally evaluate the B matrix on the same equilibrium geometry used for
+the Hessian.
+
+\section{Pulay-Style Scaling}
+
+GF/PED accepts optional diagonal scaling factors in the GIC basis.  Scaling is
+applied after transformation of the Cartesian Hessian to internal coordinates
+and before the Wilson GF eigenproblem.  A scaling file is line-oriented text or
+CSV:
+
+\begin{lstlisting}[style=merlino]
+# selector factor
+default 1.000
+GIC003 0.980
+A1Str0001,0.995
+5=1.020
+\end{lstlisting}
+
+\noindent
+Selectors may be:
+
+\begin{itemize}
+  \item \texttt{default}, \texttt{all} or \texttt{*};
+  \item a one-based index such as \texttt{5};
+  \item a \texttt{GICnnn} label;
+  \item an exact GIC name;
+  \item an exact label;
+  \item an unambiguous substring of a name or label.
+\end{itemize}
+
+\noindent
+Inline records are supplied with repeated \texttt{--scale} options:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic-gf \
+  --schema working/gic_definition.json \
+  --fchk working/gauin.fchk \
+  --scale-file working/pulay_scale.txt \
+  --scale "GIC003=0.980" \
+  --scale "default=1.000"
+\end{lstlisting}
+
+\noindent
+Scaling factors must be non-negative.  Ambiguous or unmatched selectors are
+fatal errors because silent scaling of the wrong coordinate would invalidate the
+PED interpretation.
+
+\section{Output Files}
+
+\begin{longtable}{@{}p{0.31\linewidth}p{0.59\linewidth}@{}}
+\toprule
+Output & Meaning \\
+\midrule
+\endhead
+\texttt{gf\_ped\_report.txt} & Human-readable report for the quick
+\texttt{gf} workflow. \\
+\texttt{gic\_gf\_ped\_report.txt} & Human-readable report for the frozen-GIC
+production workflow. \\
+\texttt{gf\_manifest.json} & Run manifest for the quick workflow. \\
+\texttt{gic\_gf\_manifest.json} & Run manifest recording FCHK, schema,
+optional geometry, scaling input and output files. \\
+\texttt{\detokenize{*_frequencies.csv}} & Mode index and frequency in cm\(^{-1}\). \\
+\texttt{\detokenize{*_gic_labels.csv}} & GIC index, name, irrep and coordinate label. \\
+\texttt{\detokenize{*_ped.csv}} & Potential-energy distribution, rows as GICs and columns
+as modes. \\
+\texttt{\detokenize{*_normal_modes.csv}} & Internal-coordinate normal-mode vectors. \\
+\texttt{\detokenize{*_force_constants.csv}} & Internal-coordinate force-constant matrix
+after optional scaling. \\
+\texttt{\detokenize{*_g_matrix.csv}} & Wilson G matrix in the same GIC order. \\
+\bottomrule
+\end{longtable}
+
+The text report begins with the source FCHK, coordinate source, point group,
+symmetrization flag and GIC count.  It then prints frequencies, GIC labels and
+the PED matrix.  In the frozen-GIC workflow, labels and irreps are those stored
+or evaluated from the \gicforge{} schema.
+
+\section{GUI Workflow}
+
+The advanced GUI exposes GF/PED through the dedicated \texttt{GF / PED} window.
+The window reads a Cartesian Hessian FCHK/FCH file, an optional frozen GIC
+definition, an optional B-matrix geometry and optional Pulay scaling records.
+It displays the text report and can export the same CSV tables written by the
+CLI.
+
+The dashboard also exposes a \texttt{GIC Definition / B Matrix / GF-PED}
+workflow.  The intended sequence is:
+
+\begin{enumerate}
+  \item define or load a frozen GIC schema;
+  \item select the FCHK Hessian;
+  \item optionally select a current geometry for B evaluation;
+  \item optionally supply Pulay scaling;
+  \item run GF/PED and export report/CSV tables.
+\end{enumerate}
+
+\section{Validation and Failure Policy}
+
+GF/PED must fail rather than continue when the mathematical model is invalid.
+Fatal conditions include:
+
+\begin{itemize}
+  \item FCHK missing masses, Cartesian coordinates or Cartesian force constants;
+  \item non-symmetric Cartesian Hessian;
+  \item schema atom count different from the Hessian input atom count;
+  \item B matrix dimension inconsistent with the Hessian;
+  \item non-positive-definite Wilson G matrix for the selected coordinates;
+  \item negative Pulay scaling factor;
+  \item ambiguous or unmatched Pulay selector.
+\end{itemize}
+
+\noindent
+A negative vibrational eigenvalue is not a fatal error by itself.  It is
+reported as a negative frequency because it may represent a transition-state
+direction or an instability in the supplied Hessian/geometry combination.
+
+\section{Relation to GICForge, MORPHEUS and VPT2/VCI}
+
+\gicforge{} owns coordinate construction, pruning and symmetry labels.
+GF/PED consumes that frozen coordinate model and performs harmonic vibrational
+linear algebra.  MORPHEUS/SEfit consumes the same coordinate model for
+semiexperimental structure refinement.  VPT2/VCI is a separate workflow based
+on normal-coordinate cubic and quartic force fields and should not be confused
+with GIC-based Wilson GF/PED.
+
+This separation is intentional.  A coordinate definition can be generated once,
+used to prepare Gaussian input, reused for semiexperimental refinement, and
+then reused again for GF/PED analysis of the Cartesian Hessian.  When the same
+schema is used throughout, coordinate labels, symmetry species, B matrices and
+PED assignments remain auditable across modules.
+
+\end{document}

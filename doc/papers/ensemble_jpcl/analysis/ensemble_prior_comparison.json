@@ -4,45 +4,38 @@
     "accepted": true,
     "classes": {
       "CC_long": {
-        "correction": 0.004980643347901728,
+        "correction": 0.004177326686865971,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.007058264383272979
+        "sigma": 0.006922980463918807
       },
       "CC_short": {
-        "correction": -0.00012850316928851414,
+        "correction": -4.344286067257526e-05,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.002347774727677778
-      },
-      "CH_stretch": {
-        "correction": -0.018893334636666707,
-        "prior_residual": null,
-        "prior_sigma": null,
-        "prior_value": null,
-        "sigma": 0.032345796616967994
+        "sigma": 0.0023432540423192214
       },
       "CO_carbonyl": {
-        "correction": -0.009459952577440476,
+        "correction": -0.012780555806417425,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.036449481139760556
+        "sigma": 0.03600341765273213
       },
       "CO_single": {
-        "correction": 0.00920443859992457,
+        "correction": 0.011220878643429338,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.0322291440199876
+        "sigma": 0.03204372194785538
       }
     },
-    "n_classes": 5,
-    "rank": 5,
-    "scaled_condition_number": 79.08301693656064,
-    "weighted_rms_after": 0.06775626039148443,
+    "n_classes": 4,
+    "rank": 4,
+    "scaled_condition_number": 69.48603391755367,
+    "weighted_rms_after": 0.1111078998638926,
     "weighted_rms_before": 0.18437253264361506
   },
   "no_prior": {
@@ -50,73 +43,66 @@
     "accepted": false,
     "classes": {
       "CCC_bend": {
-        "correction": 22983.01872332344,
+        "correction": 28459.24588190077,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 616590.9382049985
+        "sigma": 576126.9853473159
       },
       "CCO_bend": {
-        "correction": 11236.03939378906,
+        "correction": 11020.524831977533,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 433456.5364840531
+        "sigma": 433370.3052128672
       },
       "CC_long": {
-        "correction": 0.009802009633547498,
+        "correction": 0.009904272079299508,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.017251687401033573
+        "sigma": 0.01675682106683489
       },
       "CC_short": {
-        "correction": -0.0009841928031698339,
+        "correction": -0.0010260265442995826,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.00495131288542183
-      },
-      "CH_stretch": {
-        "correction": -0.001490157907564348,
-        "prior_residual": null,
-        "prior_sigma": null,
-        "prior_value": null,
-        "sigma": 0.05977971796067602
+        "sigma": 0.0046582276611063
       },
       "COC_bend": {
-        "correction": 3976.0180412265227,
+        "correction": 242.81256391692887,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 951659.8505172477
+        "sigma": 939801.9069997995
       },
       "CO_carbonyl": {
-        "correction": -0.0023549713792814075,
+        "correction": -0.0020395239965216687,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.13604059704461832
+        "sigma": 0.13545074785256322
       },
       "CO_single": {
-        "correction": -0.007030100528129669,
+        "correction": -0.007529147508677043,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.1201869804315409
+        "sigma": 0.1185078556195181
       },
       "OCO_bend": {
-        "correction": 11236.068625674163,
+        "correction": 11020.55592652468,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 433456.5665968566
+        "sigma": 433370.3368223707
       }
     },
-    "n_classes": 9,
-    "rank": 9,
-    "scaled_condition_number": 453099477.9406291,
-    "weighted_rms_after": 0.006608863956311741,
+    "n_classes": 8,
+    "rank": 8,
+    "scaled_condition_number": 428628992.31293535,
+    "weighted_rms_after": 0.007602587861257178,
     "weighted_rms_before": 0.18437253264361506
   },
   "soft_prior": {
@@ -124,73 +110,66 @@
     "accepted": true,
     "classes": {
       "CCC_bend": {
-        "correction": 2.0845117883896158e-06,
-        "prior_residual": -2.0845117883896158e-06,
+        "correction": 4.261943255359805e-06,
+        "prior_residual": -4.261943255359805e-06,
         "prior_sigma": 0.001,
         "prior_value": 0.0,
-        "sigma": 0.0009999869652427985
+        "sigma": 0.0009999800034273757
       },
       "CCO_bend": {
-        "correction": -1.0675413656171576e-05,
-        "prior_residual": 1.0675413656171576e-05,
+        "correction": -2.4090809386654377e-05,
+        "prior_residual": 2.4090809386654377e-05,
         "prior_sigma": 0.001,
         "prior_value": 0.0,
-        "sigma": 0.000999695862795075
+        "sigma": 0.000999431486292081
       },
       "CC_long": {
-        "correction": 0.004984480072776562,
+        "correction": 0.004187135153149703,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.007064902963028727
+        "sigma": 0.006931510268702058
       },
       "CC_short": {
-        "correction": -0.00012917318180247033,
+        "correction": -4.508889777153945e-05,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.0023483909811085036
-      },
-      "CH_stretch": {
-        "correction": -0.018882241128097447,
-        "prior_residual": null,
-        "prior_sigma": null,
-        "prior_value": null,
-        "sigma": 0.03235800280653325
+        "sigma": 0.002343966167928844
       },
       "COC_bend": {
-        "correction": 3.37281055331152e-06,
-        "prior_residual": -3.37281055331152e-06,
+        "correction": 6.8959661149424066e-06,
+        "prior_residual": -6.8959661149424066e-06,
         "prior_sigma": 0.001,
         "prior_value": 0.0,
-        "sigma": 0.000999965874199333
+        "sigma": 0.0009999476474693314
       },
       "CO_carbonyl": {
-        "correction": -0.009454952533096155,
+        "correction": -0.012764375884903688,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.03645254028364216
+        "sigma": 0.03600867068096264
       },
       "CO_single": {
-        "correction": 0.009191095641795603,
+        "correction": 0.011187577061071324,
         "prior_residual": null,
         "prior_sigma": null,
         "prior_value": null,
-        "sigma": 0.03224723829354383
+        "sigma": 0.03206522977827903
       },
       "OCO_bend": {
-        "correction": 5.2180919491589605e-06,
-        "prior_residual": -5.2180919491589605e-06,
+        "correction": 1.2932903347793086e-05,
+        "prior_residual": -1.2932903347793086e-05,
         "prior_sigma": 0.001,
         "prior_value": 0.0,
-        "sigma": 0.000999930488974918
+        "sigma": 0.000999843086015131
       }
     },
-    "n_classes": 9,
-    "rank": 9,
-    "scaled_condition_number": 79.37624026207365,
-    "weighted_rms_after": 0.06770358483358781,
+    "n_classes": 8,
+    "rank": 8,
+    "scaled_condition_number": 69.88727808903216,
+    "weighted_rms_after": 0.1109412722637413,
     "weighted_rms_before": 0.18437253264361506
   }
 }

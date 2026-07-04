@@ -36,16 +36,17 @@ python -m merlino semiexp \
   --outdir working/semiexp/succinic_anhydride_fixed_h
 ```
 
-The three anhydrides are also available as a multi-molecule class-correction
-test.  This fit keeps each molecule's own topology, symmetry and isotopologue
-table, but refines shared short/long C-C, carbonyl/single C-O, and C-H stretch
-corrections across the homologous series and includes softly regularized bend
-classes:
+The JPCL multi-molecule test is the parent-only anhydride ensemble.  It uses
+only the parent rotational constants of maleic, phthalic and succinic
+anhydrides, refines shared short/long C-C and carbonyl/single C-O stretch
+corrections across the homologous series, and keeps C-H distances at the BDPCS3
+reference values.  The ordinary single-molecule fits with all available
+isotopologues are used only as validation references:
 
 ```bash
 python -m merlino_core.cli semiexp-ensemble \
-  --job examples/semiexp/anhydrides_ensemble/anhydrides_ensemble.mse-ensemble.toml \
-  --outdir working/semiexp/anhydrides_ensemble
+  --job examples/semiexp/anhydrides_parent_only/anhydrides_parent_only.mse-ensemble.toml \
+  --outdir working/semiexp/anhydrides_parent_only
 ```
 
 The output includes a text report, CSV summaries, covariance/correlation
@@ -56,9 +57,9 @@ support checks; `review` means the fit is usable but contains flagged class
 correlations; `rejected` means the model should not be used for production
 corrections without changing classes, priors or atom typing.
 
-The complete no-prior/soft-prior/hard-constraint comparison, prior-strength
-scan, leave-one-molecule-out diagnostics, and JPCL LaTeX fragments can be
-regenerated with:
+The older full-isotopologue anhydride ensemble, including no-prior/soft-prior/
+hard-constraint comparisons and prior-strength scans, is retained as an
+algorithmic stress test:
 
 ```bash
 python -m merlino_core.cli semiexp-ensemble-paper \
@@ -68,9 +69,10 @@ python -m merlino_core.cli semiexp-ensemble-paper \
 ```
 
 The two glycine conformers can be fitted together directly from the legacy MSR
-benchmark inputs.  The `synthon` variant uses continuous effective atomic
-numbers (`Zeff`) with a threshold to define transferable atom types across the
-two different conformer numberings:
+benchmark inputs.  C-H distances are kept at the BDPCS3 reference values.  The
+`synthon` variant uses continuous effective atomic numbers (`Zeff`) with a
+threshold to define transferable atom types across the two different conformer
+numberings:
 
 ```bash
 python -m merlino_core.cli semiexp-ensemble \

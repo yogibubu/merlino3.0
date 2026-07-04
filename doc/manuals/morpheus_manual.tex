@@ -1,0 +1,669 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{siunitx}
+
+\hypersetup{
+  hidelinks,
+  pdftitle={MORPHEUS Manual},
+  pdfauthor={Merlino Development Team}
+}
+
+\definecolor{MerlinoBlue}{HTML}{245C73}
+\definecolor{MerlinoSlate}{HTML}{4A5561}
+\definecolor{MerlinoGold}{HTML}{C88A2D}
+\definecolor{MerlinoBg}{HTML}{F7F8F6}
+\emergencystretch=2em
+
+\lstdefinestyle{merlino}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{MerlinoSlate!45},
+  backgroundcolor=\color{MerlinoBg},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+\newcommand{\program}{\texttt{MORPHEUS}}
+\newcommand{\merlino}{\texttt{Merlino}}
+\newcommand{\xyzin}{\texttt{xyzin}}
+\newcommand{\gicforge}{\texttt{GICForge}}
+\newcommand{\angstrom}{\text{\AA}}
+
+\title{\textbf{MORPHEUS Manual}\\
+\large Algorithmic model generation and semiexperimental refinement in Merlino}
+\author{Merlino Development Notes}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\program{} is the \merlino{} program for semiexperimental equilibrium-structure
+refinement from rotational constants of isotopologues, vibrational and
+electronic corrections, and optional reference structural information.  The
+program fits Cartesian molecular structures while automatically constructing a
+statistically defined active model from topology, symmetry, isotopic coverage,
+constraints, predicates and parameter classes.  This manual describes the
+recommended command-line and graphical workflows, the input formats, the
+constraint language, the numerical options and the standard output files.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Purpose and Design Principles}
+
+\program{} refines an equilibrium geometry by minimizing the difference between
+corrected experimental rotational information and the values calculated from a
+current Cartesian structure.  The recommended observable is the principal
+moment of inertia, because it avoids the reciprocal nonlinearity of rotational
+constants and gives a more stable least-squares problem.  Rotational constants
+are still reported at the end of every run for direct spectroscopic inspection.
+
+The program is designed around three rules.
+
+\begin{enumerate}
+  \item The active model must start from Cartesian atoms and perceived topology,
+        not from a user-designed Z-matrix.
+  \item The fitted space must be non-redundant, symmetry-adapted and
+        statistically well defined.
+  \item Constraints and parameter classes should be generated or expressed in
+        chemically transparent primitive coordinates, even when the active
+        least-squares variables are delocalized GICs or symmetry-adapted
+        Cartesian displacements.
+\end{enumerate}
+
+Older refinement workflows usually automate the solution of a least-squares
+problem after the user has chosen the coordinate model and constraints.
+\program{} also automates the formulation of that problem.  It analyzes the
+available isotopologues, detects weakly determined directions, preserves the
+maximum compatible symmetry and can propose explicit, rank-consistent
+constraints or shared parameter classes supported by the data.
+
+\section{Theoretical Background}
+
+\program{} solves a constrained nonlinear least-squares problem in which the
+unknowns are not arbitrary Cartesian components but an algorithmically generated
+active structural model.  At each geometry \(x\), the calculated rotational
+observables are obtained from the principal moments of inertia,
+\[
+  I_\alpha(x) = \sum_i m_i\left(|\mathbf{r}_i|^2-r_{i\alpha}^2\right),
+\]
+with isotope masses changed according to each isotopologue.  The recommended
+fit observable is the corrected moment of inertia rather than the rotational
+constant itself, because it avoids the reciprocal transformation
+\(B_\alpha=h/(8\pi^2 c I_\alpha)\) inside the weighted residual.
+
+For an observed rotational constant \(B^0_\alpha\), the target equilibrium
+quantity is formed by applying vibrational and electronic corrections with the
+convention stored in \xyzin{}:
+\[
+  B^e_\alpha \simeq B^0_\alpha - \Delta B^\mathrm{vib}_\alpha
+                         - \Delta B^\mathrm{el}_\alpha .
+\]
+The corresponding target moments define the residual vector \(r(x)\).  The
+least-squares objective is
+\[
+  \chi^2(x)=r(x)^T W r(x) + c(x)^T W_c c(x),
+\]
+where \(W\) contains spectroscopic weights and \(c(x)\) contains optional hard
+or soft structural information.  Hard constraints are enforced by projection or
+large penalty weights; soft priors enter as additional weighted residuals.
+
+The active displacement is written as
+\[
+  \Delta x = P\,\Delta y,
+\]
+where \(P\) is the projector from active model variables to Cartesian
+displacements.  For the GIC model, \(P\) is obtained from the frozen
+non-redundant, symmetry-labelled GIC B matrix supplied by \gicforge{}.  For the
+symmetry-adapted Cartesian model, \(P\) is the translationally and rotationally
+cleaned Cartesian symmetry basis.  In both cases, only the totally symmetric
+subspace is used for a symmetry-preserving equilibrium refinement.
+
+Primitive constraints, predicates and parameter classes are not separate
+coordinate systems.  They are primitive structural relations that are projected
+onto the active model.  If \(s(x)\) is a primitive relation, its linearized row
+in active variables is
+\[
+  \frac{\partial s}{\partial y}
+  =
+  \frac{\partial s}{\partial x}P .
+\]
+This is the key design rule: users, advisors and imported literature data can
+refer to chemically transparent distances, angles, dihedrals and out-of-plane
+coordinates, while the solver operates in a rank-consistent active space.
+
+The numerical solver uses weighted normal equations with rank diagnostics,
+line-search safeguards and topology checks.  The topology perceived at the
+initial geometry is frozen during an ordinary fit.  If a step would create
+spurious contacts or change the covalent graph, the step is rejected rather
+than allowing the model itself to change during refinement.
+
+\section{Installation and Environment}
+
+The standard project setup is:
+
+\begin{lstlisting}[style=merlino]
+merlino-set
+merlino-run
+\end{lstlisting}
+
+\noindent
+The setup script prepares the Python environment used by the GUI and command
+line, including RDKit and PySide6 when available.  The Fortran backends are
+kept as independent executables and are selected explicitly from the GUI or
+with the \texttt{--backend} option.  Check the resolved configuration with:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino config
+python -m merlino backends
+\end{lstlisting}
+
+\noindent
+The current production backend for MORPHEUS/SEfit is Python.  The Fortran77 backend
+is maintained where required for common Merlino services, especially
+\gicforge{} consistency, but the Python MORPHEUS implementation is the
+reference path for the full adaptive least-squares solver and reports.
+
+\section{Overall Workflow}
+
+A reproducible \program{} calculation has five stages.
+
+\begin{enumerate}
+  \item Prepare a parent Cartesian geometry and isotopologue data.
+  \item Convert external sources into the common \xyzin{} molecular container.
+  \item Validate the canonical input and inspect the generated diagnostics.
+  \item Inspect active coordinates, constraints, ranks, weights and warnings.
+  \item Run the fit and inspect residuals, uncertainties, correlations and the
+        optimized-space Hessian.
+\end{enumerate}
+
+External files are import sources only.  Once a \xyzin{} file exists, all
+\merlino{} modules should read geometry, symmetry, rotational, vibrational and
+isotopologue information from that single container.  \program{} can update the
+container during preprocessing, but the fit itself rereads the canonical data.
+
+\section{Coordinate Models}
+
+\subsection{GIC model}
+
+The default active model is:
+
+\begin{lstlisting}[style=merlino]
+coordinate_model = "gic"
+\end{lstlisting}
+
+\gicforge{} reads atomic numbers and Cartesian coordinates, builds primitive
+internal coordinates, reduces them to a non-redundant generalized internal
+coordinate (GIC) set, assigns symmetry labels and provides the active
+coordinates and B matrix.  The primitive classes include bond stretches,
+valence bends, dihedrals, out-of-plane coordinates, linear bends and ring
+coordinates.  Ring coordinates are based on endocyclic dihedrals and analogous
+valence-angle combinations rather than Cremer--Pople variables.
+
+Only totally symmetric coordinates are optimized in a symmetry-preserving
+refinement.  The Gaussian-style input writer can therefore place the totally
+symmetric GICs first and all other symmetry species after the blank separator
+when an external geometry optimization should preserve symmetry.
+
+\subsection{Symmetry-adapted Cartesian model}
+
+The alternative active model is:
+
+\begin{lstlisting}[style=merlino]
+coordinate_model = "cartesian_symmetry"
+\end{lstlisting}
+
+\noindent
+This model removes translations and rotations from Cartesian displacements and
+symmetry-adapts the remaining space.  Only totally symmetric Cartesian
+directions are fitted.  This option does not require an active GIC B matrix,
+but constraints are still defined in primitive internal coordinates and are
+projected onto the Cartesian active space.
+
+\subsection{Choosing a model}
+
+Use the GIC model for production structural refinements when chemically local
+constraints, parameter classes and primitive uncertainties are central to the
+interpretation.  Use the symmetry-adapted Cartesian model as an independent
+coordinate check or when a fully democratic Cartesian active space is preferred.
+Both models return final Cartesian coordinates, from which all primitive
+geometrical parameters and their uncertainties are propagated.
+
+\section{Input Files}
+
+\subsection{Canonical \texttt{xyzin} container}
+
+\xyzin{} is the common \merlino{} molecular container.  It starts with a normal
+XYZ block and then stores optional uppercase sections.  The section used by
+\program{} is \texttt{\#ISOTOPOLOGUES}.
+
+\begin{lstlisting}[style=merlino]
+#ISOTOPOLOGUES
+SCHEMA merlino.xyzin.isotopologues.v1
+UNITS ROTATIONAL=MHz DELTAVIB=MHz DELTAEL=MHz SIGMA=MHz
+INDEXING ATOMS=ONE_BASED
+BEGIN parent
+DEFINITION parent
+ROTATIONAL_MHZ A=1000.000 B=800.000 C=600.000
+DELTAVIB_MHZ A=1.0 B=2.0 C=3.0 SOURCE=qm CONVENTION=subtract
+DELTAEL_MHZ A=0.0 B=0.0 C=0.0 SOURCE=none CONVENTION=subtract
+SIGMA_MHZ A=0.01 B=0.01 C=0.01
+END
+BEGIN C1_13
+DEFINITION 1:13
+ROTATIONAL_MHZ A=990.000 B=790.000 C=590.000
+END
+\end{lstlisting}
+
+\noindent
+\texttt{DEFINITION} uses one-based atom indexes.  Multiple substitutions are
+separated by semicolons, for example \texttt{2:2;5:13}.  \texttt{parent} means
+no isotopic substitution.  \texttt{SIGMA\_MHZ=inf} is accepted for a component
+with zero least-squares weight; each isotopologue must still retain at least
+one positive finite component weight.
+
+Validate a container with:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino xyzin-validate --xyzin working/xyzin
+python -m merlino xyzin-validate --xyzin working/xyzin --require-semiexp-observations
+\end{lstlisting}
+
+\subsection{Standalone job file}
+
+The recommended standalone input extension is \texttt{.mse.toml}.  The schema
+identifier is:
+\begin{lstlisting}[style=merlino]
+merlino.semiexp.job.v1
+\end{lstlisting}
+
+\begin{lstlisting}[style=merlino]
+schema = "merlino.semiexp.job.v1"
+title = "example MORPHEUS fit"
+
+[fit]
+backend = "python"
+coordinate_model = "gic"
+observable = "moments"
+rotational_components = "auto"
+robust_loss = "none"
+
+[geometry]
+units = "angstrom"
+atoms = [
+  ["O",  0.000000,  0.000000,  0.000000],
+  ["H",  0.000000,  0.000000,  0.960000],
+  ["H",  0.920000,  0.000000, -0.240000],
+]
+
+[[isotopologues]]
+label = "parent"
+[isotopologues.definition]
+substitutions = ""
+[isotopologues.constants]
+A_MHz = 1000.0
+B_MHz = 800.0
+C_MHz = 600.0
+\end{lstlisting}
+
+Inline \texttt{[[isotopologues]]} records can be replaced by a separate
+observations file referenced from a \texttt{[files]} table.  Relative paths are
+resolved from the job-file directory.
+
+\subsection{Legacy MSR import}
+
+Legacy MSR files are accepted for compatibility with explicit extensions:
+\texttt{.msr}, \texttt{.msr.inp} and \texttt{*\_msr.inp}.  Generic
+\texttt{.inp} files are not auto-detected as MSR files.
+
+The importer accepts Z-matrix or Cartesian parent geometries, isotope mass
+blocks, \texttt{bexp}, \texttt{dbvib}, \texttt{dbele}/\texttt{dbelec},
+\texttt{weights}, frozen Z-matrix variables marked by \texttt{\#}, and
+\texttt{PREDICATES} records.  The imported geometry is converted to Cartesians.
+Frozen Z-matrix variables are translated to primitive constraints when they
+refer to real atoms.  Legacy \texttt{constraints:} records are preserved as
+diagnostic compatibility metadata unless they are expressed in the current MORPHEUS
+constraint language.
+
+\section{Constraints, Predicates and Parameter Classes}
+
+\subsection{Hard constraints}
+
+Hard constraints remove directions from the least-squares space.  They can be
+specified as primitive freezes, Gaussian ModRedundant lines or Gaussian-style
+GIC expressions.
+
+\begin{lstlisting}[style=merlino]
+R(1,2) Frozen
+A 2 1 3 F
+DRCH(Frozen,Value=0.0)=R(5,8)-R(5,7)
+ROH(Frozen,Value=0.965159)=R(6,7)
+\end{lstlisting}
+
+\noindent
+The \texttt{Value=} keyword follows Gaussian convention and imposes an explicit
+target.  Without \texttt{Value=}, the initial value is frozen.  Constraints are
+expanded over symmetry-equivalent primitive parameters when required.
+
+\subsection{Predicates}
+
+Predicates are weighted structural observations rather than exact constraints.
+They are useful when accurate electronic-structure or library information
+should stabilize an underdetermined refinement without being treated as exact.
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp --job input.mse.toml --outdir run \
+  --qm-predicate "R(2,3):0.9683:0.002:reference"
+\end{lstlisting}
+
+\noindent
+The format is \texttt{label\_pattern:value:sigma:source}.  Smaller
+\texttt{sigma} values make the predicate stronger.
+
+\subsection{Parameter classes}
+
+Parameter classes tie several active corrections together.  A shared class
+does not force final primitive values to be identical; it imposes a common
+correction in the active least-squares space.  This is appropriate when
+related parameters are not independently determined by the available
+isotopologues.
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp --job input.mse.toml --outdir run \
+  --parameter-class "CH_stretches:shared:R(1,6)|R(2,7)|R(3,8)"
+\end{lstlisting}
+
+\noindent
+Automatic class suggestions are conservative.  They are generated from
+synthon descriptors and then validated in the active totally symmetric GIC
+space.  A primitive pattern is accepted only when it is a dominant contribution
+to the matched GIC; weak appearances inside highly delocalized GICs are
+ignored.  This prevents a class from accidentally capturing unrelated
+totally symmetric directions.
+
+\subsection{Model-layer-generated constraints}
+
+The advisor analyzes symmetry, isotopic coverage and reference structural
+information.  Typical actions are:
+
+\begin{itemize}
+  \item freeze hydrogen local geometry when corresponding deuterations are
+        absent;
+  \item preserve near-\(C_s\) or higher symmetry by constraining coordinates
+        that should vanish in the higher-symmetry limit;
+  \item generate shared classes for chemically equivalent corrections based
+        on synthon descriptors;
+  \item report weak or poorly observed directions before the fit.
+\end{itemize}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp --job input.mse.toml --outdir run \
+  --fix-hydrogens \
+  --qm-predicate "R(2,3):0.9683:0.002:reference" \
+  --parameter-class "CH_stretches:shared:R(1,6)|R(2,7)|R(3,8)"
+\end{lstlisting}
+
+\section{Least-Squares Solver}
+
+\program{} uses an adaptive Levenberg--Marquardt trust-region solver with
+rank-revealing SVD steps, dynamic column scaling, optional robust losses,
+line-search safeguards, checkpoint/restart support and deterministic
+conditioning diagnostics.  The GIC coordinate definition is built once for a
+fresh fit and then reused; the B matrix is recomputed or updated when needed.
+Restart jobs rebuild the GIC definition deterministically from the restart
+geometry.
+
+\begin{longtable}{@{}p{0.30\textwidth}p{0.60\textwidth}@{}}
+\toprule
+Option & Meaning \\
+\midrule
+\endhead
+\texttt{backend} & Requested numerical backend: \texttt{python} or
+\texttt{fortran77}. \\
+\texttt{coordinate\_model} & \texttt{gic} or
+\texttt{cartesian\_symmetry}. \\
+\texttt{observable} & \texttt{moments}, \texttt{rotational\_constants} or
+\texttt{auto}.  \texttt{moments} is recommended. \\
+\texttt{rotational\_components} & \texttt{auto}, \texttt{ABC},
+\texttt{AB}, \texttt{AC} or \texttt{BC}.  Planar molecules use only two
+independent components. \\
+\texttt{max\_iter} & Explicit iteration cap.  If omitted, the cap is
+proportional to the number of effective parameters. \\
+\texttt{damping} & Initial Levenberg--Marquardt damping. \\
+\texttt{max\_step} & Maximum active-coordinate trust-region step norm. \\
+\texttt{prune\_condition} & Optional deterministic weak-parameter pruning
+target.  \texttt{0.0} disables pruning. \\
+\texttt{robust\_loss} & \texttt{none}, \texttt{huber},
+\texttt{soft\_l1} or \texttt{cauchy}. \\
+\texttt{robust\_scale} & Robust residual scale in weighted units; \texttt{0}
+selects an automatic median-absolute-deviation scale. \\
+\texttt{leave\_one\_out} & Runs exact leave-one-isotopologue-out refits after
+the final fit. \\
+\texttt{checkpoint}/\texttt{restart} & Save or restart from a checkpoint JSON.\\
+\bottomrule
+\end{longtable}
+
+\section{Planar Molecules}
+
+A planar molecule has only two independent rotational constants.  When
+\texttt{rotational\_components = "auto"}, \program{} chooses among
+\texttt{AB}, \texttt{AC} and \texttt{BC}.  In moment mode these are mapped to
+\((I_a,I_b)\), \((I_a,I_c)\) and \((I_b,I_c)\).  The automatic choice favors
+the most stable pair according to the propagated instability of the omitted
+component and then uses Jacobian conditioning as a tie-breaker.  The omitted
+rotational component is still calculated and reported as a diagnostic.
+
+\section{Command-Line Workflows}
+
+\subsection{Input validation}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino xyzin-validate --xyzin working/xyzin
+python -m merlino xyzin-validate --xyzin working/xyzin \
+  --require-semiexp-observations
+\end{lstlisting}
+
+\noindent
+The validation commands check the canonical Merlino container before a
+production fit.  A full MORPHEUS run then materializes or updates \xyzin{},
+constructs the coordinate model, applies requested constraints/classes and
+writes rank, conditioning, planar-component choice and warning diagnostics to
+the output manifest.
+
+\subsection{Production fit}
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp \
+  --job input.mse.toml \
+  --xyzin working/xyzin \
+  --outdir working/morpheus/run01 \
+  --backend python \
+  --coordinate-model gic \
+  --observable moments \
+  --rotational-components auto
+\end{lstlisting}
+
+\subsection{Class comparison}
+
+To test whether shared classes are justified, run the same input twice: once
+without the class and once with the proposed shared or fixed class.
+
+\begin{lstlisting}[style=merlino]
+python -m merlino semiexp --job p-EBN.msr.inp --outdir run_no_class
+python -m merlino semiexp --job p-EBN.msr.inp --outdir run_classed \
+  --parameter-class "example:shared:R(1,2)|R(3,4)"
+\end{lstlisting}
+
+\noindent
+The comparison should be discussed in terms of rank, residuals and condition
+number.  Class-tied uncertainties are conditional on the shared/fixed class
+model and should not be used as independent evidence for every primitive
+parameter.
+
+\subsection{Explaining GIC definitions}
+
+For debugging or method reporting, \gicforge{} definitions can be exported with
+dominant primitive contributions:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic-define --geometry parent.xyz \
+  --out gic_definition.json \
+  --explain-out gic_explain.json \
+  --explain-csv gic_explain.csv
+\end{lstlisting}
+
+\noindent
+The explanation lists the final GIC labels, symmetry irreps, coordinate kinds,
+atom indexes, number of contributing primitives and the largest primitive
+weight fractions.
+
+\section{Graphical Interface}
+
+The GUI uses the same services as the command line.  A typical GUI run is:
+
+\begin{enumerate}
+  \item create or load a Merlino project;
+  \item import Cartesian geometry or a legacy/job input;
+  \item inspect or edit isotopologue definitions, rotational constants,
+        vibrational corrections, electronic corrections and standard
+        deviations;
+  \item choose Python or Fortran77 backend for each computational step;
+  \item choose GIC or symmetry-Cartesian active coordinates;
+  \item validate the input and inspect warnings;
+  \item open the semiexperimental model tab and accept, edit or reject model-layer-generated
+        constraints/classes with their reason, confidence, atom list and
+        evidence source visible;
+  \item run the fit and inspect output tables.
+\end{enumerate}
+
+The GUI must not keep a private isotopologue store.  Imports from tables, MSR
+files or other sources are written into \xyzin{} and then reread by the MORPHEUS
+service.
+
+\section{Output Files}
+
+Each run writes a text report, CSV diagnostics and a manifest.  The standard
+output directory contains:
+
+\begin{longtable}{@{}p{0.48\textwidth}p{0.42\textwidth}@{}}
+\toprule
+File & Content \\
+\midrule
+\endhead
+\texttt{semiexp\_report.txt} & Human-readable summary of method, constraints,
+diagnostics, residuals and final geometry. \\
+\texttt{semiexp\_report.json} & Versioned machine-readable report with method,
+model, provenance, diagnostics, warnings, residuals and final geometry. \\
+\texttt{semiexp\_geometry.xyz} & Optimized Cartesian structure. \\
+\texttt{semiexp\_geometry\_parameters.csv} & Primitive bond lengths, angles,
+dihedrals and propagated standard errors. \\
+\texttt{semiexp\_rotational\_constants.csv} & Experimental corrected,
+calculated and residual rotational constants. \\
+\texttt{semiexp\_residuals.csv} & Least-squares residual rows. \\
+\texttt{semiexp\_parameters.csv} & Active coordinate values, uncertainties
+and class labels. \\
+\texttt{semiexp\_covariance.csv} and \texttt{semiexp\_correlation.csv} &
+Statistical covariance and correlation matrices. \\
+\texttt{semiexp\_svd\_diagnostics.csv} & Singular values, numerical rank and
+conditioning diagnostics. \\
+\texttt{semiexp\_uncertainty\_diagnostics.csv} & Warnings for unusually large
+or poorly determined uncertainties. \\
+\texttt{semiexp\_warnings.csv} & Machine-readable warnings. \\
+\texttt{semiexp\_hessian.csv} and
+\texttt{semiexp\_hessian\_eigenvalues.csv} & Optimized-space Hessian and
+stationary-point check. \\
+\texttt{semiexp\_kraitchman.csv} & Kraitchman diagnostic values when
+applicable. \\
+\texttt{semiexp\_checkpoint.json} & Restart coordinates and metadata. \\
+\texttt{semiexp\_manifest.json} & Input, option and output provenance. \\
+\bottomrule
+\end{longtable}
+
+The final report gives Cartesian coordinates and conventional primitive
+coordinates in \(\angstrom\) and degrees.  Their uncertainties are obtained by
+propagating the fitted covariance through the final Cartesian geometry.
+
+\section{Diagnostics and Troubleshooting}
+
+\begin{longtable}{@{}p{0.33\textwidth}p{0.57\textwidth}@{}}
+\toprule
+Symptom or warning & Interpretation and action \\
+\midrule
+\endhead
+\texttt{rank reduced} & The experimental data or constraints do not determine
+all active directions.  Inspect singular vectors, add justified predicates,
+classes or constraints, or reduce the active space. \\
+\texttt{large condition number} & The fit is numerically sensitive.  Try
+moment observables, automatic planar-component selection, shared classes or
+better experimental uncertainties. \\
+\texttt{large parameter uncertainty} & The parameter is weakly observed.
+Check isotopic coverage and whether a chemically justified class or predicate
+is needed. \\
+\texttt{low robust weight} & An isotopologue behaves as an outlier under the
+selected robust loss.  Verify its assignment, constants and corrections. \\
+\texttt{planar pair warning} & The selected two-component pair is poorly
+conditioned.  Use \texttt{rotational\_components=auto} unless there is a
+specific spectroscopic reason not to. \\
+\texttt{not a minimum} & The optimized-space Hessian has negative curvature.
+Check constraints, symmetry, data consistency and the reference geometry. \\
+\bottomrule
+\end{longtable}
+
+\section{Regression Tests}
+
+The main scientific contract tests are:
+
+\begin{lstlisting}[style=merlino]
+python -m pytest gui/tests/test_scientific_contracts.py -q
+\end{lstlisting}
+
+\noindent
+They cover \xyzin{} validation, legacy import, GIC behavior,
+constraints, predicates, parameter classes, planar-component selection,
+Kraitchman diagnostics, uncertainty propagation and representative benchmark
+fits.  The parameter-class regression verifies that automatic suggestions are
+filtered in the active totally symmetric GIC space and do not remove unrelated
+directions.
+
+\section{Recommended Practice}
+
+\begin{enumerate}
+  \item Use Cartesian geometries as the primary structure input.
+  \item Materialize all external data into \xyzin{} before production fitting.
+  \item Use moments of inertia and \texttt{rotational\_components=auto}.
+  \item Validate \xyzin{} and input observations before a fit.
+  \item Treat generated constraints and classes as documented model choices:
+        inspect them, keep their provenance, and report them.
+  \item For incomplete isotopic coverage, prefer chemically justified
+        predicates or shared classes over arbitrary parameter deletion.
+  \item Check final rotational residuals, propagated primitive uncertainties,
+        high correlations, leave-one-out diagnostics and Hessian eigenvalues.
+  \item Keep the output manifest with any published or archived result.
+\end{enumerate}
+
+\section{Compatibility Notes}
+
+Legacy MSR inputs are supported to recover existing data sets and to compare
+results.  They are not used as active Z-matrix models.  \program{} converts the
+imported information into Cartesians, isotopologue records, primitive
+constraints, predicates and optional classes, then rebuilds the active model
+from \gicforge{} or symmetry-adapted Cartesians.  The goal is not to obtain a
+different structure, but to obtain the same physical structure from a unique,
+topology-derived, symmetry-consistent and statistically documented model.
+
+\end{document}

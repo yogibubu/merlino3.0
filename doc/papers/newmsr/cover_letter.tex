@@ -27,8 +27,8 @@ The Journal of Chemical Physics}
 \opening{Dear Editor,}
 
 Please consider the manuscript entitled
-``Algorithmic Generation and Exploitation of Topology-Aware Models for
-Semiexperimental Structure Refinement'' for publication in \emph{The Journal
+``Algorithmic Construction and Exploitation of Topology-Constrained Refinement Models for
+Semiexperimental Equilibrium Structures'' for publication in \emph{The Journal
 of Chemical Physics}.
 
 The manuscript addresses model formulation, not only model solution. Once a
@@ -40,12 +40,13 @@ structural information still often depend on expert choices, especially for
 cyclic, fused, and bridged molecular graphs.
 
 We introduce \texttt{MORPHEUS} (Model Optimization and Refinement from
-Perceived Hierarchy, Equivalence, Uncertainty, and Symmetry), a topology-aware
+Perceived Hierarchy, Equivalence, Uncertainty, and Symmetry), a formal
 framework that formulates statistically admissible non-redundant refinement
 models from Cartesian geometry, molecular topology, symmetry, isotopic
 coverage, and computational reference data. More precisely, the generated
-models are topology-derived, symmetry-consistent, and rank-consistent: topology
-defines the primitive coordinate space, symmetry selects the admissible active
+models are generated from the perceived graph, symmetry-consistent, and
+rank-consistent: topology defines the primitive coordinate space, symmetry
+selects the admissible active
 subspace, isotopic coverage determines which directions are supported, and
 reference information enters through explicit constraints, predicates, or
 parameter classes. Two non-redundant, symmetry-adapted coordinate
@@ -59,7 +60,7 @@ electronic corrections, parameter classes, reduced-dimensionality hydrogen
 models, covariance propagation, Kraitchman diagnostics, and human-readable
 reports. Its central contribution is to formalize the construction of the
 refinement model itself as an algorithm: the active representation and the
-constraint or parameter-class relations are topology-derived,
+constraint or parameter-class relations are graph-defined,
 symmetry-consistent, rank-consistent, and compatible with isotopic coverage and
 reference structural information.
 During refinement, the perceived molecular topology is locked after model

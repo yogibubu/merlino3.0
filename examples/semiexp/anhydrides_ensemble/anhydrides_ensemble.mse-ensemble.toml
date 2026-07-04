@@ -50,11 +50,6 @@ atoms = ["C", "O"]
 value_min = 1.28
 
 [[classes]]
-name = "CH_stretch"
-kind = "stretch"
-atoms = ["C", "H"]
-
-[[classes]]
 name = "CCC_bend"
 kind = "bend"
 atoms = ["C", "C", "C"]

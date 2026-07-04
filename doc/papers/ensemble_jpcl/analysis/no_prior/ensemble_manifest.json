@@ -1,8 +1,16 @@
 {
   "acceptance": {
     "accepted": false,
+    "policy": {
+      "high_correlation_reject_threshold": 0.9999,
+      "high_correlation_review_threshold": 0.98,
+      "max_condition_number": 100000000.0,
+      "min_molecule_support": 2,
+      "min_residual_degrees_of_freedom": 1,
+      "require_full_rank": true
+    },
     "reasons": [
-      "scaled condition number 4.53099e+08 exceeds 1e+08",
+      "scaled condition number 4.28629e+08 exceeds 1e+08",
       "class corrections CCO_bend/OCO_bend have correlation 1.000000"
     ],
     "review_items": [],
@@ -14,14 +22,14 @@
         "C",
         "C"
       ],
-      "correction": -0.0009841928031698339,
+      "correction": -0.0010260265442995826,
       "kind": "stretch",
       "name": "CC_short",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 0.00495131288542183,
+      "sigma": 0.0046582276611063,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -33,14 +41,14 @@
         "C",
         "C"
       ],
-      "correction": 0.009802009633547498,
+      "correction": 0.009904272079299508,
       "kind": "stretch",
       "name": "CC_long",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 0.017251687401033573,
+      "sigma": 0.01675682106683489,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -52,14 +60,14 @@
         "C",
         "O"
       ],
-      "correction": -0.0023549713792814075,
+      "correction": -0.0020395239965216687,
       "kind": "stretch",
       "name": "CO_carbonyl",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 0.13604059704461832,
+      "sigma": 0.13545074785256322,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -71,14 +79,14 @@
         "C",
         "O"
       ],
-      "correction": -0.007030100528129669,
+      "correction": -0.007529147508677043,
       "kind": "stretch",
       "name": "CO_single",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 0.1201869804315409,
+      "sigma": 0.1185078556195181,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -88,36 +96,17 @@
     {
       "atom_symbols": [
         "C",
-        "H"
-      ],
-      "correction": -0.001490157907564348,
-      "kind": "stretch",
-      "name": "CH_stretch",
-      "patterns": [],
-      "prior_residual": null,
-      "prior_sigma": null,
-      "prior_value": null,
-      "sigma": 0.05977971796067602,
-      "synthon_signatures": [],
-      "synthon_threshold": null,
-      "synthon_zeff": [],
-      "value_max": null,
-      "value_min": null
-    },
-    {
-      "atom_symbols": [
-        "C",
         "C",
         "C"
       ],
-      "correction": 22983.01872332344,
+      "correction": 28459.24588190077,
       "kind": "bend",
       "name": "CCC_bend",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 616590.9382049985,
+      "sigma": 576126.9853473159,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -130,14 +119,14 @@
         "C",
         "O"
       ],
-      "correction": 11236.03939378906,
+      "correction": 11020.524831977533,
       "kind": "bend",
       "name": "CCO_bend",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 433456.5364840531,
+      "sigma": 433370.3052128672,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -150,14 +139,14 @@
         "O",
         "C"
       ],
-      "correction": 3976.0180412265227,
+      "correction": 242.81256391692887,
       "kind": "bend",
       "name": "COC_bend",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 951659.8505172477,
+      "sigma": 939801.9069997995,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -170,14 +159,14 @@
         "C",
         "O"
       ],
-      "correction": 11236.068625674163,
+      "correction": 11020.55592652468,
       "kind": "bend",
       "name": "OCO_bend",
       "patterns": [],
       "prior_residual": null,
       "prior_sigma": null,
       "prior_value": null,
-      "sigma": 433456.5665968566,
+      "sigma": 433370.3368223707,
       "synthon_signatures": [],
       "synthon_threshold": null,
       "synthon_zeff": [],
@@ -185,6 +174,17 @@
       "value_min": null
     }
   ],
+  "model": {
+    "class_projection": {
+      "bends": "central atom preserved; terminal atoms canonicalized",
+      "out_of_plane": "central atom of U(center,a,b,c)",
+      "stretches": "unordered atom pair",
+      "torsions": "unordered central-atom pair"
+    },
+    "coordinate_types_are_not_mixed": true,
+    "equation": "q_SE(m,k) = q_QC(m,k) + Delta[class(m,k)]",
+    "linearization": "single weighted linearized correction around each molecule computational reference geometry"
+  },
   "molecule_blocks": [
     {
       "matched_counts": {
@@ -192,7 +192,6 @@
         "CCO_bend": 3,
         "CC_long": 4,
         "CC_short": 5,
-        "CH_stretch": 2,
         "COC_bend": 3,
         "CO_carbonyl": 3,
         "CO_single": 1,
@@ -201,8 +200,8 @@
       "molecule": "maleic_anhydride",
       "n_active_gics": 8,
       "n_rows": 20,
-      "rank_contribution": 8,
-      "weighted_rms_after": 0.004459428085069659,
+      "rank_contribution": 7,
+      "weighted_rms_after": 0.0068904943289097,
       "weighted_rms_before": 0.003097309605931134
     },
     {
@@ -211,7 +210,6 @@
         "CCO_bend": 5,
         "CC_long": 7,
         "CC_short": 9,
-        "CH_stretch": 4,
         "COC_bend": 5,
         "CO_carbonyl": 3,
         "CO_single": 1,
@@ -220,8 +218,8 @@
       "molecule": "phthalic_anhydride",
       "n_active_gics": 14,
       "n_rows": 14,
-      "rank_contribution": 9,
-      "weighted_rms_after": 0.009355022690264773,
+      "rank_contribution": 8,
+      "weighted_rms_after": 0.00962066202891631,
       "weighted_rms_before": 0.15161712471746683
     },
     {
@@ -230,7 +228,6 @@
         "CCO_bend": 4,
         "CC_long": 4,
         "CC_short": 0,
-        "CH_stretch": 1,
         "COC_bend": 4,
         "CO_carbonyl": 4,
         "CO_single": 2,
@@ -239,8 +236,8 @@
       "molecule": "succinic_anhydride",
       "n_active_gics": 9,
       "n_rows": 10,
-      "rank_contribution": 8,
-      "weighted_rms_after": 0.005466547104711365,
+      "rank_contribution": 7,
+      "weighted_rms_after": 0.005457040260968899,
       "weighted_rms_before": 0.3425903900094592
     }
   ],
@@ -251,7 +248,6 @@
       827.4362270614014,
       816.9484394496399,
       738.0891076638549,
-      100.97002010200572,
       73.59626060320961,
       309.8268826797265,
       119.08125956368136,
@@ -259,35 +255,34 @@
     ],
     "high_correlation_pairs": [
       {
-        "correlation": 0.9999999999998112,
+        "correlation": 0.9999999999998265,
         "left": "CCO_bend",
         "right": "OCO_bend"
       }
     ],
-    "n_columns": 9,
+    "n_columns": 8,
     "n_rows": 44,
-    "rank": 9,
-    "residual_degrees_of_freedom": 35,
-    "scaled_condition_number": 453099477.9406291,
+    "rank": 8,
+    "residual_degrees_of_freedom": 36,
+    "scaled_condition_number": 428628992.31293535,
     "singular_values": [
-      2.4376523391194707,
-      1.6431605985422166,
-      0.5344140190142491,
-      0.25593868343314374,
-      0.06721913490704408,
-      0.04647902580372515,
-      0.00962578048719805,
-      2.1019148088524848e-08,
-      5.379949564715418e-09
+      2.313965565259507,
+      1.5402953429102928,
+      0.5135273072364577,
+      0.08267332892295118,
+      0.04852309169641661,
+      0.012407835492294773,
+      2.2865534530337994e-08,
+      5.3985278801908864e-09
     ],
     "warnings": [
-      "ill-conditioned scaled design matrix (4.53e+08)",
+      "ill-conditioned scaled design matrix (4.29e+08)",
       "1 class-correction pair(s) have |correlation| >= 0.98"
     ]
   },
-  "rank": 9,
-  "scaled_condition_number": 453099477.9406291,
+  "rank": 8,
+  "scaled_condition_number": 428628992.31293535,
   "schema": "merlino.semiexp.ensemble.result.v1",
-  "weighted_rms_after": 0.006608863956311741,
+  "weighted_rms_after": 0.007602587861257178,
   "weighted_rms_before": 0.18437253264361506
 }

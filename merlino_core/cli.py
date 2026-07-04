@@ -33,6 +33,7 @@ from merlino_semiexp import (
     ParameterClassConstraint,
     QMParameterPredicate,
     SemiexperimentalFitRequest,
+    build_reference_assisted_geometry,
     fit_ensemble_job,
     fit_semiexperimental_geometry,
     is_msr_legacy_file,
@@ -41,6 +42,7 @@ from merlino_semiexp import (
     read_semiexperimental_job,
     run_ensemble_prior_comparison,
     run_ensemble_synthon_threshold_scan,
+    search_reference_library,
     semiexperimental_latex_tables,
     write_ensemble_jpcl_artifacts,
     write_semiexperimental_html_report,
@@ -299,6 +301,85 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Synthon Zeff threshold to test; can be repeated",
     )
+
+    multistructure_reference_search = sub.add_parser(
+        "multistructure-reference-search",
+        help="Search the local semiexperimental geometry reference library for multistructure candidates",
+    )
+    multistructure_reference_search.add_argument("--query-xyz", type=Path, required=True, help="New/query XYZ geometry")
+    multistructure_reference_search.add_argument(
+        "--library-root",
+        type=Path,
+        help="Reference library root containing manifest.csv and XYZ files; default is data/se_geometries",
+    )
+    multistructure_reference_search.add_argument("--outdir", type=Path, required=True, help="Output directory")
+    multistructure_reference_search.add_argument("--top-k", type=int, default=10, help="Number of matches to report")
+    multistructure_reference_search.add_argument(
+        "--covariance-mode",
+        choices=("full", "diag"),
+        default="full",
+        help="Covariance model for synthon/ring Gaussian descriptors",
+    )
+    multistructure_reference_search.add_argument(
+        "--regularization",
+        type=float,
+        default=5.0e-2,
+        help="Diagonal regularization for covariance matrices",
+    )
+    multistructure_reference_search.add_argument(
+        "--ring-weight",
+        type=float,
+        default=0.25,
+        help="Weight of ring-based similarity in the combined score",
+    )
+    multistructure_reference_search.add_argument(
+        "--no-ring-comparison",
+        action="store_true",
+        help="Disable ring-aware library matching",
+    )
+    multistructure_reference_search.add_argument(
+        "--no-standardize",
+        action="store_true",
+        help="Disable pairwise feature standardization before matching",
+    )
+
+    multistructure_build_reference_geometry = sub.add_parser(
+        "multistructure-build-reference-geometry",
+        help="Build a query geometry from the most similar local fragments in the SE reference library",
+    )
+    multistructure_build_reference_geometry.add_argument("--query-xyz", type=Path, required=True, help="New/query XYZ geometry")
+    multistructure_build_reference_geometry.add_argument(
+        "--library-root",
+        type=Path,
+        help="Reference library root containing manifest.csv and XYZ files; default is data/se_geometries",
+    )
+    multistructure_build_reference_geometry.add_argument("--outdir", type=Path, required=True, help="Output directory")
+    multistructure_build_reference_geometry.add_argument("--top-library-matches", type=int, default=25)
+    multistructure_build_reference_geometry.add_argument("--max-fragment-matches", type=int, default=8)
+    multistructure_build_reference_geometry.add_argument("--min-fragment-support", type=int, default=1)
+    multistructure_build_reference_geometry.add_argument("--zeff-threshold", type=float, default=0.08)
+    multistructure_build_reference_geometry.add_argument(
+        "--apply-kinds",
+        default="bond,angle,dihedral,out_of_plane",
+        help="Comma/semicolon-separated primitive kinds to transfer: bond, angle, dihedral, out_of_plane",
+    )
+    multistructure_build_reference_geometry.add_argument("--max-bond-delta", type=float, default=0.08)
+    multistructure_build_reference_geometry.add_argument("--max-angle-delta-deg", type=float, default=15.0)
+    multistructure_build_reference_geometry.add_argument("--max-dihedral-delta-deg", type=float, default=45.0)
+    multistructure_build_reference_geometry.add_argument("--max-out-of-plane-delta-deg", type=float, default=30.0)
+    multistructure_build_reference_geometry.add_argument("--tether-weight", type=float, default=0.02)
+    multistructure_build_reference_geometry.add_argument("--max-iterations", type=int, default=25)
+    multistructure_build_reference_geometry.add_argument("--step-limit-angstrom", type=float, default=0.05)
+    multistructure_build_reference_geometry.add_argument(
+        "--covariance-mode",
+        choices=("full", "diag"),
+        default="full",
+        help="Covariance model for whole-molecule preselection",
+    )
+    multistructure_build_reference_geometry.add_argument("--regularization", type=float, default=5.0e-2)
+    multistructure_build_reference_geometry.add_argument("--ring-weight", type=float, default=0.25)
+    multistructure_build_reference_geometry.add_argument("--no-ring-comparison", action="store_true")
+    multistructure_build_reference_geometry.add_argument("--no-standardize", action="store_true")
 
     semiexp_benchmark = sub.add_parser(
         "semiexp-benchmark",
@@ -785,6 +866,107 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 print(f"threshold={float(row['synthon_threshold']):.6g}: failed {row['error']}")
+        return 0
+
+    if args.command == "multistructure-reference-search":
+        result = search_reference_library(
+            args.query_xyz,
+            library_root=args.library_root,
+            top_k=args.top_k,
+            covariance_mode=args.covariance_mode,
+            regularization=args.regularization,
+            standardize=not args.no_standardize,
+            include_ring_comparison=not args.no_ring_comparison,
+            ring_weight=args.ring_weight,
+            outdir=args.outdir,
+        )
+        outputs = {
+            "reference_matches_csv": args.outdir / "reference_matches.csv",
+            "reference_matches_json": args.outdir / "reference_matches.json",
+        }
+        build_run_manifest(
+            workflow="multistructure_reference_search",
+            status="completed",
+            run_dir=args.outdir,
+            inputs={"query_xyz": args.query_xyz},
+            outputs=outputs,
+            parameters=result.settings,
+            backend={"matcher": "synthon Gaussian model plus optional ring Gaussian model"},
+            messages=[f"skipped {len(result.skipped)} invalid reference geometries"] if result.skipped else [],
+        ).write(args.outdir / "run_manifest.json")
+        print(f"matches_csv: {outputs['reference_matches_csv']}")
+        print(f"matches_json: {outputs['reference_matches_json']}")
+        print(f"manifest: {args.outdir / 'run_manifest.json'}")
+        print(f"library_root: {result.library_root}")
+        print(f"library_size: {result.settings['library_size']}")
+        print(f"compared: {result.settings['compared']}")
+        if result.skipped:
+            print(f"skipped: {len(result.skipped)}")
+        for match in result.matches:
+            print(
+                f"{match.rank:3d}. {match.slug}  sim={match.similarity_combined:.6f}  "
+                f"syn={match.similarity_synthon:.6f}  ring={match.similarity_ring:.6f}  "
+                f"atoms={match.atoms}"
+            )
+        return 0
+
+    if args.command == "multistructure-build-reference-geometry":
+        apply_kinds = tuple(part.strip() for part in _split_top_level(args.apply_kinds, separators=",;") if part.strip())
+        result = build_reference_assisted_geometry(
+            args.query_xyz,
+            library_root=args.library_root,
+            top_library_matches=args.top_library_matches,
+            max_fragment_matches=args.max_fragment_matches,
+            min_fragment_support=args.min_fragment_support,
+            zeff_threshold=args.zeff_threshold,
+            apply_kinds=apply_kinds,
+            max_bond_delta=args.max_bond_delta,
+            max_angle_delta=math.radians(args.max_angle_delta_deg),
+            max_dihedral_delta=math.radians(args.max_dihedral_delta_deg),
+            max_out_of_plane_delta=math.radians(args.max_out_of_plane_delta_deg),
+            tether_weight=args.tether_weight,
+            max_iterations=args.max_iterations,
+            step_limit_angstrom=args.step_limit_angstrom,
+            covariance_mode=args.covariance_mode,
+            regularization=args.regularization,
+            standardize=not args.no_standardize,
+            include_ring_comparison=not args.no_ring_comparison,
+            ring_weight=args.ring_weight,
+            outdir=args.outdir,
+        )
+        outputs = {
+            "assisted_geometry_xyz": args.outdir / "reference_assisted_geometry.xyz",
+            "fragment_targets_csv": args.outdir / "fragment_targets.csv",
+            "fragment_targets_json": args.outdir / "reference_assisted_geometry.json",
+            "unmatched_fragments_csv": args.outdir / "unmatched_fragments.csv",
+            "multiclasses_fragment_summary_csv": args.outdir / "multiclasses_fragment_summary.csv",
+        }
+        build_run_manifest(
+            workflow="multistructure_reference_assisted_geometry",
+            status="completed",
+            run_dir=args.outdir,
+            inputs={"query_xyz": args.query_xyz},
+            outputs=outputs,
+            parameters={
+                **result.settings,
+                "targets": len(result.targets),
+                "unmatched": len(result.unmatched),
+                "iterations": result.iterations,
+                "rms_target_residual_initial": result.rms_target_residual_initial,
+                "rms_target_residual_final": result.rms_target_residual_final,
+                "max_cartesian_shift_angstrom": result.max_cartesian_shift_angstrom,
+            },
+            backend={"builder": "SE reference fragment transfer with tethered Cartesian least squares"},
+        ).write(args.outdir / "run_manifest.json")
+        print(f"assisted_geometry: {outputs['assisted_geometry_xyz']}")
+        print(f"fragment_targets: {outputs['fragment_targets_csv']}")
+        print(f"multiclasses_summary: {outputs['multiclasses_fragment_summary_csv']}")
+        print(f"manifest: {args.outdir / 'run_manifest.json'}")
+        print(f"targets: {len(result.targets)}")
+        print(f"unmatched: {len(result.unmatched)}")
+        print(f"iterations: {result.iterations}")
+        print(f"rms_target_residual: {result.rms_target_residual_initial:.8g}->{result.rms_target_residual_final:.8g}")
+        print(f"max_cartesian_shift_angstrom: {result.max_cartesian_shift_angstrom:.8g}")
         return 0
 
     if args.command == "semiexp-benchmark":

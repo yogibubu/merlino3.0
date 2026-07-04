@@ -1,0 +1,701 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{siunitx}
+
+\hypersetup{
+  hidelinks,
+  pdftitle={GICForge Manual},
+  pdfauthor={Merlino Development Team}
+}
+
+\definecolor{MerlinoBlue}{HTML}{245C73}
+\definecolor{MerlinoSlate}{HTML}{4A5561}
+\definecolor{MerlinoGold}{HTML}{C88A2D}
+\definecolor{MerlinoBg}{HTML}{F7F8F6}
+\emergencystretch=2em
+
+\lstdefinestyle{merlino}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=single,
+  rulecolor=\color{MerlinoSlate!45},
+  backgroundcolor=\color{MerlinoBg},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+\newcommand{\program}{\texttt{GICForge}}
+\newcommand{\merlino}{\texttt{Merlino}}
+\newcommand{\xyzin}{\texttt{xyzin}}
+\newcommand{\provin}{\texttt{provin}}
+\newcommand{\provout}{\texttt{provout}}
+\newcommand{\gauin}{\texttt{gauin}}
+\newcommand{\gicsym}{\texttt{gicsym}}
+\newcommand{\angstrom}{\text{\AA}}
+
+\title{\textbf{GICForge Manual}\\
+\large Non-redundant generalized internal coordinates and symmetry-adapted coordinate bases in Merlino}
+\author{Merlino Development Notes}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\program{} is the \merlino{} geometry backend that converts Cartesian molecular
+structures into non-redundant generalized internal coordinates (GICs), optional
+symmetry-adapted GICs, and symmetry-adapted Cartesian coordinates.  It is used
+as a library service by MORPHEUS, SEfit and future geometry optimizers, and can
+also be run as a standalone diagnostic tool.  This manual describes the input
+contract, coordinate-generation policy, pruning and symmetrization rules, output
+files, Python/Fortran identity checks and recommended regression tests.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Purpose}
+
+\program{} has one responsibility: starting from a Cartesian molecular
+structure, it constructs a chemically interpretable, rank-complete coordinate
+basis.  The basis can be used directly as a Gaussian ReadGIC block, frozen as a
+machine-readable \merlino{} schema, evaluated analytically on later Cartesian
+geometries, or converted into symmetry-adapted Cartesian displacements.
+
+\program{} deliberately does not own project management, SMILES handling,
+electronic-structure parsing, DVR, semiexperimental least-squares logic or GUI
+workflow orchestration.  Those tasks belong to the Python layer.  The geometry
+backend owns topology perception from Cartesian coordinates, primitive internal
+coordinates, ring handling, type-local redundancy removal, symmetry labels and
+the final auditable coordinate definition.
+
+\section{Theoretical Background}
+
+Let \(x\) be the \(3N\)-dimensional Cartesian coordinate vector and let
+\(q_p(x)\) be a primitive internal coordinate.  \program{} first builds a
+redundant primitive set
+\[
+  \mathbf{q}(x)=\{q_1(x),q_2(x),\ldots,q_M(x)\},
+\]
+where \(M\) is usually larger than the vibrational rank.  A generalized
+internal coordinate is a linear combination of primitives,
+\[
+  Q_k(x)=\sum_p U_{pk} q_p(x),
+\]
+with \(U\) stored in the frozen GIC definition.  The Wilson row associated with
+the coordinate is
+\[
+  \mathbf{B}_k = \frac{\partial Q_k}{\partial x}
+              = \sum_p U_{pk}\frac{\partial q_p}{\partial x}.
+\]
+The final coordinate set is valid only if the B matrix has rank \(3N-6\) for a
+nonlinear molecule or \(3N-5\) for a linear molecule.
+
+The central algorithmic choice is that redundancy removal is performed by
+coordinate family, not by a global decomposition over all candidates.  In a
+global SVD or global rank-revealing decomposition, the numerical ordering of
+rows can make chemically unrelated coordinates compete with one another.  A
+stretch row could remove a torsional row, or an out-of-plane row could remove a
+ring bend, even though the two coordinates describe different physical
+motions.  \program{} therefore uses the already accepted rows as a rank basis
+and admits additional rows only within a fixed family order.  Inside each
+family, a modified Gram--Schmidt rank test keeps the rows that add linearly
+independent B-matrix information.  This preserves interpretability while still
+enforcing the exact vibrational rank.
+
+Symmetry adaptation is a second projection problem.  Once the final
+post-pruning basis is known, equivalent coordinate rows are projected with the
+molecular symmetry operations and labelled by irreducible representation.  The
+projection is constrained to homogeneous coordinate blocks, so the symmetry
+operation cannot manufacture a coordinate by mixing unrelated physical
+families.  The theoretical target counts are those of the vibrational
+representation,
+\[
+  \Gamma_\mathrm{vib} = \Gamma_{3N}-\Gamma_\mathrm{trans}-\Gamma_\mathrm{rot}.
+\]
+If the projected coordinate counts cannot reproduce this representation, the
+coordinate generator fails rather than writing an ambiguous basis.
+
+\section{Input Contract}
+
+The molecular geometry input is the XYZ-format file \xyzin{} in the working
+directory.  Atomic symbols and atomic numbers must be equivalent and must cover
+the full periodic table through the shared \merlino{} periodic-table utilities.
+The \provin{} file contains only keywords, title, charge and multiplicity; it
+must not contain Cartesian coordinates, Z-matrices or FCHK-derived geometry.
+
+\begin{lstlisting}[style=merlino]
+# GNIC BMAT GICSYM
+
+Pyrene GICForge example
+
+0 1
+\end{lstlisting}
+
+Unsupported legacy geometry paths are intentionally disabled: Z-matrix input,
+Cartesian coordinates embedded in \provin{}, FCHK geometry input, SMILES input,
+and old FITPOT/VCI/DVR/MSR/isotope/rate driver keywords.  Cartesian input is the
+only production path.
+
+\section{Build and Execution}
+
+The active Fortran backend is built with:
+
+\begin{lstlisting}[style=merlino]
+cd fortran/gicforge
+./compile_MAC
+\end{lstlisting}
+
+\noindent
+The build writes \texttt{fortran/gicforge/build/gicforge} and installs the
+runtime executable as \texttt{bin/gicforge.x}.  The compatibility alias
+\texttt{bin/prova.x} is kept only for older launchers.
+
+The recommended command-line entry point is the shared \merlino{} CLI:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic --workdir work/gicforge
+python -m merlino gic-define geometry.xyz --workdir work/gicdefine
+python -m merlino gic-bmatrix merlino.gic.definition.json geometry.xyz
+python -m merlino gic-contract --geometry geometry.xyz --workdir work/contract
+\end{lstlisting}
+
+\noindent
+\texttt{gic-define} creates a frozen schema; \texttt{gic-bmatrix} evaluates that
+schema without rerunning topology perception; \texttt{gic-contract} verifies the
+Fortran/Python identity contract.
+
+\section{Coordinate Construction Algorithm}
+
+The coordinate generator is a deterministic pipeline.  Each step consumes only
+information created by earlier steps, and the final schema records enough
+metadata to verify that the same model is reused later.
+
+\subsection{Topology perception}
+
+\program{} starts from interatomic distances and atomic covalent radii.  The
+result is a covalent graph with atoms as vertices and bonds as edges.  The graph
+is checked before coordinate construction: symbols and atomic numbers must be
+consistent, atom indexes must be unique, and obvious nonbonded H--H contacts or
+other impossible short contacts are treated as input/topology errors.  The graph
+is then frozen for the run.  Later refinement or optimization modules must not
+allow a geometry step to change this graph silently.
+
+Ring perception is performed on the covalent graph.  The ring basis is
+canonicalized before any ring coordinate is built, so the same molecule gives
+the same ring order in Fortran and Python.  Fused systems are represented by
+their individual rings plus shared bonds; the shared bonds are the places where
+butterfly coordinates can be introduced.
+
+\subsection{Primitive coordinate generation}
+
+The first coordinate layer is primitive and usually redundant.  The generator
+adds primitives in chemically ordered families:
+
+\begin{enumerate}
+  \item stretches for every covalent edge;
+  \item ordinary valence angles around each bonded center;
+  \item linear-bend candidates only for nearly linear centers, with a maximum
+        number per center;
+  \item exocyclic torsions from the default one-dihedral rule;
+  \item endocyclic valence-angle primitives for each ring;
+  \item endocyclic torsional primitives for each ring;
+  \item butterfly primitives around bonds shared by two rings;
+  \item out-of-plane primitives, except when all four involved atoms are cyclic;
+  \item optional improper-dihedral primitives in the Gaussian-compatibility mode.
+\end{enumerate}
+
+This order is not only cosmetic.  It defines the chemical priority used by the
+rank reduction.  Stretches define the bonded frame first; bends define local
+coordination; torsions and ring coordinates define conformational and
+puckering directions; out-of-plane coordinates close the remaining local
+non-planarity directions.
+
+\subsection{Local combinations before pruning}
+
+Several local coordination patterns are better represented by combinations than
+by a single primitive.  For example, equivalent valence angles around a highly
+symmetric center may be converted to local sums and differences, and ring
+torsions are converted to deformation coordinates.  These combinations are
+still type-local: angles are combined with angles, torsions with torsions, and
+out-of-plane coordinates with out-of-plane coordinates.  This rule is essential
+because it prevents the construction stage from creating mathematically valid
+but chemically opaque coordinates.
+
+For ring systems, endocyclic torsions are not meant to appear as an arbitrary
+list of raw dihedrals in the final model.  They are the primitive source from
+which \program{} builds the active \(q\)- and \(\phi\)-like ring deformation
+coordinates.  The report therefore names the endocyclic torsional content in
+the GIC definition section, but the final Gaussian block should contain the
+selected \texttt{QPck} and \texttt{PhiP} coordinates after pruning and symmetry
+assignment.
+
+\subsection{Rank reduction and final basis}
+
+After primitive generation and local combinations, \program{} evaluates Wilson
+B rows for the candidate coordinates at the current Cartesian geometry.  It then
+keeps rows in the fixed family order and rejects rows that do not increase the
+rank.  The rank test is numerical, but the candidate competition is chemical:
+an angle can remove another redundant angle, but not a stretch; a ring bend can
+be removed by ring-bend redundancy, but not by an unrelated exocyclic torsion.
+
+If the ordinary candidate set is too small before pruning, the backend expands
+within Fortran to the full primitive candidate set and repeats the same
+type-local pruning.  The number of pre-pruning attempts is capped by the number
+of available primitive coordinates.  If the final count is still not \(3N-6\)
+or \(3N-5\), the run stops.  A downstream solver must never repair the basis by
+inventing an independent coordinate model.
+
+\section{Coordinate Definition Format}
+
+Coordinate definitions are printed in a Gaussian ReadGIC-compatible form.  Each
+line has a name on the left-hand side, an equal sign, and either one primitive
+or a normalized linear combination of primitives on the right-hand side:
+
+\begin{lstlisting}[style=merlino]
+Str0001 = R(1,2)
+Bend0007 = A(2,1,6)
+Tors0014 = D(3,4,5,6)
+OuPl0003 = U(7,2,1,3)
+GIC0021 =  0.70710678 A(2,1,6) -0.70710678 A(3,4,5)
+\end{lstlisting}
+
+\noindent
+Atom indexes are one-based and always refer to the input atom order after any
+explicit canonical ring ordering has been recorded in the report.  The
+primitive symbols are:
+
+\begin{longtable}{@{}p{0.17\linewidth}p{0.73\linewidth}@{}}
+\toprule
+Primitive & Meaning \\
+\midrule
+\endhead
+\texttt{R(i,j)} & Bond stretch between atoms \(i\) and \(j\). \\
+\texttt{A(i,j,k)} & Valence angle \(i-j-k\), with \(j\) as the central atom. \\
+\texttt{L(i,j,k)} & Linear-bend component for a nearly linear \(i-j-k\)
+arrangement. \\
+\texttt{D(i,j,k,l)} & Dihedral angle around the central bond \(j-k\). \\
+\texttt{U(i,j,k,l)} & Out-of-plane coordinate with a single central atom.  The
+Fortran and Python parsers enforce the same central-atom convention. \\
+\texttt{ImpD(i,j,k,l)} & Improper-dihedral compatibility form used only with
+\texttt{G16} or \texttt{ImpDih}. \\
+\bottomrule
+\end{longtable}
+
+\noindent
+The name prefix indicates the coordinate family and is part of the stable
+ordering contract:
+
+\begin{longtable}{@{}p{0.18\linewidth}p{0.72\linewidth}@{}}
+\toprule
+Prefix & Family \\
+\midrule
+\endhead
+\texttt{Str} & primitive stretch; \\
+\texttt{Bend} & exocyclic or final valence-angle coordinate; \\
+\texttt{LinB} & linear-bend coordinate; \\
+\texttt{Tors} & exocyclic torsion; \\
+\texttt{BtFl} & butterfly torsion around a bond shared by two rings; \\
+\texttt{CyGNA} & endocyclic valence-angle combination; \\
+\texttt{QPck} & active ring puckering amplitude-like coordinate built from
+endocyclic torsions; \\
+\texttt{PhiP} & active ring puckering phase-like coordinate built from
+endocyclic torsions; \\
+\texttt{RPck} & inactive radial puckering component used internally or
+reported for diagnostics, not part of the active Gaussian block; \\
+\texttt{OuPl} & out-of-plane coordinate; \\
+\texttt{ImpD} & improper-dihedral compatibility coordinate. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Ring Coordinate Format}
+
+For a ring with ordered atoms \(a_1,a_2,\ldots,a_n\), \program{} generates two
+ring families.  Endocyclic valence-angle coordinates are combinations of
+primitive angles
+\[
+  A(a_{i-1},a_i,a_{i+1}),
+\]
+where indexes are cyclic.  Endocyclic torsional coordinates are combinations
+of primitive dihedrals
+\[
+  D(a_{i-1},a_i,a_{i+1},a_{i+2}).
+\]
+The primitive torsions are then transformed to active puckering coordinates
+\texttt{QPck} and \texttt{PhiP}.  These are preferred in Gaussian and
+downstream reports because they describe the independent ring deformation more
+compactly than the raw endocyclic torsions.  The inactive \texttt{RPck}
+coordinate corresponds to the redundant radial component and is not written as
+an active final coordinate.
+
+For a five-membered ring, the report therefore separates the coordinate
+construction from the active coordinates:
+
+\begin{lstlisting}[style=merlino]
+Endocyclic Dihedral Angles
+  5-Membered Ring (  13  12  16   1   2):  2 Dihedral angles
+
+Final ring torsion coordinates
+  QPck0001 = ...
+  PhiP0001 = ...
+\end{lstlisting}
+
+\noindent
+For six-membered and larger rings, the same rule is used: the primitive basis
+is endocyclic torsional, but the final active coordinates are the independent
+\(q\)- and \(\phi\)-like ring deformation coordinates selected by the rank
+and symmetry checks.  Fused rings add \texttt{BtFl} butterfly coordinates around
+shared bonds.  Butterfly coordinates remain in the torsional family for
+pruning because their B rows describe ring-puckering motion.
+
+\section{Coordinate Families}
+
+\program{} builds primitive coordinates from the covalent graph.  Hydrogen bonds
+may be detected and reported by higher-level topology utilities, but the
+standard GIC graph remains covalent: hydrogen bonds are correction targets, not
+ring-closing covalent edges.
+
+\begin{longtable}{@{}p{0.23\linewidth}p{0.67\linewidth}@{}}
+\toprule
+Family & Policy \\
+\midrule
+\endhead
+Stretch & All bonded pairs are kept as primitive \texttt{R(i,j)} coordinates.
+Stretches are not reduced by the final pruning step. \\
+Exocyclic bend & Valence angles outside rings are generated around each center
+and reduced locally by rank. \\
+Linear bend & Linear-angle candidates are generated only when required by local
+geometry and are capped per center to avoid unphysical proliferation. \\
+Exocyclic torsion & The default torsion generator is the one-dihedral
+\texttt{ONEDIH} path.  The keyword \texttt{NOONEDIH} forces the older
+alternative for diagnostics. \\
+Ring bend & Endocyclic valence-angle combinations are generated ring by ring,
+with canonical ring numbering. \\
+Ring torsion & Endocyclic torsions are converted to ring deformation
+coordinates.  The Gaussian block uses the active \texttt{QPck} and
+\texttt{PhiP} coordinates; inactive radial \texttt{RPck} components are not
+part of the final active basis. \\
+Butterfly & Fused-ring butterfly coordinates are generated around shared bonds
+and kept as torsional ring-family coordinates. \\
+Out-of-plane & Default non-planarity primitives are \texttt{U(...)} out-of-plane
+angles.  They are not generated when all four involved atoms are cyclic.  Cyclic
+centers with exocyclic substituents remain eligible. \\
+Improper dihedral & With \texttt{G16} or \texttt{ImpDih}, improper dihedrals are
+written instead of out-of-plane angles.  This is a compatibility mode and must
+match the Python parser exactly. \\
+\bottomrule
+\end{longtable}
+
+\section{Rings and Polycyclic Systems}
+
+Ring atom ordering is canonicalized with the same Prelog-first convention used
+by the Python implementation.  The \provout{} report lists atoms in one cycle,
+atoms linking multiple cycles, rings found versus expected rings, endocyclic
+valence-angle coordinates, endocyclic torsional coordinates, butterfly
+coordinates and out-of-plane candidates.
+
+For planar polycyclic aromatic hydrocarbons, out-of-plane candidates whose four
+atoms are all cyclic are suppressed.  Exocyclic out-of-plane coordinates remain
+available and are either kept or removed by the final rank test.  Regression
+targets should include naphthalene, anthracene, pyrene and coronene, with
+explicit checks that fused-ring butterfly coordinates are present when
+topologically required.
+
+\section{Redundancy Removal}
+
+The final pruning step is type-local.  \program{} builds B rows for candidate
+GICs and applies a modified Gram--Schmidt rank test separately to homogeneous
+coordinate families:
+
+\begin{itemize}
+  \item exocyclic bends;
+  \item linear bends;
+  \item exocyclic torsions;
+  \item butterfly and ring torsional coordinates;
+  \item ring valence-angle coordinates;
+  \item out-of-plane coordinates.
+\end{itemize}
+
+\noindent
+Stretch rows are always retained as primitive coordinates.  This policy avoids
+the chemically undesirable behavior of a global SVD in which, for example, a
+stretch can eliminate a torsion simply because it appears earlier in the global
+rank basis.  The rank test is still numerical and B-matrix based, but the
+admissible competition is restricted to coordinates with the same physical
+role.
+
+The target rank is \(3N-6\) for nonlinear molecules and \(3N-5\) for linear
+molecules.  If the final non-redundant count does not match the target,
+\program{} stops with an error.  If the pre-pruning count differs from the
+target, coordinate definitions are not printed as final coordinates until after
+pruning has produced the usable basis.
+
+\section{Symmetry}
+
+\program{} uses symmetry in three different places, and these roles should not
+be confused.
+
+\subsection{Point-group perception}
+
+The first role is molecular point-group perception.  \program{} links the
+shared Fortran symmetry engine \texttt{symm.f}.  Cartesian coordinates are
+centered at the center of mass, oriented on principal inertia axes and assigned
+a point group.  The authoritative report is the point group computed by
+\texttt{symm.f}; an optional point-group token on the second \xyzin{} line is
+legacy metadata only.
+
+The symmetry report records the detected point group, the quality of the
+assignment and the maximum atom-matching deviation.  A high-symmetry assignment
+is used only when atom permutations and Cartesian operations are consistent
+within the configured tolerances.  If the geometry is only approximately
+symmetric, the report must make that explicit, because the symmetry-adapted
+coordinate basis is only as meaningful as the atom mapping used to build it.
+
+\subsection{Symmetry labels for final GICs}
+
+The second role is assigning irreducible representations to the final
+post-pruning GIC basis.  This is done after the non-redundant coordinate set has
+been selected.  The order matters: symmetry is not allowed to rescue a
+redundant coordinate set, and pruning is not allowed to destroy the final
+irreducible-representation counts.  The target representation is
+\[
+  \Gamma_\mathrm{vib} = \Gamma_{3N}-\Gamma_\mathrm{trans}-\Gamma_\mathrm{rot}.
+\]
+For a nonlinear molecule, the sum of the target irrep counts is therefore
+\(3N-6\).
+
+With \texttt{GICSYM}, the deterministic Python post-check projects the final
+GIC rows onto symmetry-adapted combinations, assigns irreducible
+representations, writes the symmetry-adapted GIC block and records the result
+in:
+
+\begin{itemize}
+  \item \texttt{gauin.symm};
+  \item \texttt{gicsym};
+  \item \texttt{gic\_symmetry\_diagnostics.json}.
+\end{itemize}
+
+\noindent
+The promoted \gauin{} file contains the symmetrized Gaussian block.  Totally
+symmetric coordinates are written first, followed by a blank separator and then
+the other irreducible representations.  Downstream programs must not
+re-symmetrize; they must consume the frozen schema and its labels.
+
+\subsection{Allowed symmetry blocks}
+
+The post-check is deliberately constrained.  A symmetry-adapted coordinate must
+be expressible from a physically homogeneous source block.  The allowed blocks
+are primitive stretches, ordinary bends, linear bends, torsions, out-of-plane
+coordinates, ring bends, ring torsions and local out-of-plane/improper blocks
+around the same center.  There is no global fallback that mixes every primitive
+in the molecule.  This preserves the meaning of the final coordinates and makes
+the result comparable between Fortran and Python.
+
+Within a homogeneous block, equivalent primitives are collected by the symmetry
+operations.  The totally symmetric combination is the normalized sum over the
+orbit.  Non-totally-symmetric combinations are orthonormal differences or the
+corresponding projection-operator rows.  The sign is canonicalized so repeated
+runs produce the same labels and coefficients.  The post-check then verifies
+both irrep counts and coordinate-family counts.  For example, a missing
+torsional \(B_{2g}\) coordinate cannot be replaced by an extra stretch of the
+same irrep.
+
+\subsection{Fortran local SALCs versus production symmetry}
+
+The keyword \texttt{SYMMALL} activates a limited Fortran-side local SALC pass
+for selected non-stretch one-term coordinates.  This is a construction aid, not
+the owner of production symmetry.  Production symmetry adaptation is the
+\texttt{GICSYM} post-check, because it sees the final pruned basis, can compare
+against the theoretical vibrational representation and writes the frozen
+schema.  Stretches remain primitive in the raw \gauin{} and are symmetry-adapted
+only in the post-check when \texttt{GICSYM} is requested.
+
+\subsection{Symmetry-adapted Cartesians}
+
+With \texttt{SYCART}, \program{} writes symmetry-adapted Cartesian coordinates
+after removal of rotations and translations.  This provides a common service
+for SEfit, MORPHEUS and future optimizers without embedding symmetry logic in
+those modules.  The Cartesian basis follows the same point-group assignment as
+the GIC basis.  It is useful when a downstream module wants a translationally
+and rotationally clean totally symmetric displacement space without using GICs.
+
+\subsection{Failure policy for symmetry}
+
+Symmetry adaptation fails if the projected basis cannot reproduce the target
+vibrational irrep counts, if coordinate-family counts change, if atom
+permutations are inconsistent, or if two equivalent source blocks would produce
+ambiguous labels.  These failures are intentional.  A wrong or ambiguous
+symmetry label would contaminate downstream refinement, Gaussian optimization
+or force-field projection more seriously than a clean stop.
+
+\section{Frozen Schema and Public API}
+
+The production public API is the \texttt{GICForge} service in
+\texttt{merlino\_gic}.  A fresh definition run writes a
+\texttt{merlino.gic.definition.v1} schema containing:
+
+\begin{itemize}
+  \item primitive coordinate expressions;
+  \item GIC coefficient matrix;
+  \item coordinate labels and names;
+  \item coordinate families;
+  \item irreducible representations;
+  \item point group and symmetrization flag;
+  \item Gaussian-readable GIC block;
+  \item provenance hashes for input, backend and generated files.
+\end{itemize}
+
+\noindent
+The schema is frozen during an ordinary refinement or optimization.  Later
+iterations evaluate values and B rows from the schema without changing
+topology, ring detection, redundancy removal or symmetry assignment.  A restart
+is the explicit boundary at which the schema may be regenerated.
+
+\section{Output Files}
+
+\begin{longtable}{@{}p{0.33\linewidth}p{0.57\linewidth}@{}}
+\toprule
+File & Meaning \\
+\midrule
+\endhead
+\provout{} & Human-readable report: point group, topology summary, candidate
+families, pruning diagnostics, final counts and final coordinate definitions. \\
+\gauin{} & Gaussian ReadGIC input block for the final post-pruning coordinate
+basis.  With \texttt{GICSYM}, this is the promoted symmetrized block. \\
+\texttt{gauin.raw} & Preserved unsymmetrized Gaussian block when \texttt{GICSYM}
+promotes \texttt{gauin.symm}. \\
+\texttt{gauin.symm} & Symmetry-adapted Gaussian block before promotion. \\
+\gicsym{} & Names, irreps and source-block information for the symmetrized
+coordinates. \\
+\texttt{bmat.out} & Machine-readable final B matrix when \texttt{BMAT} is
+active. \\
+\texttt{bondout} & Detected covalent topology. \\
+\texttt{ringin} & Canonical ring data used by the ring-coordinate generator. \\
+\texttt{sycart.xyz} & Symmetry-adapted Cartesian coordinates when
+\texttt{SYCART} is active. \\
+\texttt{merlino.gic.definition.}\newline\texttt{v1.json} & Frozen reusable GIC schema written by
+\texttt{gic-define}. \\
+\bottomrule
+\end{longtable}
+
+\section{Keyword Summary}
+
+\begin{longtable}{@{}p{0.18\linewidth}p{0.72\linewidth}@{}}
+\toprule
+Keyword & Effect \\
+\midrule
+\endhead
+\texttt{GNIC} & Build generalized natural/internal coordinates. \\
+\texttt{BMAT} & Write the machine-readable final B matrix. \\
+\texttt{GICSYM} & Produce symmetry-adapted GICs and promote them to the Gaussian
+input block. \\
+\texttt{SYCART} & Produce symmetry-adapted Cartesian coordinates without
+rotations and translations. \\
+\texttt{GDV} & Use out-of-plane \texttt{U(...)} coordinates; this is also the
+default behavior. \\
+\texttt{G16}, \texttt{ImpDih} & Use Gaussian-style improper dihedrals instead
+of out-of-plane coordinates. \\
+\texttt{ONEDIH} & One-dihedral torsion generation.  This is the default. \\
+\texttt{NOONEDIH} & Force the legacy alternative torsion path for diagnostics. \\
+\texttt{SYMMALL} & Apply the limited type-local Fortran SALC generator before
+final pruning.  Production symmetry adaptation is still owned by
+\texttt{GICSYM}. \\
+\bottomrule
+\end{longtable}
+
+\section{Python/Fortran Identity Contract}
+
+The Python layer is allowed to orchestrate, serialize, post-check symmetry and
+evaluate the frozen B matrix.  It is not allowed to replace a valid Fortran GIC
+basis silently.  The contract checks:
+
+\begin{itemize}
+  \item final coordinate count and family counts;
+  \item ordered primitive signatures;
+  \item point group and irreducible-representation labels;
+  \item number of totally symmetric coordinates;
+  \item Python analytic B matrix against Fortran \texttt{bmat.out};
+  \item byte-stable symmetry diagnostics for repeated runs.
+\end{itemize}
+
+\noindent
+Run the contract with:
+
+\begin{lstlisting}[style=merlino]
+python -m merlino gic-contract --geometry examples/pyrene.xyz \
+  --workdir work/gic_contract_pyrene
+\end{lstlisting}
+
+\noindent
+The Python port in \texttt{merlino\_gic.gicforge\_python} is a faithful porting
+target, not an independent production generator.  It must match Fortran on
+ordering, primitive orientation, coordinate families, type-local pruning,
+symmetry labels and B rows before it can replace a backend path.
+
+\section{Recommended Regression Set}
+
+The minimum regression set should cover:
+
+\begin{itemize}
+  \item acyclic molecules with ordinary stretches, bends and torsions;
+  \item linear-angle cases with capped linear bends;
+  \item square-planar or high-coordination centers;
+  \item SF\(_6\), which should not produce spurious linear bends;
+  \item saccharine and other heteroatom rings;
+  \item naphthalene, anthracene, pyrene and coronene for fused PAHs;
+  \item norbornene and norbornadiene for bridged non-planar rings;
+  \item \texttt{GICSYM} variants for nontrivial point groups;
+  \item \texttt{SYCART} variants for symmetry-adapted Cartesian output.
+\end{itemize}
+
+\noindent
+Every test should verify the target rank, coordinate-family counts, presence of
+required butterfly coordinates, absence of all-cyclic out-of-plane primitives,
+and equality of Python/Fortran B matrices where both paths are active.
+
+\section{Failure Policy}
+
+\program{} must fail early when the generated basis is not scientifically
+usable.  Fatal conditions include:
+
+\begin{itemize}
+  \item inconsistent symbol/atomic-number input;
+  \item topology changes during a frozen-schema workflow;
+  \item final GIC count different from \(3N-6\) or \(3N-5\);
+  \item symmetry post-check unable to reach theoretical irrep counts;
+  \item coordinate-family counts changed by post-check symmetrization;
+  \item Python/Fortran B-matrix mismatch beyond numerical roundoff.
+\end{itemize}
+
+\noindent
+These failures are intentional.  A downstream fit or optimizer must not proceed
+with an ambiguous coordinate definition.
+
+\section{Relation to MORPHEUS and SEfit}
+
+MORPHEUS and SEfit call \program{} as a coordinate-service library.  A fresh fit
+generates one frozen coordinate definition at the starting geometry.  Ordinary
+least-squares iterations then reuse that definition and only update coordinate
+values, B rows and projected parameter directions.  This prevents the fitted
+model from changing during optimization and makes the final refinement
+auditable.
+
+For a GIC active model, the fit uses the totally symmetric block assigned by
+\program{}.  For a symmetry-adapted Cartesian active model, the fit uses
+\texttt{SYCART}.  In both cases, topology and symmetry belong to
+\program{}, while weights, constraints, predicates, parameter classes and
+least-squares diagnostics belong to the refinement layer.
+
+\end{document}

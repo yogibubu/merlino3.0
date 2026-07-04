@@ -1,0 +1,5 @@
+Glycine ensemble-vs-separate geometry comparison
+glycine_I: mean/max stretch ensemble-separate = 3.74/9.31 mA
+glycine_I: mean/max bend ensemble-separate = 0.385/0.529 deg
+glycine_II: mean/max stretch ensemble-separate = 3.65/6.24 mA
+glycine_II: mean/max bend ensemble-separate = 0.566/1.255 deg

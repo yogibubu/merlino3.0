@@ -315,6 +315,11 @@ INPUT ./figures/planar_pair_diagnostics.pdf
 INPUT ./figures/planar_pair_diagnostics.pdf
 INPUT ./figures/planar_pair_diagnostics.pdf
 INPUT ./figures/planar_pair_diagnostics.pdf
+INPUT ./generated/sensitivity_leave_one_out.tex
+INPUT ./generated/sensitivity_leave_one_out.tex
+INPUT ./generated/sensitivity_leave_one_out.tex
+INPUT ./generated/sensitivity_leave_one_out.tex
+INPUT generated/sensitivity_leave_one_out.tex
 INPUT ./figures/nitrobenzene_kraitchman_fit.pdf
 INPUT ./figures/nitrobenzene_kraitchman_fit.pdf
 INPUT ./figures/nitrobenzene_kraitchman_fit.pdf
@@ -330,11 +335,11 @@ INPUT ./generated/glycine_I_qc_rotational_comparison.tex
 INPUT ./generated/glycine_I_qc_rotational_comparison.tex
 INPUT ./generated/glycine_I_qc_rotational_comparison.tex
 INPUT generated/glycine_I_qc_rotational_comparison.tex
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
 INPUT ./main_short.bbl
 INPUT ./main_short.bbl
 INPUT main_short.bbl
@@ -362,7 +367,6 @@ INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cms
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb
-INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb

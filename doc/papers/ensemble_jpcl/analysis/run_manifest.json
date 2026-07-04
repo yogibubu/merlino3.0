@@ -1,0 +1,42 @@
+{
+  "backend": {
+    "renderer": "latex-fragments",
+    "solver": "python"
+  },
+  "created_at_utc": "2026-06-25T22:08:11.857830+00:00",
+  "input_sha256": {
+    "job": "b5734aa538cc8df14964cb71d8ef5c5b29dadbd872094475ac92696f19e54165"
+  },
+  "inputs": {
+    "job": "examples/semiexp/anhydrides_ensemble/anhydrides_ensemble.mse-ensemble.toml"
+  },
+  "messages": [],
+  "output_sha256": {
+    "class_support": "9c5f3611c426d5aa5b96245a1dcb609eb7a1d0427747ecae5a45e83b5fcdbe1e",
+    "classes_priors": "a875ee2c4ed2b8b8f21cce5784c59a87e8ca05cc818fd9410770516ed3d1899f",
+    "condition_wrms_plot": "a71f70dbd4fa0c129fef23a25f07fa923c90a2bee410296cdd411d2e09abb56b",
+    "leave_one_molecule_out": "93a92f6b1d2c725f56b0858dcd997e5eb3cb0b17c2b685ad3246dea10a65f714",
+    "model_scheme": "bee40ba4932a8bd8ae956679bc02ed41e980c25ea213f9b4710f74798a9c43ef",
+    "prior_comparison": "0515a16089412da254722eabc1ff0487cba8652e70d5aa0444e84d6b0c349139",
+    "prior_sigma_condition_plot": "d760526dd2975f5adaa815075257aacead8670105fc37e1821b7f75ad8220f53",
+    "prior_sigma_scan_plot": "98d3be5e1a2501e20fd898fbdfe2e5a280d60d1f41f26d435a5aa463157a231a"
+  },
+  "outputs": {
+    "class_support": "doc/papers/ensemble_jpcl/generated/class_support_report.tex",
+    "classes_priors": "doc/papers/ensemble_jpcl/generated/anhydrides_classes_priors.tex",
+    "condition_wrms_plot": "doc/papers/ensemble_jpcl/generated/condition_wrms_plot.tex",
+    "leave_one_molecule_out": "doc/papers/ensemble_jpcl/generated/leave_one_molecule_out.tex",
+    "model_scheme": "doc/papers/ensemble_jpcl/generated/model_scheme.tex",
+    "prior_comparison": "doc/papers/ensemble_jpcl/generated/anhydrides_prior_comparison.tex",
+    "prior_sigma_condition_plot": "doc/papers/ensemble_jpcl/generated/prior_sigma_condition_plot.tex",
+    "prior_sigma_scan_plot": "doc/papers/ensemble_jpcl/generated/prior_sigma_scan_plot.tex"
+  },
+  "parameters": {
+    "paper_dir": "doc/papers/ensemble_jpcl",
+    "soft_prior_sigma": 0.001
+  },
+  "run_dir": "doc/papers/ensemble_jpcl/analysis",
+  "schema_version": "merlino.run.v1",
+  "status": "completed",
+  "workflow": "semiexp_ensemble_paper_artifacts"
+}

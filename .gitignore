@@ -21,6 +21,13 @@ venv/
 *.out
 *.err
 *.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.run.xml
+*.synctex.gz
 *.toc
 build/
 fortran/*/build/

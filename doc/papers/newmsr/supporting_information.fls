@@ -208,11 +208,11 @@ INPUT ./figures/succinic_anhydride_numbering.pdf
 INPUT ./figures/succinic_anhydride_numbering.pdf
 INPUT ./figures/succinic_anhydride_numbering.pdf
 INPUT ./figures/succinic_anhydride_numbering.pdf
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
-INPUT ./figures/testosterone_qc.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
+INPUT ./figures/testosterone_qc_cropped.jpg
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmr10.tfm
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmmi10.tfm
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/cm/cmsy10.tfm
